@@ -51,7 +51,7 @@ verifies present assets against the manifest byte counts and SHA-256 values.
 ## Audit command
 
 ```bash
-GITHUB_TOKEN=<token> GITHUB_REPOSITORY=harbourviewcompany-create/Brain python scripts/check_repository_hardening.py
+GITHUB_TOKEN=<token> GITHUB_REPOSITORY=harbourviewcompany-create/Brain python tools/check_repository_hardening.py
 ```
 
 The corresponding workflow is:
