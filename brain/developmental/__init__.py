@@ -10,6 +10,7 @@ from .immune import CognitiveImmuneService, QuarantineService, RecoveryService
 from .module_genesis import ModuleGenesisService, ModuleMaturityService
 from .plasticity import GraphRewireService, PlasticityService, PruningService
 from .prediction_error import CalibrationService, DevelopmentPressureService, PredictionErrorService
+from .runtime import DevelopmentalRuntime
 from .self_model import CapabilityLedgerService, SelfModelService
 from .spine import DevelopmentScore, DevelopmentalStage, DevelopmentalStageService
 from .theory_registry import TheoryCompetitionService, TheoryRegistryService, UnknownMechanismRegistryService
@@ -22,6 +23,7 @@ __all__ = [
     "ConsolidationService",
     "DevelopmentPressureService",
     "DevelopmentScore",
+    "DevelopmentalRuntime",
     "DevelopmentalStage",
     "DevelopmentalStageService",
     "DreamSimulationService",
