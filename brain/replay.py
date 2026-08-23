@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -131,7 +131,7 @@ class ReplayHarness:
             data["scenario"],
             passed,
             event_types,
-            formula_runs=[asdict(run) for run in runs],
+            formula_runs=[self._serialize_run(run) for run in runs],
             state_transitions=["outcome", "reward_pain", "graph_update", "reallocation"],
             go_hold="GO" if passed else "HOLD",
         )
@@ -162,7 +162,7 @@ class ReplayHarness:
             data["scenario"],
             passed,
             ["formula.attention_score", "formula.reward_score"],
-            formula_runs=[asdict(run) for run in runs],
+            formula_runs=[self._serialize_run(run) for run in runs],
             state_transitions=["formula_run", "audit_trace"],
             go_hold="GO" if passed else "HOLD",
         )
@@ -175,3 +175,18 @@ class ReplayHarness:
             owner_object_id=data["input"].get("owner_object_id", "fixture-owner"),
             owner_object_type=data["input"].get("owner_object_type", "Fixture"),
         )
+
+    def _serialize_run(self, run: FormulaRunResult) -> dict[str, Any]:
+        return {
+            "formula_id": run.formula_id,
+            "run_id": str(run.run_id),
+            "owner_object_id": run.owner_object_id,
+            "owner_object_type": run.owner_object_type,
+            "service": run.service,
+            "table_store": run.table_store,
+            "dashboard": run.dashboard,
+            "decision_consequence": run.decision_consequence,
+            "inputs": run.inputs,
+            "output": run.output,
+            "audit_evidence": run.audit_evidence,
+        }
