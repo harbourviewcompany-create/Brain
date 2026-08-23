@@ -45,7 +45,8 @@
     "The Brain can quarantine unsafe cognition and require evidence-bound recovery",
     "The Brain can track its own capabilities, limitations and learning debt",
     "The Brain can preserve unknown mechanisms and competing theories without hiding uncertainty",
-    "The developmental build queue and manifest now mark AGENT-008 through AGENT-015 as implemented"
+    "The developmental build queue and manifest now mark AGENT-008 through AGENT-015 as implemented",
+    "Developmental handoff and GO/HOLD reports are finalized"
   ],
   "hold_conditions_remaining": [
     "This does not prove the entire Brain is complete.",
