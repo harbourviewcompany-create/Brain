@@ -1,0 +1,86 @@
+{
+  "archive_id": "brain-current-thread-2026-08-23",
+  "title": "Brain Compilation Full Current Thread Package",
+  "status": "assets_pending_file_byte_upload",
+  "rule": "Preserve all package contents without omission, filtering, narrowing, or rewriting.",
+  "source_package": {
+    "filename": "Brain_Compilation_Full_Current_Thread_Package.zip",
+    "target_path": "artifacts/Brain_Compilation_Full_Current_Thread_Package.zip",
+    "bytes": 18545024,
+    "sha256": "5b17edc9e0bbc4d18b02bf83cae348c281ec5a84396e8f4eeb2fed53c5afb33c"
+  },
+  "items": [
+    {
+      "filename": "Brain_Compilation_Full_Current_Thread.docx",
+      "target_path": "docs/archive/Brain_Compilation_Full_Current_Thread.docx",
+      "bytes": 9096825,
+      "sha256": "81807a40a7954c9bdb45b89b8422ac4d09cf6cd9da40bb3ecbf7d5af93e35ebc",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "required": true
+    },
+    {
+      "filename": "Brain_Compilation_Full_Current_Thread.md",
+      "target_path": "docs/archive/Brain_Compilation_Full_Current_Thread.md",
+      "bytes": 169344,
+      "sha256": "fa780b956d80548e8e12575de6de8c45ba0ea51bdfffff27e83e27f0b55d9cee",
+      "media_type": "text/markdown",
+      "required": true
+    },
+    {
+      "filename": "Pasted text.txt",
+      "target_path": "docs/archive/source/Pasted text.txt",
+      "bytes": 91085,
+      "sha256": "b262f961ac46f7eae4fd7297a67c803daf404060031c3db6d7bdb7289e7ffb41",
+      "media_type": "text/plain",
+      "required": true
+    },
+    {
+      "filename": "step_by_step_process_overview.png",
+      "target_path": "docs/archive/visuals/step_by_step_process_overview.png",
+      "bytes": 1029022,
+      "sha256": "af5ef6aea22d38f83b1a3b4e6e7a67a77614ffeec60d7372fddf9123d32ae6fb",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "filename": "brain_functions_vs._real_brain_anatomy.png",
+      "target_path": "docs/archive/visuals/brain_functions_vs._real_brain_anatomy.png",
+      "bytes": 1685374,
+      "sha256": "e6c5294e2ea74bc988bd1b2e6144b52e76538557ccc39a138d1fa3f0fbc0e35d",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "filename": "a_high_detail_infographic_poster_on_a_dark_black_t.png",
+      "target_path": "docs/archive/visuals/a_high_detail_infographic_poster_on_a_dark_black_t.png",
+      "bytes": 2009175,
+      "sha256": "b5cd31b78131c046c4f0fdb39815f7420e7246c81c373f7639166ca8afd203cf",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "filename": "brain_vs_ai_a_comparative_overview.png",
+      "target_path": "docs/archive/visuals/brain_vs_ai_a_comparative_overview.png",
+      "bytes": 1625487,
+      "sha256": "392d1b9e096c56b4469b15e745ec8e5125e40ba90da4ef6f91c202a4309d3758",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "filename": "brain_architecture_vs_generic_ai_comparison.png",
+      "target_path": "docs/archive/visuals/brain_architecture_vs_generic_ai_comparison.png",
+      "bytes": 1431189,
+      "sha256": "cac61a86a0ae35dce9da1c41218b2a9dc1cda072f1283e7f405ac4725f3b8f1c",
+      "media_type": "image/png",
+      "required": true
+    },
+    {
+      "filename": "comparing_ai_and_brain_architectures.png",
+      "target_path": "docs/archive/visuals/comparing_ai_and_brain_architectures.png",
+      "bytes": 1407523,
+      "sha256": "508360ec084f26757eb3848602ca74e69025df08730732249ed7591fc8c005d8",
+      "media_type": "image/png",
+      "required": true
+    }
+  ]
+}
