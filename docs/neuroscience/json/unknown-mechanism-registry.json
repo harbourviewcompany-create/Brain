@@ -1,0 +1,105 @@
+{
+  "registry_id": "neuro-unknown-mechanism-registry-v1",
+  "status": "APPROVED_FOR_UNCERTAINTY_PRESERVATION",
+  "unknown_mechanisms": [
+    {
+      "unknown_id": "NEURO-UNK-001",
+      "name": "binding and unified conscious access",
+      "kind": "unknown",
+      "related_abstraction_ids": ["NEURO-0007", "NEURO-0008"],
+      "current_claim_boundary": "Brain may implement workspace-style coordination and reportable access proxies, but it must preserve the open status of phenomenal consciousness and neural binding.",
+      "forbidden_claims": [
+        "Brain is conscious",
+        "the binding problem is solved",
+        "workspace access equals phenomenal experience"
+      ],
+      "allowed_uses": [
+        "route competing signals through attention and working-memory control",
+        "preserve separate reportable-access and subjective-experience labels",
+        "force HOLD on claims that require consciousness equivalence"
+      ],
+      "evidence_needed": [
+        "explicit theory selection record",
+        "behavioral proxy limits",
+        "operator-reviewed non-equivalence statement"
+      ],
+      "research_questions": [
+        "which access-control mechanisms improve task performance without overclaiming consciousness",
+        "which internal reports are useful while remaining non-phenomenal proxies"
+      ],
+      "owner_object": "UnknownMechanismRecord",
+      "runtime_service": "UnknownMechanismRegistryService",
+      "database_table": "neuro_unknown_mechanisms",
+      "fixture_id": "unknown_mechanism_registry",
+      "test_id": "tests/test_unknown_mechanism_registry.py",
+      "dashboard": "Unknown Mechanism Console",
+      "go_hold_status": "HOLD"
+    },
+    {
+      "unknown_id": "NEURO-UNK-002",
+      "name": "emotion to value mapping",
+      "kind": "disputed",
+      "related_abstraction_ids": ["NEURO-0006", "NEURO-0010"],
+      "current_claim_boundary": "Brain may map affect-like signals to value, salience and avoidance heuristics, but it must not claim literal human emotion replication.",
+      "forbidden_claims": [
+        "Brain feels emotion",
+        "reward and pain scores equal biological affect",
+        "simulated affect proves sentience"
+      ],
+      "allowed_uses": [
+        "score urgency, risk, loss and reinforcement",
+        "flag high-pressure states for operator review",
+        "separate functional valence from felt experience"
+      ],
+      "evidence_needed": [
+        "outcome-linked calibration",
+        "false-positive pressure review",
+        "operator override trail"
+      ],
+      "research_questions": [
+        "which affect-like signals improve economic and cognitive decisions",
+        "where should pain/reward signals be blocked from governance mutation"
+      ],
+      "owner_object": "UnknownMechanismRecord",
+      "runtime_service": "UnknownMechanismRegistryService",
+      "database_table": "neuro_unknown_mechanisms",
+      "fixture_id": "unknown_mechanism_registry",
+      "test_id": "tests/test_unknown_mechanism_registry.py",
+      "dashboard": "Unknown Mechanism Console",
+      "go_hold_status": "HOLD"
+    },
+    {
+      "unknown_id": "NEURO-UNK-003",
+      "name": "self-model continuity and identity",
+      "kind": "speculative",
+      "related_abstraction_ids": ["NEURO-0008", "NEURO-0012"],
+      "current_claim_boundary": "Brain may maintain persistent identity, goals, policies and autobiographical records, but it must not claim human selfhood or personhood.",
+      "forbidden_claims": [
+        "Brain has personhood",
+        "persistent state equals a human self",
+        "identity continuity proves consciousness"
+      ],
+      "allowed_uses": [
+        "protect stable goals and policies",
+        "track autobiographical state as operational memory",
+        "detect self-contradictory plans"
+      ],
+      "evidence_needed": [
+        "identity state audit trail",
+        "goal-protection tests",
+        "non-personhood boundary in operator UI"
+      ],
+      "research_questions": [
+        "which self-model fields improve planning and safety",
+        "which identity changes require human approval"
+      ],
+      "owner_object": "UnknownMechanismRecord",
+      "runtime_service": "UnknownMechanismRegistryService",
+      "database_table": "neuro_unknown_mechanisms",
+      "fixture_id": "unknown_mechanism_registry",
+      "test_id": "tests/test_unknown_mechanism_registry.py",
+      "dashboard": "Unknown Mechanism Console",
+      "go_hold_status": "HOLD"
+    }
+  ]
+}
