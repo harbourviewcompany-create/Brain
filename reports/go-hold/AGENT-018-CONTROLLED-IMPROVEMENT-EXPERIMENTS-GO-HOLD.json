@@ -1,0 +1,8 @@
+{
+  "report_id":"AGENT-018-CONTROLLED-IMPROVEMENT-EXPERIMENTS-GO-HOLD",
+  "issue":87,
+  "status":"GO_CANDIDATE_PENDING_EXACT_HEAD_CI",
+  "go":["internal experiment registration","evidence-bearing benchmark/control evaluation","promotion decision generation","rollback evidence preservation"],
+  "hold":["autonomous code mutation","automatic merge","deployment","external action","unsupported intelligence-superiority claims"],
+  "closure_rule":"Protected control, test and lint workflows must pass on the exact implementation head."
+}
