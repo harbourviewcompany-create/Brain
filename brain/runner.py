@@ -38,7 +38,7 @@ class ContinuousCognitionRunner:
             self.cycle_runs.save(item["id"], result)
             self.inbox.complete(item["id"])
             return True
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - job runner must catch any cycle failure to route it to the inbox retry/dead-letter path
             self.inbox.fail(item["id"], repr(exc), retry=int(item.get("attempts", 1)) < self.max_attempts)
             return True
 

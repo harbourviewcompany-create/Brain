@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from .domain import Belief
 
@@ -19,7 +20,7 @@ class DreamEngine:
         active = [b for b in beliefs if b.confidence >= 0.55]
         active.sort(key=lambda b: b.confidence, reverse=True)
         hypotheses: list[DreamHypothesis] = []
-        for left, right in zip(active, active[1:]):
+        for left, right in pairwise(active):
             hypotheses.append(
                 DreamHypothesis(
                     statement=f"Possible relationship between [{left.statement}] and [{right.statement}]",

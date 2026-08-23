@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class BeliefState(StrEnum):
@@ -115,5 +115,8 @@ class Outcome:
     prediction_accuracy: float
     trust_impact: float = 0.0
     legal_risk: float = 0.0
+    prediction_id: UUID | None = None
+    edge_ids: list[UUID] = field(default_factory=list)
+    source_keys: list[str] = field(default_factory=list)
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=utcnow)

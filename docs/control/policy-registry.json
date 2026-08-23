@@ -1,0 +1,129 @@
+{
+  "policy_id": "brain-agent-build-control-policy-v1",
+  "status": "APPROVED_FOR_CONTROL_ENFORCEMENT",
+  "purpose": "Machine-readable enforcement registry for Brain build-control documents, templates, validators, traceability records, and archive workflow checks.",
+  "root_principle": "Tyler defines The Brain. Agents preserve, structure, implement, test, and report. Agents do not narrow scope or discard supplied material.",
+  "source_authority_labels": [
+    "SOURCE",
+    "APPROVED",
+    "PROPOSAL",
+    "SPECULATIVE",
+    "REVIEW-ONLY",
+    "BLOCKED",
+    "BUILD-READY"
+  ],
+  "go_hold_statuses": [
+    "GO",
+    "HOLD",
+    "REVIEW",
+    "BLOCKED"
+  ],
+  "required_control_files": [
+    "docs/control/README.md",
+    "docs/control/brain-build-rules.md",
+    "docs/control/source-authority.md",
+    "docs/control/go-hold-protocol.md",
+    "docs/control/definition-of-done.md",
+    "docs/control/agent-build-instructions.md",
+    "docs/control/forbidden-agent-behaviors.md",
+    "docs/control/traceability-rules.md",
+    "docs/control/acceptance-evidence-template.md",
+    "docs/control/branch-protection.md",
+    "docs/control/policy-registry.json",
+    "docs/control/source-requirement-registry.schema.json",
+    "docs/control/source-requirement-registry.json"
+  ],
+  "required_templates": [
+    ".github/pull_request_template.md",
+    ".github/ISSUE_TEMPLATE/blocked.yml",
+    ".github/ISSUE_TEMPLATE/build-ready.yml",
+    ".github/ISSUE_TEMPLATE/conflict.yml",
+    ".github/ISSUE_TEMPLATE/source-record.yml"
+  ],
+  "required_validators": [
+    "scripts/validate_control_layer.py",
+    "scripts/validate_archive_manifest.py",
+    "scripts/validate_pr_body.py"
+  ],
+  "required_workflows": [
+    ".github/workflows/control-policy.yml"
+  ],
+  "required_pr_template_sections": [
+    "Control Preflight",
+    "Scope",
+    "Source Authority",
+    "GO/HOLD Status",
+    "Changed Files",
+    "Module Completion Requirements",
+    "Traceability",
+    "Tests / Validation",
+    "External Actions",
+    "Memory Writes",
+    "Acceptance Criteria",
+    "Unresolved Gaps",
+    "Source Preservation Statement",
+    "Next Required Action"
+  ],
+  "module_required_fields": [
+    "owner object",
+    "schema",
+    "runtime service",
+    "state machine",
+    "fixtures",
+    "tests",
+    "acceptance criteria",
+    "audit events",
+    "GO/HOLD status"
+  ],
+  "memory_write_required_fields": [
+    "source",
+    "confidence",
+    "scope",
+    "decay/supersession policy",
+    "audit trace"
+  ],
+  "external_action_required_fields": [
+    "approval gate",
+    "target system",
+    "risk assessment",
+    "rollback plan",
+    "verification evidence"
+  ],
+  "archive_policy": {
+    "manifest_path": "docs/archive/archive_manifest.json",
+    "allow_pending_assets": true,
+    "fail_on_manifest_schema_error": true,
+    "fail_on_present_asset_hash_mismatch": true,
+    "fail_on_present_asset_size_mismatch": true,
+    "pending_assets_status": "assets_pending_file_byte_upload"
+  },
+  "traceability_policy": {
+    "schema_path": "docs/control/source-requirement-registry.schema.json",
+    "registry_path": "docs/control/source-requirement-registry.json",
+    "enforced_code_roots": [
+      "apps",
+      "brain",
+      "scripts"
+    ],
+    "excluded_filenames": [
+      "__init__.py"
+    ],
+    "fail_on_missing_code_traceability": true
+  },
+  "pr_body_policy": {
+    "validator_path": "scripts/validate_pr_body.py",
+    "fail_on_missing_required_sections": true,
+    "source": "GITHUB_EVENT_PATH pull_request.body"
+  },
+  "forbidden_behaviors": [
+    "narrow Brain scope without Tyler approval",
+    "delete source material",
+    "summarize without preserving source",
+    "mark speculative material as false or out of scope by default",
+    "treat reviewer suggestions as build authority without approval",
+    "claim tests passed without evidence",
+    "claim binary archive upload when only a local path was committed",
+    "perform external actions without approval gates",
+    "write memory without source, confidence, scope, decay/supersession policy, and audit trace"
+  ]
+}

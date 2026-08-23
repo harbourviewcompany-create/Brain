@@ -1,0 +1,50 @@
+name: CONFLICT register item
+about: Preserve contradictory Brain requirements, proposals, or implementation paths without deleting either side.
+title: "[CONFLICT] "
+labels:
+  - CONFLICT
+  - control
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when two or more source-backed statements conflict. Preserve all sides. Do not resolve by taste.
+  - type: textarea
+    id: sources
+    attributes:
+      label: Conflicting source records
+      description: List each source record, path, citation, or archive pointer.
+    validations:
+      required: true
+  - type: textarea
+    id: conflict
+    attributes:
+      label: Conflict description
+      description: Describe the contradiction without deciding which side wins.
+    validations:
+      required: true
+  - type: dropdown
+    id: current_status
+    attributes:
+      label: Current status
+      options:
+        - REVIEW
+        - HOLD
+        - BLOCKED
+        - PROPOSAL
+    validations:
+      required: true
+  - type: textarea
+    id: resolution_needed
+    attributes:
+      label: Resolution needed
+      description: State what Tyler approval, test, review, or evidence would resolve the conflict.
+    validations:
+      required: true
+  - type: textarea
+    id: preservation_statement
+    attributes:
+      label: Source preservation statement
+      value: "All conflicting source records remain preserved. No side was deleted or narrowed."
+    validations:
+      required: true

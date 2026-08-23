@@ -2,7 +2,6 @@ from pathlib import Path
 
 from brain.replay import ReplayHarness
 
-
 FIXTURES = Path("tests/fixtures/brain")
 
 
