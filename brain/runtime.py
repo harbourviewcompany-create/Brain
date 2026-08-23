@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any, Protocol
 
 from .beliefs import BeliefEngine
@@ -16,6 +15,20 @@ class BeliefProjection(Protocol):
 
 class EventAppender(Protocol):
     def append(self, event: BrainEvent) -> None: ...
+
+
+def _belief_payload(belief: Belief) -> dict[str, Any]:
+    """JSON-safe snapshot for brain_events.payload (no sets)."""
+    return {
+        "id": str(belief.id),
+        "statement": belief.statement,
+        "confidence": belief.confidence,
+        "state": str(belief.state),
+        "version": belief.version,
+        "unknowns": list(belief.unknowns),
+        "supporting_evidence": [str(x) for x in belief.supporting_evidence],
+        "contradicting_evidence": [str(x) for x in belief.contradicting_evidence],
+    }
 
 
 class BrainRuntime:
@@ -37,12 +50,7 @@ class BrainRuntime:
     def _emit(self, event: BrainEvent) -> None:
         self.store.append(event)
         if self.event_store is not None:
-            try:
-                self.event_store.append(event)
-            except Exception:
-                # Durable append failure must not silently drop in-memory cognition,
-                # but operators should monitor logs / health for event lag.
-                raise
+            self.event_store.append(event)
 
     def _project(self, belief: Belief) -> None:
         if self.belief_projection is not None:
@@ -51,7 +59,7 @@ class BrainRuntime:
     def create_belief(self, statement: str, confidence: float = 0.5) -> Belief:
         belief = Belief(statement=statement, confidence=confidence)
         self.store.save(belief)
-        self._emit(BrainEvent("belief.created", "belief", belief.id, asdict(belief)))
+        self._emit(BrainEvent("belief.created", "belief", belief.id, _belief_payload(belief)))
         self._project(belief)
         return belief
 
@@ -71,6 +79,7 @@ class BrainRuntime:
                     "confidence": updated.confidence,
                     "state": str(updated.state),
                     "version": updated.version,
+                    "statement": updated.statement,
                 },
             )
         )
