@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    BRAIN_ENV=production \
+    BRAIN_EXTERNAL_ACTIONS_ENABLED=false \
+    BRAIN_WORKER_MODE=temporal
+
+WORKDIR /app
+COPY pyproject.toml README.md ./
+COPY brain ./brain
+COPY apps ./apps
+COPY db ./db
+RUN pip install --upgrade pip && pip install .
+
+CMD ["python", "-m", "apps.worker.main"]
