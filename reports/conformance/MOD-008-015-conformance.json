@@ -1,160 +1,119 @@
 {
-  "report_id": "MOD-008-015-conformance",
+  "schema_id": "brain-mod-008-015-conformance-v2",
+  "audit_id": "MOD-008-015-atomic-repair-full-universe-2026-08-23",
+  "audited_commit": "1d92a16aad6693cee6346995bad78fb86552f0b5",
+  "baseline_source": "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json",
   "verdict": "GO",
-  "audit_status": "atomic_repair_implemented",
-  "supersedes": [
-    "reports/acceptance/MOD-008-015-economic-runtime.json",
-    "reports/conformance/MOD-008-015-conformance.md@HOLD",
-    "reports/conformance/MOD-008-015-gap-register.json@open"
-  ],
-  "evidence_commit_context": "codex/repair-mod-008-015-conformance branch repair package",
-  "modules": {
-    "MOD-008": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M008-EVIDENCE-GATED-PRESSURE",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:EconomicStateMachineService", "tests/test_mod_008_015_conformance_repairs.py:test_pressure_activation_requires_evidence_and_time_validity"]
-        },
-        {
-          "requirement_id": "M008-PRESSURE-EXPIRY-CONTRADICTION",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:LifecycleState.EXPIRED", "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json"]
-        }
+  "go_rule": "All 117 mandatory atomic requirements must PASS on one evidence-bearing implementation commit.",
+  "counts": {
+    "requirements": 117,
+    "PASS": 117,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "module_counts": {
+    "MOD-008": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-009": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-010": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-011": {"PASS": 14, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-012": {"PASS": 11, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-013": {"PASS": 19, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-014": {"PASS": 17, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-015": {"PASS": 17, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"}
+  },
+  "repair_resolution": "The immutable 117-row baseline remains the atomic requirement universe. Every historical non-PASS row is resolved only through its original repair_target issue(s); this report does not substitute new summary requirements for the original IDs.",
+  "repair_certifications": {
+    "54": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
       ]
     },
-    "MOD-009": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M009-MONEY-PATH-COMPARISON",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:MoneyPathComparisonService", "tests/test_mod_008_015_conformance_repairs.py:test_money_paths_are_ranked_across_required_dimensions"]
-        },
-        {
-          "requirement_id": "M009-NON-MONETIZABLE-DISPOSITION",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:OperatorDisposition.NON_MONETIZABLE", "tests/test_mod_008_015_conformance_repairs.py:test_opportunity_lifecycle_has_all_operational_dispositions_and_expiry"]
-        }
+    "55": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
       ]
     },
-    "MOD-010": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M010-LIQUIDITY-PREFERENCE",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:LiquidityPreference", "tests/test_mod_008_015_conformance_repairs.py:test_counterparty_liquidity_graph_tracks_preferences_interactions_and_staleness"]
-        },
-        {
-          "requirement_id": "M010-COUNTERPARTY-INTERACTION",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:CounterpartyInteraction", "brain/economic_conformance.py:CounterpartyLiquidityService"]
-        }
+    "56": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
       ]
     },
-    "MOD-011": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M011-OPPORTUNITY-LIFECYCLE",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:OpportunityLifecycleService", "tests/test_mod_008_015_conformance_repairs.py:test_opportunity_lifecycle_has_all_operational_dispositions_and_expiry"]
-        },
-        {
-          "requirement_id": "M011-KILL-ARCHIVE-AUTOMATE-DELEGATE",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json:kill_board"]
-        }
+    "57": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
       ]
     },
-    "MOD-012": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M012-TRANSACTION-CLOSE-LOSS-ABANDON",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:TransactionLifecycleService", "tests/test_mod_008_015_conformance_repairs.py:test_transaction_and_source_lifecycles_fail_closed"]
-        },
-        {
-          "requirement_id": "M012-FIXTURE-REPLAY-FAMILY",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["tests/fixtures/brain/mod_008_015_complete_fixture_universe.json"]
-        }
+    "58": {
+      "status": "PASS",
+      "evidence": [
+        "reports/conformance/MOD-008-015-conformance.json",
+        "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json"
       ]
     },
-    "MOD-013": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M013-SOURCE-RIGHTS-COLLECTION-POLICY",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:SourceActivationPolicy", "brain/economic_conformance.py:SourcePolicyService"]
-        },
-        {
-          "requirement_id": "M013-JURISDICTION-MOVEMENT-DETECTION",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:JurisdictionCognition", "brain/economic_conformance.py:MovementChangeDetector"]
-        }
+    "59": {
+      "status": "PASS",
+      "evidence": [
+        "tools/validate_mod_008_015_conformance.py",
+        "tests/test_mod_008_015_conformance_report.py"
       ]
     },
-    "MOD-014": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M014-PROFIT-NORMALIZATION",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:ProfitEvent", "brain/economic_conformance.py:ProfitNormalizationService"]
-        },
-        {
-          "requirement_id": "M014-CAUSAL-ATTRIBUTION-CAPITAL-LIFECYCLE",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:CausalAttributionChain", "brain/economic_conformance.py:CapitalLifecycleService"]
-        }
+    "60": {
+      "status": "PASS",
+      "evidence": [
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "brain/economic_atomic_lifecycles.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py"
       ]
     },
-    "MOD-015": {
-      "verdict": "GO",
-      "requirements": [
-        {
-          "requirement_id": "M015-REPEATED-TRANSACTION-DETECTION",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:CompoundingEmergenceService", "tests/test_mod_008_015_conformance_repairs.py:test_capital_and_compounding_lifecycles_require_evidence_and_resource_estimates"]
-        },
-        {
-          "requirement_id": "M015-STRATEGIC-ASSET-BUILD-CANDIDATE-GATE",
-          "mandatory": true,
-          "status": "PASS",
-          "evidence": ["brain/economic_conformance.py:StrategicAssetScore", "brain/economic_conformance.py:BuildCandidate"]
-        }
+    "61": {
+      "status": "PASS",
+      "evidence": [
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_conformance_repairs.py"
+      ]
+    },
+    "62": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py"
       ]
     }
   },
-  "repair_issues": {
-    "54": "PASS",
-    "55": "PASS",
-    "56": "PASS",
-    "57": "PASS",
-    "58": "PASS",
-    "59": "PASS",
-    "60": "PASS",
-    "61": "PASS",
-    "62": "PASS"
-  }
+  "supersedes": [
+    "reports/acceptance/MOD-008-015-economic-runtime.json@aggregate-only",
+    "reports/conformance/MOD-008-015-conformance.json@16-row-summary"
+  ],
+  "source_preservation": "The original 117 atomic requirement IDs, source text, dimensions, historical statuses and rationales remain preserved in the immutable baseline file and are used mechanically by the validator to construct the effective current matrix."
 }
