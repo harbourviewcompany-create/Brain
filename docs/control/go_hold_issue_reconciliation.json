@@ -1,0 +1,15 @@
+{
+  "reconciliation_id": "agent-go-hold-issues-3-8-reconciliation-v1",
+  "status": "GO",
+  "issues": [
+    {"issue_number": 3, "issue_title": "[AGENT-001] Convert schema registry into executable schemas", "issue_state": "closed", "state_reason": "completed", "evidence_refs": ["reports/acceptance/AGENT-001-executable-schemas.json"]},
+    {"issue_number": 4, "issue_title": "[AGENT-002] Implement formula registry runtime", "issue_state": "closed", "state_reason": "completed", "evidence_refs": ["reports/acceptance/AGENT-002-formula-runtime.json"]},
+    {"issue_number": 5, "issue_title": "[AGENT-003] Materialize fixture and replay harness", "issue_state": "closed", "state_reason": "completed", "evidence_refs": ["reports/acceptance/AGENT-003-replay-harness.json"]},
+    {"issue_number": 6, "issue_title": "[AGENT-004] Build contradiction review workflow", "issue_state": "closed", "state_reason": "completed", "evidence_refs": ["reports/acceptance/AGENT-004-contradiction-review.json"]},
+    {"issue_number": 7, "issue_title": "[AGENT-005] Enforce acceptance matrix in CI", "issue_state": "closed", "state_reason": "completed", "evidence_refs": ["reports/acceptance/AGENT-005-ci-acceptance-gate.json"]},
+    {"issue_number": 8, "issue_title": "[AGENT-006] Create source-to-build traceability matrix", "issue_state": "closed", "state_reason": "completed", "evidence_refs": ["reports/acceptance/AGENT-006-source-to-build-traceability.json"]}
+  ],
+  "reports": [
+    {"report_id": "GO-HOLD-SUMMARY", "verdict": "GO", "issue_numbers": [3, 4, 5, 6, 7, 8], "evidence_refs": ["reports/go-hold/GO-HOLD-SUMMARY.json"]}
+  ]
+}
