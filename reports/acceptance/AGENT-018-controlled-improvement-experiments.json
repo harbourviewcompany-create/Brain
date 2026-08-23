@@ -1,0 +1,23 @@
+{
+  "report_id":"AGENT-018-controlled-improvement-experiments",
+  "issue":87,
+  "verdict":"GO_CANDIDATE_PENDING_PROTECTED_CI",
+  "implemented_files":[
+    "brain/developmental/improvement_experiments.py",
+    "tests/test_improvement_experiments.py",
+    "tests/fixtures/brain/improvement_experiment_cycle.json",
+    "docs/spec/BRAIN_CONTROLLED_IMPROVEMENT_EXPERIMENTS.md",
+    "docs/operator-surfaces/improvement-experiments-dashboard.json"
+  ],
+  "capabilities":[
+    "approved-plan experiment creation",
+    "candidate artifact/test/benchmark/rollback gating",
+    "before-after benchmark evaluation",
+    "protected-regression promotion gate",
+    "control-suite rejection gate",
+    "PROMOTE/REVISE/REJECT/HOLD evidence decisions",
+    "rollback evidence preservation",
+    "direct mutation/merge/deploy prohibition"
+  ],
+  "hold":["autonomous code mutation","automatic merge","deployment","external action","unsupported superiority claims"]
+}
