@@ -35,7 +35,7 @@
     "scripts/validate_archive_manifest.py",
     "scripts/validate_pr_body.py",
     "scripts/validate_build_ready_traceability.py",
-    "scripts/check_repository_hardening.py"
+    "tools/check_repository_hardening.py"
   ],
   "required_workflows": [
     ".github/workflows/control-policy.yml",
@@ -94,7 +94,7 @@
     "source": "GITHUB_EVENT_PATH pull_request.body"
   },
   "hardening_policy": {
-    "audit_script": "scripts/check_repository_hardening.py",
+    "audit_script": "tools/check_repository_hardening.py",
     "audit_workflow": ".github/workflows/repository-hardening.yml",
     "ruleset_target": ".github/rulesets/main-required-checks.ruleset.json",
     "tracked_blockers": ["#51", "#52"],
