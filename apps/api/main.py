@@ -6,8 +6,9 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from brain.adapters.learning_store import InMemoryLearningStore
@@ -17,22 +18,40 @@ from brain.memory import InMemoryBrainStore
 from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
+from brain.security import ApiKeyAuthenticator, SecurityConfig
 
-app = FastAPI(title="Brain Runtime API", version="0.5.0")
+_security = SecurityConfig.from_env()
+_authenticator = ApiKeyAuthenticator(_security)
 
+app = FastAPI(title="Brain Runtime API", version="0.7.0")
+
+_origins = _security.allowed_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_origins,
+    allow_credentials=_origins != ["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Brain-Api-Key", "X-Request-Id"],
 )
 
-_memory_store = InMemoryBrainStore()
+_PUBLIC_PATHS = frozenset({"/health", "/ready"})
+
+
+@app.middleware("http")
+async def production_authentication(request: Request, call_next):
+    if request.url.path not in _PUBLIC_PATHS and not _authenticator.authorized(
+        authorization=request.headers.get("authorization"),
+        x_api_key=request.headers.get("x-brain-api-key"),
+    ):
+        return JSONResponse(status_code=401, content={"detail": "brain_authentication_required"})
+    return await call_next(request)
+
+
+_brain_store: InMemoryBrainStore = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
-runtime = BrainRuntime(store=_memory_store)
+runtime = BrainRuntime(store=_brain_store)
 learning = LearningService(
-    _memory_store,
+    _brain_store,
     predictions=_learning_store,
     edges=_learning_store,
     attributions=_learning_store,
@@ -42,28 +61,27 @@ money_spine = MoneySpineService()
 
 
 def _configure_from_env() -> None:
-    global learning
+    global _brain_store, runtime, learning
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
-    try:
-        from brain.adapters.learning_store import (
-            PostgresAttributionStore,
-            PostgresEdgeStore,
-            PostgresPredictionStore,
-            PostgresSourceStore,
-        )
-        from brain.adapters.postgres import PostgresEventStore
-    except ImportError:
-        return
+    from brain.adapters.brain_store import PostgresBrainStore
+    from brain.adapters.learning_store import (
+        PostgresAttributionStore,
+        PostgresEdgeStore,
+        PostgresPredictionStore,
+        PostgresSourceStore,
+    )
 
-    event_store = PostgresEventStore(dsn)
+    store = PostgresBrainStore(dsn)
+    _brain_store = store
+    runtime = BrainRuntime(store=store)
     learning = LearningService(
-        event_store,
-        predictions=PostgresPredictionStore(event_store.pool),
-        edges=PostgresEdgeStore(event_store.pool),
-        attributions=PostgresAttributionStore(event_store.pool),
-        sources=PostgresSourceStore(event_store.pool),
+        store.event_store,
+        predictions=PostgresPredictionStore(store.pool),
+        edges=PostgresEdgeStore(store.pool),
+        attributions=PostgresAttributionStore(store.pool),
+        sources=PostgresSourceStore(store.pool),
     )
 
 
@@ -197,37 +215,63 @@ def _serialize_learning(result) -> dict[str, Any]:
     }
 
 
+def _database_ready() -> tuple[bool, str]:
+    if not os.environ.get("DATABASE_URL"):
+        return True, "not_configured"
+    checker = getattr(_brain_store, "database_healthy", None)
+    if checker is None:
+        return False, "configured_without_durable_store"
+    return (True, "connected") if checker() else (False, "unavailable")
+
+
 @app.get("/health")
 def health():
-    event_count = len(getattr(_memory_store, "events", []) or [])
-    try:
-        if hasattr(learning.event_store, "read_all"):
-            event_count = len(learning.event_store.read_all())
-    except Exception:
-        pass
-    return {
-        "status": "ok",
-        "version": "0.5.0",
+    database_ok, database_status = _database_ready()
+    event_count = len(getattr(runtime.store, "events", []) or [])
+    payload = {
+        "status": "ok" if database_ok else "degraded",
+        "version": "0.7.0",
+        "database": database_status,
+        "persistence": "postgres" if os.environ.get("DATABASE_URL") else "in_memory",
         "beliefs": len(runtime.store.beliefs),
         "events": event_count,
         "predictions": len(getattr(_learning_store, "predictions", {})),
         "money_lanes": len(money_spine.lanes),
     }
+    if not database_ok:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
+
+
+@app.get("/ready")
+def ready():
+    database_ok, database_status = _database_ready()
+    if not database_ok:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": database_status},
+        )
+    return {"status": "ready", "database": database_status}
 
 
 @app.get("/beliefs")
 def list_beliefs():
     items = []
-    for b in runtime.store.beliefs.values():
-        items.append({
-            "id": str(b.id),
-            "statement": b.statement,
-            "confidence": b.confidence,
-            "state": str(b.state),
-            "version": getattr(b, "version", 1),
-            "created_at": b.created_at.isoformat() if getattr(b, "created_at", None) else None,
-        })
-    return {"items": items, "total": len(items)}
+    for belief in runtime.store.beliefs.values():
+        items.append(
+            {
+                "id": str(belief.id),
+                "statement": belief.statement,
+                "confidence": belief.confidence,
+                "state": str(belief.state),
+                "version": getattr(belief, "version", 1),
+                "updated_at": belief.updated_at.isoformat()
+                if getattr(belief, "updated_at", None)
+                else None,
+            }
+        )
+    source = "postgres" if os.environ.get("DATABASE_URL") else "memory"
+    return {"items": items, "total": len(items), "source": source}
 
 
 @app.get("/beliefs/{belief_id}")
@@ -247,8 +291,13 @@ def get_belief(belief_id: str):
 @app.get("/predictions")
 def list_predictions():
     store = learning.predictions if learning.predictions is not None else _learning_store
-    preds = getattr(store, "predictions", {}) or {}
-    items = [_serialize_prediction(p) for p in preds.values()]
+    if hasattr(store, "predictions"):
+        predictions = list(store.predictions.values())
+    elif hasattr(store, "list_open"):
+        predictions = store.list_open()
+    else:
+        predictions = []
+    items = [_serialize_prediction(prediction) for prediction in predictions]
     return {"items": items, "total": len(items)}
 
 
