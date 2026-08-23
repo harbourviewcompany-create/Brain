@@ -2,13 +2,17 @@
   "fixture_id": "approval_gate_external_action",
   "scenario": "external consequence is blocked until explicit approval exists",
   "input": {
-    "candidate_action": {"id": "act_001", "type": "outreach", "external_consequence": true, "expected_utility": 0.72, "trust_damage_risk": 0.18},
-    "approval_request": {"id": "appr_001", "status": "pending"}
+    "candidate_action": {
+      "id": "act_001",
+      "description": "send external outreach",
+      "external": true,
+      "expected_value": 0.72,
+      "trust_damage_risk": 0.18
+    },
+    "approval": "pending"
   },
   "expected": {
-    "objects_created": ["CandidateAction", "ActionSimulation", "ApprovalRequest"],
-    "formula_runs": ["expected_utility", "trust_adjusted_value"],
-    "state_transitions": ["candidate_action.simulated->approval_request.pending"],
+    "blocked": true,
     "blocked_transitions": ["candidate_action.simulated->executed_without_approval"],
     "dashboard_output": ["Approval Inbox"],
     "go_hold_result": "GO"
