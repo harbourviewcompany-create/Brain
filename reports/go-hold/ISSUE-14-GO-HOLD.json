@@ -1,0 +1,22 @@
+{
+  "issue_number": 14,
+  "scope": "Transaction Control, Source Rights and Global Source Mesh",
+  "verdict": "GO_for_repository_control_layer_HOLD_for_real_world_legal_execution",
+  "go_items": [
+    "source rights class gate",
+    "jurisdiction enhanced review HOLD",
+    "transaction disclosure HOLD",
+    "operator approval bypass block",
+    "source ROI attribution",
+    "fixture",
+    "tests",
+    "acceptance report"
+  ],
+  "hold_items": [
+    "live connector activation",
+    "real-world transaction disclosure",
+    "legal enforceability assumptions",
+    "regulated data collection without rights review",
+    "fee-sensitive disclosure without jurisdiction-specific review"
+  ]
+}
