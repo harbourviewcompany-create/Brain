@@ -25,7 +25,7 @@ from brain.security import ApiKeyAuthenticator, SecurityConfig
 _security = SecurityConfig.from_env()
 _authenticator = ApiKeyAuthenticator(_security)
 
-app = FastAPI(title="Brain Runtime API", version="0.7.0")
+app = FastAPI(title="Brain Runtime API", version="0.7.1")
 
 _origins = _security.allowed_origins()
 app.add_middleware(
@@ -36,10 +36,12 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Brain-Api-Key", "X-Request-Id"],
 )
 
+_PUBLIC_PATHS = frozenset({"/health", "/ready"})
+
 
 @app.middleware("http")
 async def production_authentication(request: Request, call_next):
-    if request.url.path != "/health" and not _authenticator.authorized(
+    if request.url.path not in _PUBLIC_PATHS and not _authenticator.authorized(
         authorization=request.headers.get("authorization"),
         x_api_key=request.headers.get("x-brain-api-key"),
     ):
@@ -232,16 +234,11 @@ def _database_ready() -> tuple[bool, str]:
 @app.get("/health")
 def health():
     database_ok, database_status = _database_ready()
-    event_count = 0
-    if database_ok:
-        try:
-            event_count = len(runtime.store.read_all(limit=1000))
-        except Exception:
-            database_ok = False
-            database_status = "event_ledger_unavailable"
+    # Avoid full event-ledger scan on every health probe
+    event_count = len(getattr(runtime.store, "events", []) or [])
     payload = {
         "status": "ok" if database_ok else "degraded",
-        "version": "0.7.0",
+        "version": "0.7.1",
         "database": database_status,
         "persistence": "postgres" if os.environ.get("DATABASE_URL") else "in_memory",
         "beliefs": len(runtime.store.beliefs),
@@ -277,10 +274,16 @@ def list_beliefs():
                 "state": str(belief.state),
                 "version": getattr(belief, "version", 1),
                 "created_at": None,
-                "updated_at": belief.updated_at.isoformat() if getattr(belief, "updated_at", None) else None,
+                "updated_at": belief.updated_at.isoformat()
+                if getattr(belief, "updated_at", None)
+                else None,
             }
         )
-    source = "postgres" if os.environ.get("DATABASE_URL") and _brain_store is not None else "memory"
+    source = (
+        "postgres"
+        if os.environ.get("DATABASE_URL") and getattr(_brain_store, "pool", None) is not None
+        else "memory"
+    )
     return {"items": items, "total": len(items), "source": source}
 
 
