@@ -1,0 +1,13 @@
+{
+  "surface_id":"improvement-experiments-dashboard-v1",
+  "issue":87,
+  "panels":[
+    {"id":"experiment_queue","shows":["plan_id","candidate_artifacts","operator_approval","protected_benchmarks","regression_tolerance"]},
+    {"id":"experiment_runs","shows":["before_scores","after_scores","control_results","evidence_refs"]},
+    {"id":"promotion_decisions","shows":["benchmark_deltas","protected_regressions","controls_passed","decision"]},
+    {"id":"rollback_records","shows":["reason","rollback_plan","evidence_refs","executed"]},
+    {"id":"hard_boundaries","shows":["no_direct_mutation","no_merge","no_deploy","no_external_action"]}
+  ],
+  "write_policy":{"direct_code_mutation":false,"merge":false,"deployment":false,"external_action":false},
+  "decision_outputs":["PROMOTE","REVISE","REJECT","HOLD"]
+}
