@@ -72,6 +72,9 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/metabolism.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/money_spine.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/neuro/abstractions.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/neuro/multiscale.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/neuro/regions.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/ports.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/prediction.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/projections.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -100,6 +103,10 @@ The nine `brain/developmental/*` rows are included because those code paths exis
 ## MOD-008 through MOD-015 repair traceability note
 
 `brain/economic_conformance.py` and `tools/validate_mod_008_015_conformance.py` are included because the repair branch adds them as controlled evidence paths. Their rows remain HOLD at the BUILD-READY matrix level because BUILD-READY is a stricter repository-wide status than the MOD-008 through MOD-015 repair verdict.
+
+## Neuroscience traceability note
+
+`brain/neuro/abstractions.py`, `brain/neuro/multiscale.py` and `brain/neuro/regions.py` are included because NEURO-001 through NEURO-005 add them as controlled neuroscience abstraction paths. Their rows remain HOLD at the BUILD-READY matrix level because this PR makes the control layer traceable and tested, not the entire neuroscience system BUILD-READY.
 
 ## Source preservation statement
 

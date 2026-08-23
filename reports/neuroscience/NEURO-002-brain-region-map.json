@@ -1,0 +1,29 @@
+{
+  "report_id": "NEURO-002-brain-region-map",
+  "slice_id": "NEURO-002",
+  "verdict": "GO",
+  "implemented_files": [
+    "docs/neuroscience/BRAIN_REGION_SOFTWARE_MAP.md",
+    "docs/neuroscience/json/brain-region-map.json",
+    "brain/neuro/regions.py",
+    "tests/fixtures/neuro/brain_region_software_map.json",
+    "tests/test_brain_region_mapping.py",
+    "db/migrations/007_neuro_region_multiscale_maps.sql"
+  ],
+  "tests": [
+    "test_required_brain_regions_are_mapped",
+    "test_region_entries_have_software_equivalents",
+    "test_region_entries_do_not_claim_literal_equivalence",
+    "test_region_failure_modes_exist"
+  ],
+  "fixtures": ["tests/fixtures/neuro/brain_region_software_map.json"],
+  "acceptance_evidence": [
+    "Required brain regions and networks are represented.",
+    "Every region maps to software equivalent, owner, service, table and dashboard.",
+    "Literal biological equivalence claims are explicitly blocked."
+  ],
+  "unknowns_preserved": ["brain-region analogies are functional translations only"],
+  "scope_preservation_check": "PASS",
+  "scientific_claim_check": "PASS",
+  "unresolved_items": ["Full CI/local test execution must verify this branch before merge."]
+}

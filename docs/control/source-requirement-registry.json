@@ -16,7 +16,8 @@
     {"source_id": "SRC-ARCHIVE-WORKFLOW", "path": "docs/archive", "label": "APPROVED"},
     {"source_id": "SRC-V1-MONEY-SPINE", "path": "docs/revenue/V1_MONEY_SPINE.md", "label": "APPROVED"},
     {"source_id": "SRC-CAPITAL-CORTEX", "path": "docs/spec/CAPITAL_DISCOVERY_CORTEX.md", "label": "APPROVED"},
-    {"source_id": "SRC-DEVELOPMENTAL", "path": "docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md", "label": "APPROVED"}
+    {"source_id": "SRC-DEVELOPMENTAL", "path": "docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md", "label": "APPROVED"},
+    {"source_id": "SRC-NEUROSCIENCE", "path": "docs/neuroscience", "label": "APPROVED"}
   ],
   "requirements": [
     {"requirement_id": "REQ-BRAIN-RUNTIME-MODULES", "source_ids": ["SRC-README", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-FUNCTION-MAP"], "label": "APPROVED"},
@@ -26,7 +27,8 @@
     {"requirement_id": "REQ-ARCHIVE-INGESTION", "source_ids": ["SRC-ARCHIVE-WORKFLOW"], "label": "APPROVED"},
     {"requirement_id": "REQ-V1-MONEY-SPINE", "source_ids": ["SRC-README", "SRC-BUILD-PLAN", "SRC-V1-MONEY-SPINE"], "label": "APPROVED"},
     {"requirement_id": "REQ-ECONOMIC-RUNTIME", "source_ids": ["SRC-CAPITAL-CORTEX"], "label": "APPROVED"},
-    {"requirement_id": "REQ-DEVELOPMENTAL-RUNTIME", "source_ids": ["SRC-DEVELOPMENTAL"], "label": "APPROVED"}
+    {"requirement_id": "REQ-DEVELOPMENTAL-RUNTIME", "source_ids": ["SRC-DEVELOPMENTAL"], "label": "APPROVED"},
+    {"requirement_id": "REQ-NEUROSCIENCE-CONTROL-LAYER", "source_ids": ["SRC-NEUROSCIENCE", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"], "label": "APPROVED"}
   ],
   "code_module_records": [
     {
@@ -196,6 +198,24 @@
       "audit_events": ["OPERATOR_SURFACE_READ"],
       "source_preservation": "preserved",
       "unresolved_gaps": ["authentication and production deployment use the repository infrastructure layer"]
+    },
+    {
+      "record_id": "TRACE-NEUROSCIENCE-RUNTIME",
+      "paths": ["brain/neuro/abstractions.py", "brain/neuro/multiscale.py", "brain/neuro/regions.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-NEUROSCIENCE", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"],
+      "requirement_ids": ["REQ-NEUROSCIENCE-CONTROL-LAYER"],
+      "owner_object": "NEURO-001 through NEURO-005 neuroscience control-layer runtime modules",
+      "schema": "NeuroAbstraction, BrainRegionFunction, CognitionScaleLayer, UnknownMechanismRecord, NeuroscienceTheory, TheoryConflict",
+      "runtime_service": "brain.neuro registry and validation services",
+      "state_machine": "neuroscience abstraction -> software mapping -> unknown/theory boundary -> GO/HOLD validation",
+      "fixtures": ["tests/fixtures/neuro"],
+      "tests": ["tests/test_neuro_abstraction_registry.py", "tests/test_brain_region_mapping.py", "tests/test_multiscale_cognition_stack.py", "tests/test_unknown_mechanism_registry.py", "tests/test_theory_conflict_registry.py"],
+      "acceptance_criteria": ["neuroscience abstractions preserve unknowns", "brain-region mappings avoid biological equivalence claims", "multi-scale stack covers L0 through L11", "unknown mechanisms remain HOLD", "theory conflicts remain explicit"],
+      "audit_events": ["NEURO_ABSTRACTION_VALIDATED", "NEURO_REGION_MAP_VALIDATED", "NEURO_MULTISCALE_STACK_VALIDATED", "NEURO_UNKNOWN_BOUNDARY_VALIDATED", "NEURO_THEORY_CONFLICT_VALIDATED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["global workspace, rich memory, perception, action, affect, self-model, immune, development, sleep and reality-boundary modules remain future slices"]
     },
     {
       "record_id": "TRACE-CONTROL-SCRIPTS",
