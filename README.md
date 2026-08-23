@@ -108,6 +108,26 @@ Then POST evidence to `/learn` using the returned belief ID.
 
 The Brain may autonomously modify internal belief and graph state under bounded, reversible rules. Consequential external actions remain permissioned unless explicitly enabled by policy.
 
+## Agent Build Control Docs
+
+The Brain is being built primarily by AI agents. These documents are the agent-executable control layer:
+
+- [Agent Build Master](docs/agent-control/AGENT_BUILD_MASTER.md)
+- [Agent Rules](docs/agent-control/AGENT_RULES.md)
+- [Agent Task Queue](docs/agent-control/AGENT_TASK_QUEUE.md)
+- [Agent File Map](docs/agent-control/AGENT_FILE_MAP.md)
+- [Agent Prompt Pack](docs/agent-control/AGENT_PROMPT_PACK.md)
+- [Agent Acceptance Protocol](docs/agent-control/AGENT_ACCEPTANCE_PROTOCOL.md)
+- [Agent Handoff Template](docs/agent-control/AGENT_HANDOFF_TEMPLATE.md)
+- [Canonical Scope](docs/spec/BRAIN_CANONICAL_SCOPE.md)
+- [Module Manifest](docs/spec/BRAIN_MODULE_MANIFEST.md)
+- [Formula Registry](docs/spec/BRAIN_FORMULA_REGISTRY.md)
+- [Schema Registry](docs/spec/BRAIN_SCHEMA_REGISTRY.md)
+- [State Machines](docs/spec/BRAIN_STATE_MACHINES.md)
+- [Runtime Loops](docs/spec/BRAIN_RUNTIME_LOOPS.md)
+- [Fixture Library](docs/spec/BRAIN_FIXTURE_LIBRARY.md)
+- [Acceptance Matrix](docs/spec/BRAIN_ACCEPTANCE_MATRIX.md)
+
 ## v0.2 cognitive substrate
 
 Version 0.2 adds memory-class primitives, bitemporal cognition, neuromodulator state, homeostasis, finite cognitive-budget scheduling, replayable projections, and cognitive experimentation. See `docs/build-plan.md`.
