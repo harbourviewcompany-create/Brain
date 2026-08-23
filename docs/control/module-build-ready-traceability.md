@@ -42,6 +42,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/debate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/developmental/consolidation.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/higher_order_cognition.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/module_genesis.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/plasticity.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -92,7 +93,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 
 ## Developmental traceability note
 
-The eight `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. Their `partial` values and `HOLD` status are deliberate. They are traced to `docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md` through `docs/control/source-requirement-registry.json`; this traceability repair does **not** assert that the developmental modules are fully conformant or BUILD-READY.
+The nine `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. Their `partial` values and `HOLD` status are deliberate. They are traced to `docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md` through `docs/control/source-requirement-registry.json`; this traceability repair does **not** assert that the developmental modules are fully conformant or BUILD-READY.
 
 ## Source preservation statement
 
