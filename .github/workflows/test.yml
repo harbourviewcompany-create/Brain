@@ -44,7 +44,7 @@ jobs:
             if [ "${i}" = "30" ]; then docker logs brain-postgres; exit 1; fi
             sleep 1
           done
-          docker exec brain-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          docker exec -i brain-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
           create role anon nologin;
           create role authenticated nologin;
           SQL
