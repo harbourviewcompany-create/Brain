@@ -19,6 +19,13 @@ class InMemoryBrainStore:
     def append(self, event: BrainEvent) -> None:
         self.events.append(event)
 
+    def read_all(self, *, limit: int | None = None) -> list[BrainEvent]:
+        if limit is None:
+            return list(self.events)
+        if limit <= 0:
+            return []
+        return list(self.events[:limit])
+
     def get(self, item_id: UUID):
         return self.beliefs.get(item_id) or self.evidence.get(item_id)
 
