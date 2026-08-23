@@ -1,0 +1,75 @@
+{
+  "schema_id": "brain-mod-008-015-conformance-v1",
+  "status_values": ["PASS", "PARTIAL", "FAIL", "UNVERIFIED", "CONTRADICTED", "NOT_TESTED", "N/A"],
+  "mandatory_pass_status": "PASS",
+  "evidence_dimensions": [
+    "code",
+    "schema",
+    "service",
+    "state_machine",
+    "fixture",
+    "test",
+    "api",
+    "operator_surface",
+    "replay",
+    "acceptance",
+    "traceability"
+  ],
+  "requirement_record": {
+    "required_fields": [
+      "requirement_id",
+      "module_id",
+      "mandatory",
+      "source_refs",
+      "source_text",
+      "atomic_requirement",
+      "owner_issue",
+      "overall_status",
+      "dimensions",
+      "rationale"
+    ],
+    "field_contract": {
+      "requirement_id": "stable unique ID; never reused for a different semantic requirement",
+      "module_id": "MOD-008 through MOD-015",
+      "mandatory": "boolean",
+      "source_refs": "one or more exact source paths/issues and section identifiers",
+      "source_text": "verbatim or minimally normalized controlling statement",
+      "atomic_requirement": "smallest independently verifiable semantic claim",
+      "owner_issue": "GitHub issue number governing repair/completion",
+      "overall_status": "derived; PASS only if all applicable required dimensions PASS or justified N/A",
+      "dimensions": "map of evidence dimension to dimension record",
+      "rationale": "why status was assigned; no unsupported assertions",
+      "repair_target": "required when overall_status is not PASS",
+      "audited_commit": "exact commit SHA used for evidence",
+      "last_audited_at": "timestamp"
+    }
+  },
+  "dimension_record": {
+    "required_fields": ["status", "applicable", "evidence", "rationale"],
+    "field_contract": {
+      "status": "one of status_values",
+      "applicable": "boolean",
+      "evidence": "array of exact repo paths plus symbols/test names/line anchors where practical",
+      "rationale": "specific reason for status; N/A requires explicit explanation"
+    }
+  },
+  "closure_policy": {
+    "issue_can_close_when": "all mandatory requirements mapped to that issue are PASS",
+    "module_can_be_GO_when": "all mandatory requirements for that module are PASS",
+    "aggregate_ci_is_sufficient": false,
+    "module_level_acceptance_is_sufficient": false,
+    "reopen_on_non_pass": true
+  },
+  "anti_inference_rules": [
+    "Do not infer an unimplemented named object from a generic JSONB ledger.",
+    "Do not infer a named service from a monolithic service unless all required semantics and tests are mapped.",
+    "Do not infer state-machine completeness from enums or documentation alone.",
+    "Do not infer dashboard conformance from a summary API endpoint.",
+    "Do not infer fixture coverage from tests that construct data inline unless a committed fixture is explicitly required.",
+    "Do not infer replay conformance from ordinary unit tests.",
+    "Do not infer provenance from human-readable rationale strings when source/evidence identity is required.",
+    "Do not infer decay/expiry behavior from timestamp fields without enforcement and tests.",
+    "Do not infer issue completion from a merged PR or green CI.",
+    "Do not convert missing evidence to N/A without requirement-specific rationale."
+  ]
+}
