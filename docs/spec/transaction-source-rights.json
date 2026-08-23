@@ -1,0 +1,27 @@
+{
+  "spec_id": "BRAIN_TRANSACTION_SOURCE_RIGHTS",
+  "modules": ["MOD-012", "MOD-013"],
+  "status": "implemented_for_issue_14_control_layer",
+  "objects": [
+    "Mandate",
+    "IntroductionRecord",
+    "FeeAgreement",
+    "ReferralAgreement",
+    "ExclusivityRecord",
+    "OriginationEvidence",
+    "DealRoom",
+    "FeeControl",
+    "GateDecision",
+    "SourceRightsProfile",
+    "JurisdictionProfile"
+  ],
+  "hard_gates": [
+    "prohibited_source_rejection",
+    "sensitive_source_hold",
+    "jurisdiction_enhanced_review_hold",
+    "unprotected_transaction_disclosure_hold",
+    "approval_bypass_hold",
+    "source_roi_attribution"
+  ],
+  "acceptance_report": "reports/acceptance/ISSUE-14-transaction-source-rights.json"
+}
