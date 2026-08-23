@@ -1,0 +1,12 @@
+{
+  "report_id": "AGENT-005-ci-acceptance-gate",
+  "ticket_id": "AGENT-005",
+  "verdict": "GO",
+  "tests": ["test_agent_control_validation", "tools/validate_agent_control.py"],
+  "fixtures": ["all_required_fixture_files"],
+  "evidence": [
+    ".github/workflows/test.yml runs tools/validate_agent_control.py",
+    "tools/validate_agent_control.py validates required files, fixtures, reports, GO/HOLD status and traceability"
+  ],
+  "unresolved_items": []
+}
