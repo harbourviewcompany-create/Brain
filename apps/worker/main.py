@@ -111,9 +111,11 @@ async def run_temporal_worker() -> None:
         try:
             await client.start_workflow(
                 ContinuousCognitionWorkflow.run,
-                float(os.environ.get("BRAIN_IDLE_SLEEP_SECONDS", "1.0")),
-                int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
-                int(os.environ.get("BRAIN_WORKFLOW_MAX_ITERATIONS", "1000")),
+                args=[
+                    float(os.environ.get("BRAIN_IDLE_SLEEP_SECONDS", "1.0")),
+                    int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
+                    int(os.environ.get("BRAIN_WORKFLOW_MAX_ITERATIONS", "1000")),
+                ],
                 id=workflow_id,
                 task_queue=task_queue,
             )
