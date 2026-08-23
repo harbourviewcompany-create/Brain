@@ -76,24 +76,24 @@
       "paths": [
         "brain/economic_runtime.py", "brain/economic_replay.py", "brain/economic_capital.py",
         "brain/economic_compounding.py", "brain/economic_attribution.py", "brain/economic_transaction.py",
-        "brain/economic_sources.py"
+        "brain/economic_sources.py", "brain/economic_codec.py"
       ],
       "classification": "APPROVED", "go_hold_status": "REVIEW", "source_ids": ["SRC-CAPITAL-CORTEX"],
       "requirement_ids": ["REQ-ECONOMIC-RUNTIME"],
       "owner_object": "MOD-008 through MOD-015 Capital Discovery Cortex runtime",
       "schema": "docs/spec/BRAIN_SCHEMA_REGISTRY.md and db/migrations/007_economic_cognition.sql",
-      "runtime_service": "EconomicRuntime, EconomicReplayHarness, CapitalStateService, EconomicAttributionService, TransactionControlService, SourceMeshService, CompoundingService",
+      "runtime_service": "EconomicRuntime, EconomicReplayHarness, CapitalStateService, EconomicAttributionService, TransactionControlService, SourceMeshService, CompoundingService, typed economic codec",
       "state_machine": "docs/spec/BRAIN_STATE_MACHINES.md MOD-008 through MOD-015",
       "fixtures": ["tests/fixtures/economic"],
       "tests": [
         "tests/test_economic_runtime_full.py", "tests/test_economic_compounding_capital.py",
         "tests/test_economic_attribution.py", "tests/test_economic_transaction.py", "tests/test_economic_sources.py",
-        "ruff check ."
+        "tests/test_economic_codec.py", "ruff check ."
       ],
       "acceptance_criteria": [
         "economic scores have formula traces", "source rights fail closed",
         "transaction action is approval and fee-control gated", "major learning is attribution gated",
-        "replay is deterministic", "operator attention surfaces preserve suppression without deletion"
+        "replay is deterministic", "typed economic state survives persistence", "operator attention surfaces preserve suppression without deletion"
       ],
       "audit_events": ["ECONOMIC_TRANSITION_RECORDED", "ECONOMIC_FORMULA_RUN_RECORDED", "ECONOMIC_REPLAY_VERIFIED"],
       "source_preservation": "preserved",
