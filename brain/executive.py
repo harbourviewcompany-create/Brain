@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Executive control.
 
 Real brains do not act on whatever response fires strongest. Prefrontal
@@ -18,6 +16,8 @@ a real, resource-limited controller can. This module is that missing
 arbitration layer. It is domain-neutral: it knows nothing about
 opportunities or money paths, the same way ``brain/affect.py`` doesn't.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
