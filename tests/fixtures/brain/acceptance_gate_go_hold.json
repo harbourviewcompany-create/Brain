@@ -1,0 +1,18 @@
+{
+  "fixture_id": "acceptance_gate_go_hold",
+  "scenario": "agent cannot mark work complete without required evidence",
+  "input": {
+    "ticket_id": "AGENT-005",
+    "module_id": "MOD-GOVERNANCE",
+    "tests_run": ["tools/validate_agent_control.py"],
+    "fixtures_used": ["source_signal_evidence_belief", "acceptance_gate_go_hold"],
+    "evidence_paths": ["reports/acceptance/AGENT-005.md"]
+  },
+  "expected": {
+    "objects_created": ["AcceptanceReport"],
+    "formula_runs": ["go_no_go_score"],
+    "state_transitions": ["ticket.in_progress->ticket.acceptance_reviewed"],
+    "dashboard_output": ["GO/HOLD Console"],
+    "go_hold_result": "GO"
+  }
+}

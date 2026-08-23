@@ -110,7 +110,9 @@ The Brain may autonomously modify internal belief and graph state under bounded,
 
 ## Agent Build Control Docs
 
-The Brain is being built primarily by AI agents. These documents are the agent-executable control layer:
+The Brain is being built primarily by AI agents. These documents are the agent-executable control layer.
+
+### Agent control
 
 - [Agent Build Master](docs/agent-control/AGENT_BUILD_MASTER.md)
 - [Agent Rules](docs/agent-control/AGENT_RULES.md)
@@ -119,6 +121,10 @@ The Brain is being built primarily by AI agents. These documents are the agent-e
 - [Agent Prompt Pack](docs/agent-control/AGENT_PROMPT_PACK.md)
 - [Agent Acceptance Protocol](docs/agent-control/AGENT_ACCEPTANCE_PROTOCOL.md)
 - [Agent Handoff Template](docs/agent-control/AGENT_HANDOFF_TEMPLATE.md)
+- [Issue Generation](docs/agent-control/ISSUE_GENERATION.md)
+
+### Build specs
+
 - [Canonical Scope](docs/spec/BRAIN_CANONICAL_SCOPE.md)
 - [Module Manifest](docs/spec/BRAIN_MODULE_MANIFEST.md)
 - [Formula Registry](docs/spec/BRAIN_FORMULA_REGISTRY.md)
@@ -127,6 +133,34 @@ The Brain is being built primarily by AI agents. These documents are the agent-e
 - [Runtime Loops](docs/spec/BRAIN_RUNTIME_LOOPS.md)
 - [Fixture Library](docs/spec/BRAIN_FIXTURE_LIBRARY.md)
 - [Acceptance Matrix](docs/spec/BRAIN_ACCEPTANCE_MATRIX.md)
+- [Source-to-Build Traceability](docs/spec/BRAIN_SOURCE_TO_BUILD_TRACEABILITY.md)
+
+### Machine-readable control files
+
+- [agent-control.json](docs/agent-control/agent-control.json)
+- [task-queue.json](docs/agent-control/task-queue.json)
+- [module-manifest.json](docs/spec/module-manifest.json)
+- [formula-registry.json](docs/spec/formula-registry.json)
+- [schema-registry.json](docs/spec/schema-registry.json)
+- [acceptance-matrix.json](docs/spec/acceptance-matrix.json)
+- [source-to-build-traceability.json](docs/spec/source-to-build-traceability.json)
+
+### Reports and fixtures
+
+- [Agent Run Reports](reports/agent-runs/README.md)
+- [Acceptance Reports](reports/acceptance/README.md)
+- [GO/HOLD Reports](reports/go-hold/README.md)
+- [Brain Fixtures](tests/fixtures/brain/)
+
+### CI gate
+
+Agent-control validation runs in CI through:
+
+```bash
+python tools/validate_agent_control.py
+```
+
+This gate proves control artifacts are present and internally linked. It does not prove the Brain is fully built.
 
 ## v0.2 cognitive substrate
 

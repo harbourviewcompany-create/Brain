@@ -1,0 +1,16 @@
+{
+  "fixture_id": "source_signal_evidence_belief",
+  "scenario": "trusted source emits a signal that creates evidence and updates a belief",
+  "input": {
+    "source": {"id": "src_regulator_001", "name": "Regulator registry", "reliability": 0.95, "status": "active"},
+    "signal": {"id": "sig_001", "claim": "Company A received a new license", "novelty": 0.8, "urgency": 0.6, "commercial_upside": 0.7},
+    "evidence": {"id": "ev_001", "direction": "supports", "evidence_strength": 0.85}
+  },
+  "expected": {
+    "objects_created": ["Source", "Signal", "EvidenceItem", "Belief", "FormulaRun"],
+    "formula_runs": ["source_priority_score", "attention_score", "bayesian_belief_update"],
+    "state_transitions": ["signal.captured->signal.scored", "belief.draft->belief.active"],
+    "dashboard_output": ["Perception Inbox", "Belief Ledger"],
+    "go_hold_result": "GO"
+  }
+}

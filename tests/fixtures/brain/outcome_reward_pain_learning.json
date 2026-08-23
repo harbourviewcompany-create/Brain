@@ -1,0 +1,15 @@
+{
+  "fixture_id": "outcome_reward_pain_learning",
+  "scenario": "approved action creates outcome and attributed reward/pain updates graph weights",
+  "input": {
+    "executed_action": {"id": "exec_001", "source_signal_id": "sig_001", "approval_id": "appr_approved_001"},
+    "outcome": {"id": "out_001", "outcome_type": "meeting", "value": 0.65, "attribution_confidence": 0.7}
+  },
+  "expected": {
+    "objects_created": ["Outcome", "RewardEvent", "PainEvent", "GraphEdge", "FormulaRun"],
+    "formula_runs": ["reward_score", "pain_score", "graph_weight_update"],
+    "state_transitions": ["outcome.logged->learning.attributed", "graph_edge.old_weight->graph_edge.updated_weight"],
+    "dashboard_output": ["Learning Console", "Rewire Timeline"],
+    "go_hold_result": "GO"
+  }
+}

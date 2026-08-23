@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0.0",
+  "control_mode": "brain-agent-control",
+  "authority": {
+    "canonical_reference": "docs/brain-readable-concept-manual.md",
+    "agent_master": "docs/agent-control/AGENT_BUILD_MASTER.md",
+    "rules": "docs/agent-control/AGENT_RULES.md",
+    "acceptance_protocol": "docs/agent-control/AGENT_ACCEPTANCE_PROTOCOL.md",
+    "source_to_build_traceability": "docs/spec/BRAIN_SOURCE_TO_BUILD_TRACEABILITY.md"
+  },
+  "non_negotiable_rules": [
+    "preserve_by_default",
+    "no_narrowing",
+    "no_v0_only_collapse",
+    "no_silent_synthesis",
+    "external_action_requires_approval_gate",
+    "formula_requires_owner_service_table_dashboard_test",
+    "module_requires_schema_service_state_machine_fixture_acceptance",
+    "no_complete_without_tests_and_acceptance_evidence",
+    "no_built_claim_without_implementation_tests_fixtures_replay_acceptance_report"
+  ],
+  "go_hold_gate": {
+    "go_requires": [
+      "all_required_docs_exist",
+      "all_task_ids_have_traceability",
+      "all_required_fixtures_exist",
+      "acceptance_matrix_has_go_hold_status",
+      "ci_validation_passes"
+    ],
+    "hold_if": [
+      "missing_doc",
+      "missing_traceability",
+      "missing_fixture",
+      "missing_acceptance_rule",
+      "missing_evidence_report",
+      "unresolved_contradiction_without_review_status"
+    ]
+  },
+  "machine_readable_files": [
+    "docs/agent-control/agent-control.json",
+    "docs/agent-control/task-queue.json",
+    "docs/spec/module-manifest.json",
+    "docs/spec/formula-registry.json",
+    "docs/spec/schema-registry.json",
+    "docs/spec/acceptance-matrix.json",
+    "docs/spec/source-to-build-traceability.json"
+  ],
+  "report_directories": [
+    "reports/agent-runs/",
+    "reports/acceptance/",
+    "reports/go-hold/"
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0.0",
+  "queue_status": "ready_for_agent_assignment",
+  "source_reference": "docs/brain-readable-concept-manual.md",
+  "tickets": [
+    {
+      "ticket_id": "AGENT-001",
+      "title": "Convert schema registry into executable schemas",
+      "phase": "V0_proof_harness",
+      "objective": "Create executable schema definitions for Brain data objects and validation tests.",
+      "files_to_create_or_modify": ["brain/schemas.py", "tests/test_schemas.py", "docs/spec/BRAIN_SCHEMA_REGISTRY.md"],
+      "required_tests": ["schema_required_fields", "schema_enum_validation", "schema_provenance_fields"],
+      "required_fixtures": ["tests/fixtures/brain/source_signal_evidence_belief.json"],
+      "acceptance_criteria": ["all canonical objects have executable schemas", "invalid objects fail validation", "all schemas preserve provenance fields"],
+      "blocked_by": [],
+      "go_hold_condition": "GO only when tests and acceptance report exist"
+    },
+    {
+      "ticket_id": "AGENT-002",
+      "title": "Implement formula registry runtime",
+      "phase": "V0_proof_harness",
+      "objective": "Create executable formula registry and tests for attention, belief, reward, pain, trust and capital formula families.",
+      "files_to_create_or_modify": ["brain/formulas.py", "tests/test_formulas.py", "docs/spec/BRAIN_FORMULA_REGISTRY.md"],
+      "required_tests": ["formula_owner_trace", "formula_input_output_trace", "decision_consequence_trace"],
+      "required_fixtures": ["tests/fixtures/brain/formula_run_attention_reward.json"],
+      "acceptance_criteria": ["each formula has owner object", "each formula has service and test", "each formula run emits audit evidence"],
+      "blocked_by": ["AGENT-001"],
+      "go_hold_condition": "HOLD if any formula lacks owner, service, table/store, dashboard, or test"
+    },
+    {
+      "ticket_id": "AGENT-003",
+      "title": "Materialize fixture and replay harness",
+      "phase": "V0_proof_harness",
+      "objective": "Create fixture-driven replay tests for source to outcome to learning loop.",
+      "files_to_create_or_modify": ["tests/fixtures/brain/", "tests/test_replay_harness.py", "brain/replay.py"],
+      "required_tests": ["source_to_signal_replay", "belief_to_outcome_replay", "reward_pain_reallocation_replay"],
+      "required_fixtures": ["tests/fixtures/brain/source_signal_evidence_belief.json", "tests/fixtures/brain/outcome_reward_pain_learning.json"],
+      "acceptance_criteria": ["fixtures produce expected state transitions", "replay is deterministic", "GO/HOLD report is generated"],
+      "blocked_by": ["AGENT-001", "AGENT-002"],
+      "go_hold_condition": "GO only after deterministic replay passes"
+    },
+    {
+      "ticket_id": "AGENT-004",
+      "title": "Build contradiction review workflow",
+      "phase": "V1_money_spine",
+      "objective": "Preserve contradictions as auditable review items instead of resolving them silently.",
+      "files_to_create_or_modify": ["brain/contradiction_queue.py", "tests/test_contradiction_queue.py", "reports/acceptance/"],
+      "required_tests": ["contradictions_are_preserved", "conflicts_require_review_status", "no_silent_resolution"],
+      "required_fixtures": ["tests/fixtures/brain/contradiction_review.json"],
+      "acceptance_criteria": ["both sides of a conflict are retained", "review status is explicit", "user decision required status is supported"],
+      "blocked_by": ["AGENT-001"],
+      "go_hold_condition": "HOLD if contradiction material is deleted or silently merged"
+    },
+    {
+      "ticket_id": "AGENT-005",
+      "title": "Enforce acceptance matrix in CI",
+      "phase": "V0_proof_harness",
+      "objective": "Add CI validation that fails when agent-control docs, fixtures, traceability, or acceptance statuses are missing.",
+      "files_to_create_or_modify": ["tools/validate_agent_control.py", ".github/workflows/test.yml", "docs/spec/acceptance-matrix.json"],
+      "required_tests": ["agent_control_validation"],
+      "required_fixtures": ["tests/fixtures/brain/source_signal_evidence_belief.json"],
+      "acceptance_criteria": ["CI validates required files", "CI validates fixture presence", "CI validates task traceability", "CI validates GO/HOLD fields"],
+      "blocked_by": [],
+      "go_hold_condition": "GO only when CI gate exists and passes"
+    },
+    {
+      "ticket_id": "AGENT-006",
+      "title": "Create source-to-build traceability matrix",
+      "phase": "V0_proof_harness",
+      "objective": "Map Brain source concepts to modules, schemas, services, formulas, tests, fixtures, dashboards and acceptance evidence.",
+      "files_to_create_or_modify": ["docs/spec/BRAIN_SOURCE_TO_BUILD_TRACEABILITY.md", "docs/spec/source-to-build-traceability.json"],
+      "required_tests": ["traceability_completeness_validation"],
+      "required_fixtures": [],
+      "acceptance_criteria": ["each build module has source reference", "each task maps to at least one module", "no task is orphaned"],
+      "blocked_by": [],
+      "go_hold_condition": "HOLD if any build task lacks source traceability"
+    }
+  ]
+}

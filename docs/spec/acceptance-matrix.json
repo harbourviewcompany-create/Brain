@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "status": "HOLD_until_implementation_evidence_exists",
+  "rules": [
+    {"rule_id":"ACC-001","module":"Source Registry","ticket":"AGENT-001","test":"test_source_registry","fixture":"source_signal_evidence_belief","required_evidence":"test output plus source provenance report","go_hold_status":"HOLD"},
+    {"rule_id":"ACC-002","module":"Perception and Salience","ticket":"AGENT-002","test":"test_attention_score_trace","fixture":"formula_run_attention_reward","required_evidence":"formula run audit record","go_hold_status":"HOLD"},
+    {"rule_id":"ACC-003","module":"Belief and Truth Maintenance","ticket":"AGENT-003","test":"test_belief_update_trace","fixture":"source_signal_evidence_belief","required_evidence":"belief update before/after report","go_hold_status":"HOLD"},
+    {"rule_id":"ACC-004","module":"Approval Gate","ticket":"AGENT-003","test":"test_approval_gate_blocks_external_action","fixture":"approval_gate_external_action","required_evidence":"blocked transition and approval request evidence","go_hold_status":"HOLD"},
+    {"rule_id":"ACC-005","module":"Reward Pain Learning","ticket":"AGENT-003","test":"test_reward_pain_reallocation_replay","fixture":"outcome_reward_pain_learning","required_evidence":"deterministic replay report","go_hold_status":"HOLD"},
+    {"rule_id":"ACC-006","module":"Contradiction Review","ticket":"AGENT-004","test":"test_contradictions_are_preserved","fixture":"contradiction_review","required_evidence":"both sides preserved with review status","go_hold_status":"HOLD"},
+    {"rule_id":"ACC-007","module":"Agent Control Validation","ticket":"AGENT-005","test":"tools/validate_agent_control.py","fixture":"all_required_fixture_files","required_evidence":"CI passing validation output","go_hold_status":"GO"},
+    {"rule_id":"ACC-008","module":"Source-to-Build Traceability","ticket":"AGENT-006","test":"traceability completeness validation","fixture":"none","required_evidence":"traceability matrix maps concepts to module/schema/service/formula/test/fixture","go_hold_status":"GO"}
+  ]
+}
