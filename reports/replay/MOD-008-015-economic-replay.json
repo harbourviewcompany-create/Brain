@@ -1,0 +1,90 @@
+{
+  "report_id": "MOD-008-015-economic-replay",
+  "status": "GO",
+  "commit_under_test": "ab328a4200df4bbe34ff6656ef569e553b75ee60",
+  "test_workflow_run_id": 32647565819,
+  "test_job_id": 97214059714,
+  "pytest_result": "101 passed, 1 warning in 0.82s",
+  "replay_test": "tests/test_economic_runtime_full.py::test_economic_fixture_replay_is_deterministic_and_go",
+  "determinism_rule": "Replay signatures compare semantic events, assertions and operator-state counts; generated UUIDs are intentionally excluded.",
+  "fixtures": [
+    {
+      "fixture_id": "economic_distress_pipeline",
+      "path": "tests/fixtures/economic/economic_distress_pipeline.json",
+      "expected_events": [
+        "pressure.inferred",
+        "affordance.generated",
+        "money_path.qualified",
+        "opportunity.scored",
+        "opportunity.act_now"
+      ],
+      "expected_assertions": [
+        "GO:formula_trace",
+        "GO:qualified_payment_path",
+        "GO:not_killed"
+      ],
+      "go_hold": "GO",
+      "proves": [
+        "MOD-008 evidence-backed pressure",
+        "MOD-009 affordance and money-path generation",
+        "MOD-010 counterparty-aware payer path",
+        "MOD-011 formula-scored opportunity and ACT_NOW disposition"
+      ]
+    },
+    {
+      "fixture_id": "economic_source_rights_hold",
+      "path": "tests/fixtures/economic/economic_source_rights_hold.json",
+      "expected_events": ["source.held"],
+      "expected_assertions": ["GO:rights_gate"],
+      "go_hold": "GO",
+      "proves": [
+        "MOD-013 prohibited source classification fails closed",
+        "source activation does not override rights policy"
+      ]
+    },
+    {
+      "fixture_id": "economic_transaction_hold",
+      "path": "tests/fixtures/economic/economic_transaction_hold.json",
+      "expected_events": ["fee_control.recorded", "transaction.held"],
+      "expected_assertions": ["GO:transaction_gate", "GO:fee_control_persisted"],
+      "go_hold": "GO",
+      "proves": [
+        "MOD-012 incomplete fee protection produces HOLD",
+        "operator approval alone cannot bypass missing transaction control"
+      ]
+    },
+    {
+      "fixture_id": "economic_compounding",
+      "path": "tests/fixtures/economic/economic_compounding.json",
+      "expected_events": [
+        "revenue.attributed",
+        "compounding_asset.detected",
+        "business_model.evaluated"
+      ],
+      "expected_assertions": [
+        "GO:profit_not_revenue",
+        "GO:attribution_gate",
+        "GO:positive_roi",
+        "GO:build_candidate",
+        "GO:asset_evidence"
+      ],
+      "go_hold": "GO",
+      "proves": [
+        "MOD-014 revenue/profit attribution and learning gate",
+        "MOD-015 repeated payer/evidence pattern can become a build candidate"
+      ]
+    }
+  ],
+  "additional_replay_evidence": [
+    "tests/test_economic_state_operator.py proves illegal pressure transition hypothesized->active is blocked",
+    "tests/test_economic_codec.py proves typed enum/set/UUID economic objects rehydrate without semantic degradation",
+    "tests/test_economic_transaction.py proves signed fee/origination records derive the fee-control gate",
+    "tests/test_economic_sources.py proves recursive source discovery remains proposal-only",
+    "tests/test_economic_compounding_capital.py proves capital allocation requires operator approval"
+  ],
+  "limitations": [
+    "Replay is deterministic application-level replay; it does not claim live market validation or profitability.",
+    "No consequential external action is executed by replay.",
+    "Production PostgreSQL migration execution is environment-specific and is not claimed by this report."
+  ]
+}

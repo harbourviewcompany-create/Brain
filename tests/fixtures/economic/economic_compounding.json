@@ -1,0 +1,23 @@
+{
+  "fixture_id": "economic_compounding",
+  "scenario": "Repeated profitable pattern becomes a build candidate",
+  "scenario_type": "compounding",
+  "transaction_id": "81111111-1111-4111-8111-111111111111",
+  "opportunity_id": "91111111-1111-4111-8111-111111111111",
+  "source_ids": ["registry-a", "marketplace-b"],
+  "gross_revenue": 30000,
+  "net_profit": 22000,
+  "operator_hours": 12,
+  "data_compute_cost": 500,
+  "external_cost": 1500,
+  "attribution_confidence": 0.9,
+  "asset_kind": "buyer_liquidity",
+  "asset_key": "distressed-processing-equipment-buyers",
+  "evidence_count": 5,
+  "payer_count": 3,
+  "expected_value": 60000,
+  "resource_estimate": 10000,
+  "problem_pattern": "distressed equipment needs buyers",
+  "solution_pattern": "verified buyer matching",
+  "payer_pattern": "asset sellers pay success fee"
+}
