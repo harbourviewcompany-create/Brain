@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/harbourviewcompany-create/Brain/docs/control/module-build-ready-traceability.schema.json",
+  "title": "Brain Module BUILD-READY Traceability Matrix",
+  "type": "object",
+  "required": ["schema_version", "source_authority", "required_fields", "modules"],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "source_authority": {
+      "type": "object",
+      "required": ["SOURCE", "APPROVED", "PROPOSAL", "SPECULATIVE", "REVIEW_ONLY", "BLOCKED", "BUILD_READY"]
+    },
+    "required_fields": {
+      "type": "array",
+      "items": {"type": "string"},
+      "contains": {"const": "owner_object"}
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "module_id",
+          "path",
+          "source_records",
+          "authority_label",
+          "go_hold_status",
+          "build_ready",
+          "fields",
+          "missing_or_blocked",
+          "tests_or_fixtures",
+          "acceptance_evidence",
+          "source_preservation_statement"
+        ],
+        "properties": {
+          "module_id": {"type": "string", "minLength": 1},
+          "path": {"type": "string", "pattern": "^(apps|brain|scripts|tools)/.*"},
+          "source_records": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "authority_label": {"enum": ["SOURCE", "APPROVED", "PROPOSAL", "SPECULATIVE", "REVIEW-ONLY", "BLOCKED", "BUILD-READY"]},
+          "go_hold_status": {"enum": ["GO", "HOLD", "REVIEW", "BLOCKED"]},
+          "build_ready": {"type": "boolean"},
+          "fields": {
+            "type": "object",
+            "required": [
+              "owner_object",
+              "schema",
+              "runtime_service",
+              "state_machine",
+              "fixtures",
+              "tests",
+              "acceptance_criteria",
+              "audit_events",
+              "go_hold_status"
+            ],
+            "additionalProperties": {
+              "type": "object",
+              "required": ["status", "evidence"],
+              "properties": {
+                "status": {"enum": ["present", "partial", "missing", "blocked"]},
+                "evidence": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          },
+          "missing_or_blocked": {"type": "array", "items": {"type": "string"}},
+          "tests_or_fixtures": {"type": "array", "items": {"type": "string"}},
+          "acceptance_evidence": {"type": "array", "items": {"type": "string"}},
+          "source_preservation_statement": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}
