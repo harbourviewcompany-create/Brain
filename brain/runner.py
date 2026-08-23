@@ -21,25 +21,34 @@ class ContinuousCognitionRunner:
             return False
         try:
             payload = dict(item.get("payload") or {})
-            result = self.cycle.process(CognitiveStimulus(
-                content=item["content"], source_id=item["source_key"], claim=item["claim"],
-                source_reliability=float(payload.get("source_reliability", 0.5)),
-                supports=bool(payload.get("supports", True)),
-                belief_statement=payload.get("belief_statement"),
-                belief_confidence=float(payload.get("belief_confidence", 0.5)),
-                commercial_upside=float(payload.get("commercial_upside", 0.0)),
-                novelty=float(payload.get("novelty", 0.5)), urgency=float(payload.get("urgency", 0.0)),
-                contradiction_value=float(payload.get("contradiction_value", 0.0)),
-                uncertainty_reduction=float(payload.get("uncertainty_reduction", 0.5)),
-                noise_probability=float(payload.get("noise_probability", 0.2)),
-                operator_burden=float(payload.get("operator_burden", 0.0)),
-                metadata=payload.get("metadata", {}),
-            ))
+            result = self.cycle.process(
+                CognitiveStimulus(
+                    content=item["content"],
+                    source_id=item["source_key"],
+                    claim=item["claim"],
+                    source_reliability=float(payload.get("source_reliability", 0.5)),
+                    supports=bool(payload.get("supports", True)),
+                    belief_statement=payload.get("belief_statement"),
+                    belief_confidence=float(payload.get("belief_confidence", 0.5)),
+                    commercial_upside=float(payload.get("commercial_upside", 0.0)),
+                    novelty=float(payload.get("novelty", 0.5)),
+                    urgency=float(payload.get("urgency", 0.0)),
+                    contradiction_value=float(payload.get("contradiction_value", 0.0)),
+                    uncertainty_reduction=float(payload.get("uncertainty_reduction", 0.5)),
+                    noise_probability=float(payload.get("noise_probability", 0.2)),
+                    operator_burden=float(payload.get("operator_burden", 0.0)),
+                    metadata=payload.get("metadata", {}),
+                )
+            )
             self.cycle_runs.save(item["id"], result)
             self.inbox.complete(item["id"])
             return True
-        except Exception as exc:
-            self.inbox.fail(item["id"], repr(exc), retry=int(item.get("attempts", 1)) < self.max_attempts)
+        except Exception as exc:  # noqa: BLE001 - worker boundary must record arbitrary failures.
+            self.inbox.fail(
+                item["id"],
+                repr(exc),
+                retry=int(item.get("attempts", 1)) < self.max_attempts,
+            )
             return True
 
     def run_forever(self) -> None:
