@@ -33,7 +33,6 @@ from brain.economic_atomic_services import (
     EconomicOpportunityScoringService,
     FeeProtectionDecision,
     FeeProtectionService,
-    GeneratedMoneyPath,
     InternationalJurisdictionProfile,
     LiquidityGraphService,
     MandateRecord,
