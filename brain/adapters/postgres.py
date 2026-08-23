@@ -36,6 +36,32 @@ class PostgresEventStore:
         self._owns_pool = pool is None
         self.pool = pool or ConnectionPool(conninfo=dsn, min_size=1, max_size=10, open=True)
 
+    def health_check(self, *, timeout: float = 3.0) -> dict[str, Any]:
+        """Cheap connectivity + approximate size check.
+
+        Safe to call frequently (e.g. from a container HEALTHCHECK / platform
+        health probe every 30s). Uses `pg_class.reltuples` (planner statistics)
+        rather than `count(*)` or `read_all()`, so this stays O(1) regardless of
+        how large `brain_events` grows -- unlike read_all(), it never scans or
+        deserializes the event table itself.
+
+        `timeout` bounds how long we wait for a pool connection. Without it,
+        `pool.connection()` falls back to the pool's own default (30s), so a
+        genuine DB outage would hang every health check for 30s -- well past
+        Fly's 5s HEALTHCHECK timeout and Railway's probe window. Failing fast
+        here means an outage shows up as "unreachable" almost immediately
+        instead of as a slow, hanging health check.
+        """
+        with self.pool.connection(timeout=timeout) as conn, conn.cursor() as cur:
+            cur.execute("select reltuples::bigint from pg_class where relname = 'brain_events'")
+            row = cur.fetchone()
+            raw = int(row[0]) if row and row[0] is not None else 0
+            # Postgres reports reltuples = -1 for a table that has never been
+            # ANALYZEd (e.g. right after a fresh deploy, before autovacuum's
+            # first pass). Clamp rather than surface a negative count.
+            approx_count = max(raw, 0)
+        return {"connected": True, "approx_events": approx_count}
+
     def close(self) -> None:
         if self._owns_pool:
             self.pool.close()

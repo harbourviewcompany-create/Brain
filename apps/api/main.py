@@ -200,14 +200,18 @@ def _serialize_learning(result) -> dict[str, Any]:
 @app.get("/health")
 def health():
     event_count = len(getattr(_memory_store, "events", []) or [])
+    db_status = "in-memory"
     try:
-        if hasattr(learning.event_store, "read_all"):
-            event_count = len(learning.event_store.read_all())
+        if hasattr(learning.event_store, "health_check"):
+            info = learning.event_store.health_check()
+            event_count = info.get("approx_events", event_count)
+            db_status = "connected" if info.get("connected") else "unreachable"
     except Exception:
-        pass
+        db_status = "unreachable"
     return {
         "status": "ok",
         "version": "0.5.0",
+        "db": db_status,
         "beliefs": len(runtime.store.beliefs),
         "events": event_count,
         "predictions": len(getattr(_learning_store, "predictions", {})),
