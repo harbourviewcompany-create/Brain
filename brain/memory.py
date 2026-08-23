@@ -30,8 +30,24 @@ class InMemoryBrainStore:
         return list(self.events[:limit])
 
     def read_after(self, occurred_at: datetime, event_id: UUID) -> list[BrainEvent]:
-        """Return events strictly after (occurred_at, event_id) cursor order."""
+        """Return events strictly after the given cursor.
+
+        Prefers log order (append sequence) when the cursor id is present so
+        same-timestamp events remain deterministic. Falls back to
+        (occurred_at, id) ordering for externally supplied cursors.
+        """
         out: list[BrainEvent] = []
+        seen = False
+        found = False
+        for event in self.events:
+            if event.id == event_id:
+                found = True
+                seen = True
+                continue
+            if seen:
+                out.append(event)
+        if found:
+            return out
         for event in self.events:
             if (event.occurred_at, str(event.id)) > (occurred_at, str(event_id)):
                 out.append(event)
