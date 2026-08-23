@@ -1,6 +1,7 @@
 do $$
 declare
   t text;
+  role_name text;
 begin
   foreach t in array array[
     'brain_events','sources','observations','evidence','entities','beliefs','belief_evidence',
@@ -9,13 +10,31 @@ begin
     'cognitive_experiment_results','projection_checkpoints'
   ] loop
     execute format('alter table public.%I enable row level security', t);
-    execute format('revoke all on table public.%I from anon, authenticated', t);
+    foreach role_name in array array['anon','authenticated'] loop
+      if exists (select 1 from pg_roles where rolname = role_name) then
+        execute format('revoke all on table public.%I from %I', t, role_name);
+      end if;
+    end loop;
   end loop;
 end $$;
 
-revoke all on sequence public.neuromodulator_snapshots_id_seq from anon, authenticated;
-revoke all on sequence public.homeostatic_snapshots_id_seq from anon, authenticated;
-revoke all on sequence public.cognitive_experiment_results_id_seq from anon, authenticated;
+do $$
+declare
+  sequence_name text;
+  role_name text;
+begin
+  foreach sequence_name in array array[
+    'neuromodulator_snapshots_id_seq',
+    'homeostatic_snapshots_id_seq',
+    'cognitive_experiment_results_id_seq'
+  ] loop
+    foreach role_name in array array['anon','authenticated'] loop
+      if exists (select 1 from pg_roles where rolname = role_name) then
+        execute format('revoke all on sequence public.%I from %I', sequence_name, role_name);
+      end if;
+    end loop;
+  end loop;
+end $$;
 
 create or replace function public.prevent_brain_event_mutation()
 returns trigger
@@ -27,7 +46,21 @@ begin
 end;
 $$;
 
-revoke all on function public.prevent_brain_event_mutation() from public, anon, authenticated;
+revoke all on function public.prevent_brain_event_mutation() from public;
+
+do $$
+declare
+  role_name text;
+begin
+  foreach role_name in array array['anon','authenticated'] loop
+    if exists (select 1 from pg_roles where rolname = role_name) then
+      execute format(
+        'revoke all on function public.prevent_brain_event_mutation() from %I',
+        role_name
+      );
+    end if;
+  end loop;
+end $$;
 
 drop trigger if exists brain_events_append_only_update on public.brain_events;
 create trigger brain_events_append_only_update
