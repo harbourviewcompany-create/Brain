@@ -1,0 +1,25 @@
+{
+  "registry_id": "money-spine-generated-10000-opportunity-registry-v1",
+  "status": "BUILD-READY_GENERATED_SEED",
+  "target_count": 10000,
+  "fast_cash_subset_count": 500,
+  "generator": "tools.revenue_spine_17_21.generate_opportunity_registry",
+  "loader": "tools/import_opportunity_registry.py",
+  "required_columns": [
+    "lane_id",
+    "lane_domain",
+    "signal_family",
+    "signal_to_watch",
+    "source_categories",
+    "likely_buyer",
+    "likely_seller_target",
+    "monetization_path",
+    "first_48_hour_action",
+    "time_to_cash_days",
+    "automation_potential",
+    "risk_level",
+    "priority_score",
+    "scale_trigger"
+  ],
+  "source_preservation": "The full 10000-lane registry is generated deterministically from committed source dimensions instead of depending on chat-only files."
+}
