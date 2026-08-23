@@ -29,6 +29,7 @@ RUN mkdir -p brain apps db \
 COPY brain ./brain
 COPY apps ./apps
 COPY db ./db
+COPY tools ./tools
 
 # Re-install the local package itself (fast -- deps already satisfied above).
 RUN pip install --no-cache-dir --no-deps .
@@ -45,4 +46,4 @@ USER brain
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
-CMD ["sh", "-c", "uvicorn apps.api.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn tools.live_cockpit_routes:app --host 0.0.0.0 --port ${PORT}"]
