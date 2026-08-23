@@ -1,5 +1,5 @@
-import pytest
 from pydantic import ValidationError
+import pytest
 
 from brain.schemas import CANONICAL_SCHEMAS, Source, validate_object
 
