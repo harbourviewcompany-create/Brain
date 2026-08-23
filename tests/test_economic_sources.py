@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 import pytest
 
 from brain.economic_runtime import (
