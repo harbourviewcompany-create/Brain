@@ -10,6 +10,7 @@ from .cognitive_state import NeuromodulatorState
 from .contradiction import ContradictionEngine
 from .domain import Belief, Evidence, Observation
 from .events import BrainEvent
+from .hydrate import hydrate_belief_cache
 from .projections import default_projection_engine, incremental_checkpoint
 from .scheduler import CognitiveScheduler, CognitiveTask
 from .working_memory import WorkingMemory
@@ -93,6 +94,15 @@ class CognitiveCycle:
 
     def register_belief(self, belief: Belief) -> None:
         self._belief_cache[belief.id] = belief
+
+    def hydrate_beliefs(self, *, from_checkpoint: bool = True) -> int:
+        """Load beliefs into process cache from checkpoint or event replay."""
+        return hydrate_belief_cache(
+            self._belief_cache,
+            self.event_store,
+            self.checkpoint_store,
+            from_checkpoint=from_checkpoint,
+        )
 
     def process(self, stimulus: CognitiveStimulus) -> CognitiveCycleResult:
         cycle_id = uuid4()
@@ -336,8 +346,35 @@ class CognitiveCycle:
     def _resolve_belief(
         self, stimulus: CognitiveStimulus, cycle_id: UUID, event_ids: list[UUID]
     ) -> Belief:
-        if stimulus.belief_id is not None and stimulus.belief_id in self._belief_cache:
-            return self._belief_cache[stimulus.belief_id]
+        if stimulus.belief_id is not None:
+            if stimulus.belief_id in self._belief_cache:
+                return self._belief_cache[stimulus.belief_id]
+            if not self._belief_cache:
+                self.hydrate_beliefs()
+            if stimulus.belief_id in self._belief_cache:
+                return self._belief_cache[stimulus.belief_id]
+            belief = Belief(
+                statement=stimulus.belief_statement or stimulus.claim,
+                confidence=stimulus.belief_confidence,
+                id=stimulus.belief_id,
+            )
+            self._belief_cache[belief.id] = belief
+            self._emit(
+                BrainEvent(
+                    "belief.created",
+                    "belief",
+                    belief.id,
+                    {
+                        "statement": belief.statement,
+                        "confidence": belief.confidence,
+                        "state": str(belief.state),
+                        "version": belief.version,
+                    },
+                    correlation_id=cycle_id,
+                ),
+                event_ids,
+            )
+            return belief
         belief = Belief(
             statement=stimulus.belief_statement or stimulus.claim,
             confidence=stimulus.belief_confidence,
