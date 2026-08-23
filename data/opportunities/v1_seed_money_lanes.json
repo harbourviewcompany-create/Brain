@@ -1,0 +1,60 @@
+{
+  "version": "v1",
+  "purpose": "Seed lanes for the Brain Money Spine. These are not the full 10000-lane universe; they are immediate-revenue defaults for testing.",
+  "lanes": [
+    {
+      "lane_id": "high_intent_lead_pack",
+      "title": "High-intent lead pack",
+      "opportunity_class": "high_intent_lead",
+      "packaged_offer": "High-Intent Lead Pack",
+      "buyer_type": "B2B service provider, agency, consultant, or founder selling into a defined market",
+      "seller_or_target_type": "Companies or people publicly showing buying intent, pain, expansion, or urgent need",
+      "source_targets": ["search results", "forums", "LinkedIn/manual capture", "review platforms", "founder communities"],
+      "search_queries": ["looking for recommendations supplier urgent", "need help with vendor", "switching from alternative to"],
+      "first_48_hour_action": "Build 25 sourced leads, identify decision-makers, draft offer-specific outreach, and ask whether the buyer wants the full pack.",
+      "price_low": 150,
+      "price_high": 500,
+      "repeatability": 0.9,
+      "fulfillment_difficulty": 0.25,
+      "time_to_cash_days": 2,
+      "automation_readiness": "semi_automated",
+      "priority_score": 0.9
+    },
+    {
+      "lane_id": "buyer_seller_match_sprint",
+      "title": "Buyer/seller match sprint",
+      "opportunity_class": "buyer_seller_match",
+      "packaged_offer": "Buyer/Seller Match Sprint",
+      "buyer_type": "Broker, seller, operator, asset owner, investor, or distributor",
+      "seller_or_target_type": "Known buyer or seller with asset, inventory, service, company, or demand",
+      "source_targets": ["marketplaces", "auction sites", "business-for-sale listings", "procurement posts", "industry directories"],
+      "search_queries": ["for sale equipment closing", "wanted supplier buyer", "liquidating assets buyer needed"],
+      "first_48_hour_action": "Verify the asset or demand, identify 20 likely counterparties, and queue controlled intro outreach for approval.",
+      "price_low": 500,
+      "price_high": 2500,
+      "repeatability": 0.8,
+      "fulfillment_difficulty": 0.45,
+      "time_to_cash_days": 7,
+      "automation_readiness": "automate_after_proof",
+      "priority_score": 0.85
+    },
+    {
+      "lane_id": "procurement_rfp_match",
+      "title": "Procurement/RFP match",
+      "opportunity_class": "procurement_match",
+      "packaged_offer": "Procurement / RFP Match Pack",
+      "buyer_type": "Vendor, consultant, agency, contractor, or service provider eligible to bid",
+      "seller_or_target_type": "Government, institution, nonprofit, or company publishing a buying requirement",
+      "source_targets": ["government procurement portals", "municipal tenders", "school boards", "hospital procurement", "corporate supplier portals"],
+      "search_queries": ["RFP vendor deadline", "tender services supplier", "request for proposal qualified vendors"],
+      "first_48_hour_action": "Extract requirements, find 10 qualified vendors, and pitch the opportunity brief or bid-support intro.",
+      "price_low": 250,
+      "price_high": 1500,
+      "repeatability": 0.85,
+      "fulfillment_difficulty": 0.35,
+      "time_to_cash_days": 5,
+      "automation_readiness": "semi_automated",
+      "priority_score": 0.82
+    }
+  ]
+}
