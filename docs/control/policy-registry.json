@@ -1,7 +1,7 @@
 {
   "policy_id": "brain-agent-build-control-policy-v1",
   "status": "APPROVED_FOR_CONTROL_ENFORCEMENT",
-  "purpose": "Machine-readable enforcement registry for Brain build-control documents, templates, validators, traceability records, and archive workflow checks.",
+  "purpose": "Machine-readable enforcement registry for Brain build-control documents, templates, validators, traceability records, archive workflow checks, and repository hardening audits.",
   "root_principle": "Tyler defines The Brain. Agents preserve, structure, implement, test, and report. Agents do not narrow scope or discard supplied material.",
   "source_authority_labels": ["SOURCE", "APPROVED", "PROPOSAL", "SPECULATIVE", "REVIEW-ONLY", "BLOCKED", "BUILD-READY"],
   "go_hold_statuses": ["GO", "HOLD", "REVIEW", "BLOCKED"],
@@ -16,6 +16,7 @@
     "docs/control/traceability-rules.md",
     "docs/control/acceptance-evidence-template.md",
     "docs/control/branch-protection.md",
+    "docs/control/repository-hardening-audit.md",
     "docs/control/policy-registry.json",
     "docs/control/source-requirement-registry.schema.json",
     "docs/control/source-requirement-registry.json",
@@ -33,9 +34,13 @@
     "scripts/validate_control_layer.py",
     "scripts/validate_archive_manifest.py",
     "scripts/validate_pr_body.py",
-    "scripts/validate_build_ready_traceability.py"
+    "scripts/validate_build_ready_traceability.py",
+    "scripts/check_repository_hardening.py"
   ],
-  "required_workflows": [".github/workflows/control-policy.yml"],
+  "required_workflows": [
+    ".github/workflows/control-policy.yml",
+    ".github/workflows/repository-hardening.yml"
+  ],
   "required_pr_template_sections": [
     "Control Preflight",
     "Scope",
@@ -87,6 +92,14 @@
     "validator_path": "scripts/validate_pr_body.py",
     "fail_on_missing_required_sections": true,
     "source": "GITHUB_EVENT_PATH pull_request.body"
+  },
+  "hardening_policy": {
+    "audit_script": "scripts/check_repository_hardening.py",
+    "audit_workflow": ".github/workflows/repository-hardening.yml",
+    "ruleset_target": ".github/rulesets/main-required-checks.ruleset.json",
+    "tracked_blockers": ["#51", "#52"],
+    "required_main_checks": ["Brain Control Policy", "test"],
+    "required_archive_state": "real file bytes present and hash-verified by docs/archive/archive_manifest.json"
   },
   "forbidden_behaviors": [
     "narrow Brain scope without Tyler approval",
