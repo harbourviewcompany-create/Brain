@@ -1,0 +1,67 @@
+{
+  "fixture_id": "higher_order_cognition_cycle",
+  "scenario": "multi-scale cognition map creates cross-scale links, translates brain-region analogies into runtime modules, registers causal hypotheses with alternatives, proposes a curriculum task, records benchmark evidence, and advances developmental stage only under evidence",
+  "input": {
+    "scale_nodes": [
+      {"name": "belief_update_loop", "scale": "system", "source_refs": ["docs/brain-readable-concept-manual.md#beliefs"]},
+      {"name": "opportunity_scoring", "scale": "commercial", "source_refs": ["docs/brain-readable-concept-manual.md#money-spine"]},
+      {"name": "self_model_claim_gate", "scale": "self_model", "source_refs": ["reports/acceptance/AGENT-014-self-model.json"]}
+    ],
+    "brain_region_translation": {
+      "region_name": "prefrontal cortex",
+      "analogy_status": "analogy_runtime_mapping",
+      "implementation_module": "brain.developmental.global_workspace",
+      "boundary": "proxy only; no biological equivalence claim"
+    },
+    "causal_hypothesis": {
+      "cause_ref": "source_priority_change",
+      "effect_ref": "opportunity_quality",
+      "mechanism": "source reliability may affect opportunity quality",
+      "alternatives": ["operator_attention_shift", "market_timing"]
+    },
+    "curriculum_task": {
+      "target_capability": "calibration",
+      "expected_learning_value": 0.8,
+      "risk": 0.25,
+      "external_action": false
+    },
+    "benchmark": {
+      "benchmark_name": "fixture_replay_quality",
+      "capability": "deterministic_replay",
+      "score": 0.91,
+      "baseline_score": 0.82
+    }
+  },
+  "expected": {
+    "objects_created": [
+      "ScaleNode",
+      "ScaleLink",
+      "BrainRegionMapping",
+      "CausalHypothesis",
+      "CurriculumTask",
+      "BenchmarkRecord",
+      "DevelopmentalStageRecord"
+    ],
+    "blocked_claims": [
+      "full_brain_completion",
+      "superior_intelligence_without_benchmarks",
+      "consciousness_claim",
+      "neuroscience_equivalence_claim"
+    ],
+    "blocked_transitions": [
+      "curriculum_task.external_action_true",
+      "brain_region_mapping.unsupported_equivalence_claim",
+      "causal_hypothesis.without_alternatives",
+      "developmental_stage.without_capability_evidence"
+    ],
+    "dashboard_output": [
+      "Higher Order Cognition Console",
+      "Multi-Scale Cognition Map",
+      "Brain Region Translation Table",
+      "Causal Hypothesis Ledger",
+      "Curriculum Queue",
+      "Benchmark Metacognition Panel"
+    ],
+    "go_hold_result": "GO_for_higher_order_cognition_runtime_V0_HOLD_for_superior_intelligence_claims"
+  }
+}
