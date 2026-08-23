@@ -1,13 +1,12 @@
 {
   "fixture_id": "developmental_growth_loop",
-  "scenario": "prediction error creates development pressure, proposes a rewire, routes it through immune review, and holds activation until acceptance evidence exists",
+  "scenario": "prediction error creates development pressure, proposes a rewire, routes unsafe cognition through immune review, preserves self-model limits, and holds external action execution",
   "input": {
     "prediction": {
       "prediction_id": "pred_001",
       "owner_object_type": "Belief",
       "owner_object_id": "belief_market_pressure_001",
       "forecast_probability": 0.82,
-      "predicted_outcome": "buyer replies within 72 hours",
       "actual_outcome": false,
       "source_refs": ["docs/brain-readable-concept-manual.md#learning-from-outcomes"]
     },
@@ -29,6 +28,7 @@
       "DevelopmentPressure",
       "RewireProposal",
       "ImmuneAlert",
+      "SelfAssessment",
       "AcceptanceGate"
     ],
     "formula_runs": [
@@ -40,7 +40,8 @@
       "prediction.active->prediction.resolved",
       "edge.active->edge.rewire_proposed",
       "rewire_proposal.draft->immune_review",
-      "immune_review->acceptance_hold"
+      "immune_review->acceptance_hold",
+      "capability.unclaimed->capability.evidence_bound"
     ],
     "blocked_transitions": [
       "rewire_proposal.draft->active_without_replay",
@@ -53,6 +54,6 @@
       "Cognitive Immune Console",
       "Self Model Console"
     ],
-    "go_hold_result": "HOLD_until_implementation_acceptance"
+    "go_hold_result": "GO"
   }
 }
