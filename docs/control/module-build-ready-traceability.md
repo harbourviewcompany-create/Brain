@@ -56,6 +56,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/economic_capital.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_codec.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_compounding.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_conformance.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/economic_hard_gates.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_replay.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_runtime.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
@@ -90,10 +91,15 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | scripts/validate_control_layer.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_pr_body.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | tools/validate_agent_control.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+| tools/validate_mod_008_015_conformance.py | partial | partial | partial | missing | partial | partial | partial | HOLD |
 
 ## Developmental traceability note
 
 The nine `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. Their `partial` values and `HOLD` status are deliberate. They are traced to `docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md` through `docs/control/source-requirement-registry.json`; this traceability repair does **not** assert that the developmental modules are fully conformant or BUILD-READY.
+
+## MOD-008 through MOD-015 repair traceability note
+
+`brain/economic_conformance.py` and `tools/validate_mod_008_015_conformance.py` are included because the repair branch adds them as controlled evidence paths. Their rows remain HOLD at the BUILD-READY matrix level because BUILD-READY is a stricter repository-wide status than the MOD-008 through MOD-015 repair verdict.
 
 ## Source preservation statement
 
