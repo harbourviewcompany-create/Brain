@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Affect / emotion system.
 
 Real brains do not modulate behavior from raw event features directly (the
@@ -18,6 +16,8 @@ Grounded in Scherer's Component Process Model of appraisal: an event is
 evaluated along a small number of checks, and the *pattern* of checks
 determines the discrete emotion, not a single scalar.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
