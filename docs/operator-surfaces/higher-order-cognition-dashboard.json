@@ -1,0 +1,45 @@
+{
+  "surface_id": "higher_order_cognition_dashboard",
+  "title": "Higher Order Cognition Console",
+  "mode": "read_only_control_surface",
+  "panels": [
+    {
+      "id": "multi_scale_cognition_map",
+      "title": "Multi-Scale Cognition Map",
+      "shows": ["ScaleNode", "ScaleLink", "source_refs", "confidence"]
+    },
+    {
+      "id": "brain_region_translation_table",
+      "title": "Brain Region Translation Table",
+      "shows": ["region_name", "functional_claim", "brain_module", "implementation_module", "analogy_status", "boundary_label"]
+    },
+    {
+      "id": "causal_hypothesis_ledger",
+      "title": "Causal Hypothesis Ledger",
+      "shows": ["cause_ref", "effect_ref", "mechanism", "confidence", "alternative_hypotheses", "evidence_refs"]
+    },
+    {
+      "id": "curriculum_queue",
+      "title": "Curriculum Self-Design Queue",
+      "shows": ["target_capability", "reason", "expected_learning_value", "risk", "priority", "external_action"]
+    },
+    {
+      "id": "benchmark_metacognition",
+      "title": "Benchmark Metacognition Panel",
+      "shows": ["benchmark_name", "capability", "score", "baseline_score", "improvement", "claim_allowed"]
+    },
+    {
+      "id": "developmental_stage_timeline",
+      "title": "Developmental Stage Timeline",
+      "shows": ["stage", "entered_because", "capabilities_unlocked", "blocked_claims", "evidence_refs"]
+    }
+  ],
+  "blocked_controls": [
+    "execute_external_action",
+    "claim_consciousness",
+    "claim_biological_equivalence",
+    "claim_superior_intelligence_without_benchmarks",
+    "activate_module_without_acceptance"
+  ],
+  "go_hold": "GO for read-only higher-order cognition inspection; HOLD for external action and unsupported claims"
+}
