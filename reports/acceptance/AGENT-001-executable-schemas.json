@@ -1,0 +1,17 @@
+{
+  "report_id": "AGENT-001-executable-schemas",
+  "ticket_id": "AGENT-001",
+  "verdict": "GO",
+  "tests": [
+    "test_all_canonical_objects_have_executable_schemas",
+    "test_schema_required_fields_are_enforced",
+    "test_schema_enum_validation_is_enforced",
+    "test_schema_provenance_fields_are_preserved"
+  ],
+  "fixtures": ["source_signal_evidence_belief"],
+  "evidence": [
+    "brain/schemas.py exists",
+    "tests/test_schemas.py validates required fields, enum rejection, and provenance preservation"
+  ],
+  "unresolved_items": []
+}
