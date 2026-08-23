@@ -1,0 +1,12 @@
+{
+  "report_id": "AGENT-006-source-to-build-traceability",
+  "ticket_id": "AGENT-006",
+  "verdict": "GO",
+  "tests": ["traceability completeness validation", "test_agent_control_validation"],
+  "fixtures": ["none"],
+  "evidence": [
+    "docs/spec/source-to-build-traceability.json maps concepts to module/schema/service/formula/test/fixture/dashboard/acceptance",
+    "tools/validate_agent_control.py requires traceability fields"
+  ],
+  "unresolved_items": []
+}
