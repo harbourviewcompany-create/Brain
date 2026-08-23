@@ -61,6 +61,7 @@
       "paths": [
         "brain/developmental/consolidation.py",
         "brain/developmental/global_workspace.py",
+        "brain/developmental/higher_order_cognition.py",
         "brain/developmental/immune.py",
         "brain/developmental/module_genesis.py",
         "brain/developmental/plasticity.py",
