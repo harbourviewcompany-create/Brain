@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from uuid import UUID
 
 from .domain import Belief, Edge, Evidence, Node, RewireEvent
 from .events import BrainEvent
+from .prediction import Prediction
 
 
 @dataclass
@@ -13,6 +15,7 @@ class InMemoryBrainStore:
     evidence: dict[UUID, Evidence] = field(default_factory=dict)
     nodes: dict[UUID, Node] = field(default_factory=dict)
     edges: dict[UUID, Edge] = field(default_factory=dict)
+    predictions: dict[UUID, Prediction] = field(default_factory=dict)
     rewires: list[RewireEvent] = field(default_factory=list)
     events: list[BrainEvent] = field(default_factory=list)
 
@@ -26,14 +29,28 @@ class InMemoryBrainStore:
             return []
         return list(self.events[:limit])
 
+    def read_after(self, occurred_at: datetime, event_id: UUID) -> list[BrainEvent]:
+        """Return events strictly after (occurred_at, event_id) cursor order."""
+        out: list[BrainEvent] = []
+        for event in self.events:
+            if (event.occurred_at, str(event.id)) > (occurred_at, str(event_id)):
+                out.append(event)
+        return out
+
     def get(self, item_id: UUID):
-        return self.beliefs.get(item_id) or self.evidence.get(item_id)
+        return (
+            self.beliefs.get(item_id)
+            or self.evidence.get(item_id)
+            or self.predictions.get(item_id)
+        )
 
     def save(self, item) -> None:
         if isinstance(item, Belief):
             self.beliefs[item.id] = item
         elif isinstance(item, Evidence):
             self.evidence[item.id] = item
+        elif isinstance(item, Prediction):
+            self.predictions[item.id] = item
         else:
             raise TypeError(type(item))
 
