@@ -33,7 +33,7 @@
   "code_module_records": [
     {
       "record_id": "TRACE-BRAIN-CORE",
-      "paths": ["brain/attention.py","brain/attribution.py","brain/beliefs.py","brain/cognitive_state.py","brain/contradiction.py","brain/contradiction_queue.py","brain/curiosity.py","brain/cycle.py","brain/debate.py","brain/domain.py","brain/dreaming.py","brain/economic.py","brain/events.py","brain/experiments.py","brain/formulas.py","brain/governance.py","brain/homeostasis.py","brain/hydrate.py","brain/learning.py","brain/memory.py","brain/metabolism.py","brain/ports.py","brain/prediction.py","brain/projections.py","brain/protocol.py","brain/replay.py","brain/resources.py","brain/reward.py","brain/rewiring.py","brain/runner.py","brain/runtime.py","brain/scheduler.py","brain/schemas.py","brain/working_memory.py"],
+      "paths": ["brain/attention.py","brain/attribution.py","brain/beliefs.py","brain/cognitive_state.py","brain/contradiction.py","brain/contradiction_queue.py","brain/curiosity.py","brain/cycle.py","brain/debate.py","brain/domain.py","brain/dreaming.py","brain/economic.py","brain/events.py","brain/executive.py","brain/experiments.py","brain/formulas.py","brain/governance.py","brain/homeostasis.py","brain/hydrate.py","brain/learning.py","brain/memory.py","brain/metabolism.py","brain/ports.py","brain/prediction.py","brain/projections.py","brain/protocol.py","brain/replay.py","brain/resources.py","brain/reward.py","brain/rewiring.py","brain/runner.py","brain/runtime.py","brain/scheduler.py","brain/schemas.py","brain/working_memory.py"],
       "classification": "APPROVED",
       "go_hold_status": "REVIEW",
       "source_ids": ["SRC-README","SRC-ARCHITECTURE","SRC-BUILD-PLAN","SRC-FUNCTION-MAP"],
