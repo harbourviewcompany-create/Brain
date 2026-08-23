@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, fields, is_dataclass
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Protocol, TypeVar, get_type_hints
+from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from .improvement_experiments import (
@@ -24,9 +24,6 @@ from .metacognitive_optimization import (
     RegressionSignal,
     SelfOptimizationPlan,
 )
-
-
-T = TypeVar("T")
 
 
 RECORD_TYPES: dict[str, type[Any]] = {
@@ -94,7 +91,7 @@ def _decode_value(value: Any) -> Any:
         if record_type is None:
             raise ValueError(f"unknown_developmental_record_type:{value['__type__']}")
         decoded = {key: _decode_value(item) for key, item in value.get("fields", {}).items()}
-        valid_names = {field.name for field in fields(record_type)}
+        valid_names = {item.name for item in fields(record_type)}
         unknown = set(decoded) - valid_names
         if unknown:
             raise ValueError(f"unknown_developmental_fields:{sorted(unknown)}")
@@ -125,7 +122,7 @@ class DevelopmentalEvidenceEvent:
     record_id: UUID
     payload: dict[str, Any]
     evidence_refs: list[str]
-    id: UUID = uuid4()
+    id: UUID = field(default_factory=uuid4)
 
 
 class DevelopmentalEvidenceStore(Protocol):
@@ -157,7 +154,6 @@ class InMemoryDevelopmentalEvidenceStore:
                 record_id=record_id,
                 payload=payload,
                 evidence_refs=list(evidence_refs),
-                id=uuid4(),
             )
         )
 
