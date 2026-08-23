@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from brain.adapters.learning_store import InMemoryLearningStore
@@ -18,6 +19,14 @@ from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
 
 app = FastAPI(title="Brain Runtime API", version="0.5.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _memory_store = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
@@ -46,7 +55,6 @@ def _configure_from_env() -> None:
         )
         from brain.adapters.postgres import PostgresEventStore
     except ImportError:
-        # Optional Postgres extras (psycopg) aren't installed; keep the in-memory store.
         return
 
     event_store = PostgresEventStore(dsn)
@@ -195,7 +203,7 @@ def health():
     try:
         if hasattr(learning.event_store, "read_all"):
             event_count = len(learning.event_store.read_all())
-    except Exception:  # noqa: BLE001, S110 - health check must stay up even if this secondary metric fails
+    except Exception:
         pass
     return {
         "status": "ok",
@@ -205,6 +213,43 @@ def health():
         "predictions": len(getattr(_learning_store, "predictions", {})),
         "money_lanes": len(money_spine.lanes),
     }
+
+
+@app.get("/beliefs")
+def list_beliefs():
+    items = []
+    for b in runtime.store.beliefs.values():
+        items.append({
+            "id": str(b.id),
+            "statement": b.statement,
+            "confidence": b.confidence,
+            "state": str(b.state),
+            "version": getattr(b, "version", 1),
+            "created_at": b.created_at.isoformat() if getattr(b, "created_at", None) else None,
+        })
+    return {"items": items, "total": len(items)}
+
+
+@app.get("/beliefs/{belief_id}")
+def get_belief(belief_id: str):
+    belief = runtime.store.beliefs.get(UUID(belief_id))
+    if belief is None:
+        raise HTTPException(status_code=404, detail="belief_not_found")
+    return {
+        "id": str(belief.id),
+        "statement": belief.statement,
+        "confidence": belief.confidence,
+        "state": str(belief.state),
+        "version": getattr(belief, "version", 1),
+    }
+
+
+@app.get("/predictions")
+def list_predictions():
+    store = learning.predictions if learning.predictions is not None else _learning_store
+    preds = getattr(store, "predictions", {}) or {}
+    items = [_serialize_prediction(p) for p in preds.values()]
+    return {"items": items, "total": len(items)}
 
 
 @app.post("/beliefs")
