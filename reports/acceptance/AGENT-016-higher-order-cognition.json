@@ -1,0 +1,45 @@
+{
+  "report_id": "AGENT-016-higher-order-cognition",
+  "verdict": "GO_FOR_HIGHER_ORDER_COGNITION_RUNTIME_V0_HOLD_FOR_UNSUPPORTED_SUPERIOR_INTELLIGENCE_CLAIMS",
+  "implemented_files": [
+    "brain/developmental/higher_order_cognition.py",
+    "tests/test_developmental_higher_order_cognition.py",
+    "tests/fixtures/brain/higher_order_cognition_cycle.json",
+    "docs/spec/BRAIN_HIGHER_ORDER_COGNITION_LAYER.md",
+    "docs/spec/higher-order-cognition-manifest.json",
+    "docs/operator-surfaces/higher-order-cognition-dashboard.json"
+  ],
+  "implemented_capabilities": [
+    "multi-scale cognition map",
+    "brain-region translation boundary layer",
+    "causal hypothesis registry with preserved alternatives",
+    "curriculum self-design as proposal-only learning tasks",
+    "benchmark-driven metacognition",
+    "long-horizon developmental stage tracking",
+    "claim-boundary report"
+  ],
+  "required_tests": [
+    "test_multiscale_map_requires_source_refs_and_links_evidence",
+    "test_brain_region_translation_blocks_unsupported_equivalence_claims",
+    "test_causal_world_model_preserves_alternatives",
+    "test_curriculum_self_design_cannot_execute_external_action",
+    "test_benchmark_metacognition_blocks_superiority_claim_without_evidence",
+    "test_long_horizon_stage_tracking_requires_evidence"
+  ],
+  "evidence": [
+    "scale nodes require source refs",
+    "cross-scale links require existing nodes and evidence",
+    "unsupported neuroscience equivalence claims are blocked",
+    "causal hypotheses require evidence and alternatives",
+    "curriculum tasks cannot execute external actions",
+    "benchmark claims require evidence",
+    "advanced developmental stages require capability evidence"
+  ],
+  "hold_conditions_remaining": [
+    "full Brain completion is not claimed",
+    "consciousness is not claimed",
+    "biological brain equivalence is not claimed",
+    "superior intelligence over all existing systems is not claimed without external benchmark evidence",
+    "live external action remains approval gated"
+  ]
+}
