@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0.0",
+  "status": "control_specified_hold_for_implementation",
+  "source_reference": "docs/brain-readable-concept-manual.md",
+  "doctrine": {
+    "development_model": "controlled_plasticity",
+    "external_action_rule": "approval_gated",
+    "simulation_rule": "dreams_and_replays_create_proposals_only",
+    "uncertainty_rule": "unknowns_are_registered_not_hidden",
+    "claim_boundary": "no_claim_of_superior_or_complete_intelligence_without_implementation_and_evidence"
+  },
+  "developmental_subsystems": [
+    {
+      "module_id": "DEV-001",
+      "name": "Prediction Error Runtime",
+      "purpose": "Turn outcome surprise into calibration, confidence, attention, and curriculum updates.",
+      "objects": ["PredictionRecord", "PredictionError", "CalibrationTrace", "DevelopmentPressure"],
+      "services": ["PredictionErrorService", "CalibrationService"],
+      "fixtures": ["developmental_growth_loop"],
+      "tests": ["prediction_error_updates_attention", "calibration_trace_is_preserved"],
+      "dashboard": "Development Console",
+      "go_hold": "HOLD until executable service, tests, fixture, and acceptance report exist"
+    },
+    {
+      "module_id": "DEV-002",
+      "name": "Plasticity and Pruning Runtime",
+      "purpose": "Strengthen, weaken, quarantine, or prune cognitive edges based on attributed reward, pain, contradiction, and age.",
+      "objects": ["CognitiveEdge", "PlasticityEvent", "RewireProposal", "PruningDecision"],
+      "services": ["PlasticityService", "GraphRewireService", "PruningService"],
+      "fixtures": ["plasticity_pruning_cycle"],
+      "tests": ["reward_strengthens_edge", "pain_weakens_edge", "pruning_requires_evidence"],
+      "dashboard": "Rewire Timeline",
+      "go_hold": "HOLD until rewires are replayable and reversible"
+    },
+    {
+      "module_id": "DEV-003",
+      "name": "Module Genesis Runtime",
+      "purpose": "Create new module hypotheses when repeated patterns cannot be represented by existing modules.",
+      "objects": ["ModuleHypothesis", "ModuleBirthRecord", "ModuleMaturityRecord", "ModuleRetirementRecord"],
+      "services": ["ModuleGenesisService", "ModuleMaturityService"],
+      "fixtures": ["module_birth_acceptance_gate"],
+      "tests": ["module_birth_requires_schema", "module_activation_requires_acceptance"],
+      "dashboard": "Module Nursery",
+      "go_hold": "HOLD until source traceability and acceptance evidence exist"
+    },
+    {
+      "module_id": "DEV-004",
+      "name": "Global Workspace Proxy",
+      "purpose": "Expose winning attention coalitions to other modules without making consciousness claims.",
+      "objects": ["WorkspaceItem", "AttentionCoalition", "BroadcastEvent", "SuppressionEvent"],
+      "services": ["WorkspaceCompetitionService", "BroadcastService"],
+      "fixtures": ["workspace_competition_broadcast"],
+      "tests": ["workspace_winner_has_evidence", "suppressed_items_are_logged"],
+      "dashboard": "Global Workspace Console",
+      "go_hold": "HOLD until every broadcast records evidence, suppressed alternatives, and consumers"
+    },
+    {
+      "module_id": "DEV-005",
+      "name": "Sleep Dream Consolidation Runtime",
+      "purpose": "Run offline simulation, memory compression, rehearsal, and rewire proposal cycles.",
+      "objects": ["DreamScenario", "ConsolidationRun", "MemoryCompression", "RehearsalTrace", "DreamRewireProposal"],
+      "services": ["DreamSimulationService", "ConsolidationService", "MemoryCompressionService"],
+      "fixtures": ["sleep_consolidation_cycle"],
+      "tests": ["dream_outputs_are_simulated", "dream_cannot_execute_external_action", "consolidation_preserves_provenance"],
+      "dashboard": "Sleep and Consolidation Console",
+      "go_hold": "HOLD until dream outputs cannot bypass approval gates"
+    },
+    {
+      "module_id": "DEV-006",
+      "name": "Cognitive Immune System",
+      "purpose": "Detect hallucination risk, source contamination, approval bypass, reward hacking, stale evidence, and unsafe growth.",
+      "objects": ["ImmuneAlert", "QuarantineRecord", "ContaminationTrace", "RecoveryPlan"],
+      "services": ["CognitiveImmuneService", "QuarantineService", "RecoveryService"],
+      "fixtures": ["immune_quarantine_recovery"],
+      "tests": ["approval_bypass_is_quarantined", "contaminated_source_is_blocked", "recovery_requires_evidence"],
+      "dashboard": "Cognitive Immune Console",
+      "go_hold": "HOLD until unsafe growth is blocked and recoverable"
+    },
+    {
+      "module_id": "DEV-007",
+      "name": "Self Model and Capability Ledger",
+      "purpose": "Maintain a live model of known capabilities, limits, uncertainty, fatigue, learning debt, and evidence gaps.",
+      "objects": ["SelfModel", "CapabilityRecord", "LimitationRecord", "LearningDebt", "EvidenceGap"],
+      "services": ["SelfModelService", "CapabilityLedgerService"],
+      "fixtures": ["self_model_capability_update"],
+      "tests": ["capability_claim_requires_evidence", "limitation_is_preserved", "learning_debt_affects_priority"],
+      "dashboard": "Self Model Console",
+      "go_hold": "HOLD until capability claims are evidence-bound"
+    },
+    {
+      "module_id": "DEV-008",
+      "name": "Unknown Mechanism and Theory Registry",
+      "purpose": "Preserve unresolved mechanisms, speculative theories, competing explanations, and open questions.",
+      "objects": ["UnknownMechanism", "TheoryRecord", "TheoryCompetition", "OpenQuestion"],
+      "services": ["UnknownMechanismRegistryService", "TheoryRegistryService", "TheoryCompetitionService"],
+      "fixtures": ["unknown_mechanism_theory_competition"],
+      "tests": ["unknown_is_not_deleted", "theory_competition_preserves_alternatives", "speculative_status_is_explicit"],
+      "dashboard": "Theory and Unknowns Console",
+      "go_hold": "HOLD until uncertainty is represented explicitly"
+    }
+  ],
+  "developmental_stages": [
+    "reflex",
+    "perceptual",
+    "associative",
+    "predictive",
+    "strategic",
+    "metacognitive",
+    "self_repairing",
+    "consolidated"
+  ],
+  "acceptance_gate": {
+    "required_for_go": [
+      "source_traceability",
+      "schemas",
+      "services",
+      "owned_formulas",
+      "fixtures",
+      "deterministic_replay",
+      "immune_scan",
+      "rollback_path",
+      "dashboard_surface",
+      "acceptance_report"
+    ],
+    "hold_if": [
+      "external_action_without_approval",
+      "simulation_executes_real_action",
+      "module_without_tests",
+      "claim_without_evidence",
+      "contradiction_deleted",
+      "source_without_rights",
+      "uncertainty_hidden"
+    ]
+  }
+}
