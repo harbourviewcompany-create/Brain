@@ -11,7 +11,8 @@
     "cognitive immune runtime implemented with alert, quarantine and recovery controls",
     "self-model runtime implemented with capability evidence and overclaim blocking",
     "unknown-mechanism and theory registry implemented with speculative status and preserved alternatives",
-    "fixtures and acceptance reports exist for AGENT-008 through AGENT-015"
+    "fixtures and acceptance reports exist for AGENT-008 through AGENT-015",
+    "developmental runtime handoff exists"
   ],
   "hold": [
     "full Brain completion is not claimed",
