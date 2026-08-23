@@ -1,0 +1,76 @@
+{
+  "registry_id": "neuro-theory-conflict-registry-v1",
+  "status": "APPROVED_FOR_THEORY_CONFLICT_PRESERVATION",
+  "theories": [
+    {
+      "theory_id": "NEURO-THEORY-001",
+      "name": "global workspace theory",
+      "mechanism_area": "conscious access and broadcast",
+      "claim": "Conscious access can be modeled as globally available information broadcast across specialist systems.",
+      "status": "competing",
+      "implementation_posture": "use_as_heuristic",
+      "competing_theory_ids": ["NEURO-THEORY-002"],
+      "linked_unknown_ids": ["NEURO-UNK-001"],
+      "supporting_evidence": ["useful architecture for routing, attention and reportable access proxies"],
+      "contradicting_evidence": ["does not settle phenomenal consciousness or binding mechanisms"],
+      "claim_boundary": "May guide software broadcast and workspace routing only. It is not proof of consciousness.",
+      "owner_object": "NeuroscienceTheory",
+      "runtime_service": "TheoryRegistryService",
+      "fixture_id": "theory_conflict_registry",
+      "test_id": "tests/test_theory_conflict_registry.py",
+      "dashboard": "Theory Conflict Console",
+      "acceptance_criteria": ["competing theory remains linked to explicit conflict", "implementation use remains heuristic"],
+      "go_hold_status": "HOLD"
+    },
+    {
+      "theory_id": "NEURO-THEORY-002",
+      "name": "integrated information theory",
+      "mechanism_area": "consciousness and information integration",
+      "claim": "Consciousness is associated with integrated causal information in a system.",
+      "status": "competing",
+      "implementation_posture": "research_only",
+      "competing_theory_ids": ["NEURO-THEORY-001"],
+      "linked_unknown_ids": ["NEURO-UNK-001"],
+      "supporting_evidence": ["formalizes integration as a candidate explanatory dimension"],
+      "contradicting_evidence": ["not directly operationalized as a Brain implementation claim"],
+      "claim_boundary": "May be tracked as research context only. It cannot authorize claims of consciousness.",
+      "owner_object": "NeuroscienceTheory",
+      "runtime_service": "TheoryRegistryService",
+      "fixture_id": "theory_conflict_registry",
+      "test_id": "tests/test_theory_conflict_registry.py",
+      "dashboard": "Theory Conflict Console",
+      "acceptance_criteria": ["research-only posture is preserved", "conflict with workspace theory is explicit"],
+      "go_hold_status": "HOLD"
+    },
+    {
+      "theory_id": "NEURO-THEORY-003",
+      "name": "predictive processing",
+      "mechanism_area": "perception, action and prediction error",
+      "claim": "Cognition can be modeled as hierarchical prediction and error minimization.",
+      "status": "supported",
+      "implementation_posture": "requires_operator_gate",
+      "competing_theory_ids": [],
+      "linked_unknown_ids": [],
+      "supporting_evidence": ["useful abstraction for prediction, calibration and surprise scoring"],
+      "contradicting_evidence": ["does not replace all cognition and may overgeneralize if used as a universal theory"],
+      "claim_boundary": "May guide prediction-error services, but no single theory may govern all Brain behavior.",
+      "owner_object": "NeuroscienceTheory",
+      "runtime_service": "TheoryRegistryService",
+      "fixture_id": "theory_conflict_registry",
+      "test_id": "tests/test_theory_conflict_registry.py",
+      "dashboard": "Theory Conflict Console",
+      "acceptance_criteria": ["bounded implementation posture is explicit", "universal-theory overclaim is blocked"],
+      "go_hold_status": "GO"
+    }
+  ],
+  "conflicts": [
+    {
+      "conflict_id": "NEURO-CONFLICT-001",
+      "theory_ids": ["NEURO-THEORY-001", "NEURO-THEORY-002"],
+      "conflict_summary": "Workspace broadcast and integrated-information theories make different commitments about conscious access and consciousness conditions.",
+      "resolution_rule": "Preserve both theories. Use workspace as a software heuristic only. Keep integrated information as research-only context unless future evidence changes status.",
+      "operator_surface": "Theory Conflict Console",
+      "acceptance_criteria": ["no silent theory collapse", "no consciousness claim from either theory"]
+    }
+  ]
+}

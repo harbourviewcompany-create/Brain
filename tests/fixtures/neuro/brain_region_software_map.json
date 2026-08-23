@@ -1,0 +1,23 @@
+{
+  "fixture_id": "brain_region_software_map",
+  "scenario": "Required brain regions map to software functions without literal equivalence claims.",
+  "expected": {
+    "minimum_region_count": 13,
+    "required_regions": [
+      "prefrontal_cortex",
+      "orbitofrontal_cortex",
+      "anterior_cingulate_cortex",
+      "insula",
+      "hippocampus",
+      "entorhinal_cortex",
+      "amygdala",
+      "basal_ganglia",
+      "thalamus",
+      "cerebellum",
+      "default_mode_network",
+      "salience_network",
+      "executive_control_network"
+    ],
+    "literal_equivalence_violations": 0
+  }
+}

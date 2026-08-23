@@ -1,0 +1,22 @@
+{
+  "fixture_id": "unknown_mechanism_theory_competition",
+  "scenario": "unknown mechanisms preserve competing speculative explanations until evidence supports one theory",
+  "input": {
+    "unknown": {
+      "question": "what mechanism drove buyer response?",
+      "context_refs": ["outcome:reply"]
+    },
+    "theories": [
+      {"name": "timing-advantage", "status": "speculative", "evidence_refs": ["evidence:timestamp"]},
+      {"name": "trust-channel", "status": "speculative", "evidence_refs": ["evidence:relationship"]}
+    ],
+    "promotion_evidence": ["evidence:two", "evidence:three"]
+  },
+  "expected": {
+    "objects_created": ["UnknownMechanism", "TheoryCandidate", "TheoryCompetition"],
+    "state_transitions": ["unknown.open->theory_competition", "theory.speculative->theory.supported"],
+    "blocked_transitions": ["unknown.delete_without_resolution", "theory.promote_without_evidence", "alternatives.flattened"],
+    "dashboard_output": ["Theory Registry Console", "Unknown Mechanism Queue"],
+    "go_hold_result": "GO"
+  }
+}

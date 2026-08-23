@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0.0",
+  "status": "implemented_for_AGENT_016_runtime_V0",
+  "source_reference": "docs/brain-readable-concept-manual.md",
+  "runtime_file": "brain/developmental/higher_order_cognition.py",
+  "test_file": "tests/test_developmental_higher_order_cognition.py",
+  "fixture": "tests/fixtures/brain/higher_order_cognition_cycle.json",
+  "operator_surface": "docs/operator-surfaces/higher-order-cognition-dashboard.json",
+  "acceptance_report": "reports/acceptance/AGENT-016-higher-order-cognition.json",
+  "subsystems": [
+    {
+      "id": "HOC-001",
+      "name": "Multi-Scale Cognition Map",
+      "objects": ["ScaleNode", "ScaleLink"],
+      "hard_gate": "nodes require source_refs; links require evidence_refs"
+    },
+    {
+      "id": "HOC-002",
+      "name": "Brain Region Translation Layer",
+      "objects": ["BrainRegionMapping"],
+      "hard_gate": "no biological equivalence claim; analogy boundaries required"
+    },
+    {
+      "id": "HOC-003",
+      "name": "Causal World Model",
+      "objects": ["CausalHypothesis"],
+      "hard_gate": "causal claims require evidence and alternative hypotheses"
+    },
+    {
+      "id": "HOC-004",
+      "name": "Curriculum Self-Design",
+      "objects": ["CurriculumTask"],
+      "hard_gate": "curriculum tasks are proposals only and cannot execute external actions"
+    },
+    {
+      "id": "HOC-005",
+      "name": "Benchmark Metacognition",
+      "objects": ["BenchmarkRecord"],
+      "hard_gate": "capability claims require benchmark evidence"
+    },
+    {
+      "id": "HOC-006",
+      "name": "Long-Horizon Developmental Staging",
+      "objects": ["DevelopmentalStageRecord"],
+      "hard_gate": "advanced stage transitions require capability evidence"
+    }
+  ],
+  "blocked_claims": [
+    "full_brain_completion",
+    "consciousness",
+    "biological_equivalence",
+    "superior_intelligence_without_external_benchmarks",
+    "unrestricted_autonomy"
+  ],
+  "permanent_gates": [
+    "approval_gate",
+    "source_rights_gate",
+    "provenance_gate",
+    "immune_gate",
+    "self_model_claim_gate",
+    "benchmark_claim_gate",
+    "uncertainty_preservation_gate"
+  ]
+}

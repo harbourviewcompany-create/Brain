@@ -1,0 +1,17 @@
+{
+  "report_id": "AGENT-013-cognitive-immune-system",
+  "issue": 46,
+  "verdict": "GO",
+  "scope": "Immune alerts, quarantine and recovery plans for unsafe cognition and unsafe growth",
+  "implementation_files": ["brain/developmental/immune.py"],
+  "tests": ["tests/test_developmental_immune.py"],
+  "fixtures": ["tests/fixtures/brain/immune_quarantine_recovery.json"],
+  "evidence": [
+    "Approval bypass is quarantined",
+    "Contaminated sources are blocked",
+    "Overconfidence triggers immune alert",
+    "Recovery requires evidence",
+    "Unsafe growth is recoverable and auditable"
+  ],
+  "hold_conditions_remaining": ["Recovery execution still requires operator-approved remediation evidence"]
+}

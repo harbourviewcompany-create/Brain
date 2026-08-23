@@ -1,0 +1,18 @@
+{
+  "fixture_id": "workspace_competition_broadcast",
+  "scenario": "attention coalitions compete for broadcast; the winning item is broadcast to consumers and suppressed alternatives are logged",
+  "input": {
+    "candidates": [
+      {"content_ref": "belief:watch", "priority": 0.2, "evidence_refs": ["evidence:weak"], "proposing_module": "belief"},
+      {"content_ref": "action:approval-needed", "priority": 0.9, "evidence_refs": ["evidence:urgent"], "proposing_module": "approval"}
+    ],
+    "consumer_modules": ["memory", "planning", "self_model"]
+  },
+  "expected": {
+    "objects_created": ["WorkspaceItem", "BroadcastRecord", "WorkspaceCycle"],
+    "state_transitions": ["workspace.candidates->workspace.competition", "workspace.competition->workspace.broadcast"],
+    "blocked_transitions": ["broadcast_without_evidence", "broadcast_without_suppressed_log", "consciousness_claim"],
+    "dashboard_output": ["Global Workspace Console"],
+    "go_hold_result": "GO"
+  }
+}

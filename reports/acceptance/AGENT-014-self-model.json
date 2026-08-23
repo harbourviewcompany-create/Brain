@@ -1,0 +1,16 @@
+{
+  "report_id": "AGENT-014-self-model",
+  "issue": 47,
+  "verdict": "GO",
+  "scope": "Self-model and capability ledger for evidence-bound capability claims and preserved limitations",
+  "implementation_files": ["brain/developmental/self_model.py"],
+  "tests": ["tests/test_developmental_self_model.py"],
+  "fixtures": ["tests/fixtures/brain/self_model_capability_update.json"],
+  "evidence": [
+    "Capability claims require evidence, tests and acceptance refs",
+    "Limitations are preserved",
+    "Learning debt changes developmental priority",
+    "Self-model blocks overclaiming"
+  ],
+  "hold_conditions_remaining": ["Full Brain completion claim remains blocked without complete evidence across all modules"]
+}

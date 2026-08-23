@@ -1,0 +1,24 @@
+{
+  "surface_id": "developmental-intelligence-dashboard",
+  "status": "read_only_operator_surface",
+  "purpose": "Expose Brain growth, plasticity, consolidation, immune defense, self-model and unknown-mechanism state without enabling external action execution.",
+  "panels": [
+    {"panel": "Prediction Error", "objects": ["PredictionRecord", "PredictionError", "CalibrationTrace", "DevelopmentPressure"], "actions": ["review", "assign_learning_priority"]},
+    {"panel": "Plasticity", "objects": ["CognitiveEdge", "PlasticityEvent", "RewireProposal", "PruningDecision", "RollbackRecord"], "actions": ["review_rewire", "request_rollback"]},
+    {"panel": "Module Genesis", "objects": ["ModuleHypothesis", "ModuleMaturityEvidence", "ModuleActivationRecord"], "actions": ["review_maturity_evidence"]},
+    {"panel": "Global Workspace", "objects": ["WorkspaceItem", "WorkspaceCycle", "BroadcastRecord"], "actions": ["inspect_broadcast", "inspect_suppressed_items"]},
+    {"panel": "Sleep Consolidation", "objects": ["MemoryTrace", "DreamProposal", "ConsolidationRecord"], "actions": ["review_simulation", "approve_followup_ticket"]},
+    {"panel": "Cognitive Immune", "objects": ["ImmuneAlert", "QuarantineRecord", "RecoveryPlan"], "actions": ["review_quarantine", "approve_recovery_plan"]},
+    {"panel": "Self Model", "objects": ["CapabilityClaim", "LimitationRecord", "LearningDebt", "SelfAssessment"], "actions": ["review_capability_claim", "review_overclaim_block"]},
+    {"panel": "Theory Registry", "objects": ["UnknownMechanism", "TheoryCandidate", "TheoryCompetition"], "actions": ["preserve_unknown", "review_theory_promotion"]}
+  ],
+  "blocked_actions": [
+    "execute_external_action",
+    "activate_live_connector",
+    "delete_provenance",
+    "delete_contradiction",
+    "claim_full_brain_completion",
+    "claim_superior_intelligence_without_benchmark_evidence"
+  ],
+  "go_hold": "GO for read-only developmental operator surface; HOLD for autonomous external execution."
+}

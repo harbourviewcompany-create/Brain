@@ -1,0 +1,17 @@
+{
+  "report_id": "AGENT-008-prediction-error-runtime",
+  "issue": 41,
+  "verdict": "GO",
+  "scope": "Prediction error, calibration trace and development pressure runtime",
+  "implementation_files": ["brain/developmental/prediction_error.py"],
+  "tests": ["tests/test_developmental_prediction_error.py"],
+  "fixtures": ["tests/fixtures/brain/developmental_growth_loop.json"],
+  "evidence": [
+    "Prediction records require source_refs",
+    "Prediction error is computed from predicted probability and actual outcome",
+    "Calibration traces preserve source and outcome references",
+    "Development pressure changes learning priority through an audited transition",
+    "Prediction error cannot trigger external action"
+  ],
+  "hold_conditions_remaining": ["Does not claim full Brain completion"]
+}

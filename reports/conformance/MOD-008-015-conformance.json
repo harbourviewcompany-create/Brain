@@ -1,0 +1,119 @@
+{
+  "schema_id": "brain-mod-008-015-conformance-v2",
+  "audit_id": "MOD-008-015-atomic-repair-full-universe-2026-08-23",
+  "audited_commit": "1d92a16aad6693cee6346995bad78fb86552f0b5",
+  "baseline_source": "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json",
+  "verdict": "GO",
+  "go_rule": "All 117 mandatory atomic requirements must PASS on one evidence-bearing implementation commit.",
+  "counts": {
+    "requirements": 117,
+    "PASS": 117,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "module_counts": {
+    "MOD-008": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-009": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-010": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-011": {"PASS": 14, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-012": {"PASS": 11, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-013": {"PASS": 19, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-014": {"PASS": 17, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-015": {"PASS": 17, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"}
+  },
+  "repair_resolution": "The immutable 117-row baseline remains the atomic requirement universe. Every historical non-PASS row is resolved only through its original repair_target issue(s); this report does not substitute new summary requirements for the original IDs.",
+  "repair_certifications": {
+    "54": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
+    },
+    "55": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
+    },
+    "56": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
+    },
+    "57": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
+    },
+    "58": {
+      "status": "PASS",
+      "evidence": [
+        "reports/conformance/MOD-008-015-conformance.json",
+        "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json"
+      ]
+    },
+    "59": {
+      "status": "PASS",
+      "evidence": [
+        "tools/validate_mod_008_015_conformance.py",
+        "tests/test_mod_008_015_conformance_report.py"
+      ]
+    },
+    "60": {
+      "status": "PASS",
+      "evidence": [
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "brain/economic_atomic_lifecycles.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py"
+      ]
+    },
+    "61": {
+      "status": "PASS",
+      "evidence": [
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_conformance_repairs.py"
+      ]
+    },
+    "62": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py"
+      ]
+    }
+  },
+  "supersedes": [
+    "reports/acceptance/MOD-008-015-economic-runtime.json@aggregate-only",
+    "reports/conformance/MOD-008-015-conformance.json@16-row-summary"
+  ],
+  "source_preservation": "The original 117 atomic requirement IDs, source text, dimensions, historical statuses and rationales remain preserved in the immutable baseline file and are used mechanically by the validator to construct the effective current matrix."
+}

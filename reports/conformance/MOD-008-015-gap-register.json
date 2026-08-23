@@ -1,0 +1,53 @@
+{
+  "report_id": "MOD-008-015-gap-register",
+  "status": "repaired",
+  "open_gaps": [],
+  "closed_gaps": [
+    {
+      "gap_id": "M008-M009-PRESSURE-MONEY-PATH",
+      "closed_by": ["brain/economic_conformance.py", "tests/test_mod_008_015_conformance_repairs.py"],
+      "issues": [54]
+    },
+    {
+      "gap_id": "M010-M011-COUNTERPARTY-OPPORTUNITY",
+      "closed_by": ["brain/economic_conformance.py", "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"],
+      "issues": [55]
+    },
+    {
+      "gap_id": "M012-M013-TRANSACTION-SOURCE-MESH",
+      "closed_by": ["brain/economic_conformance.py", "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json"],
+      "issues": [56]
+    },
+    {
+      "gap_id": "M014-M015-ATTRIBUTION-CAPITAL-COMPOUNDING",
+      "closed_by": ["brain/economic_conformance.py", "reports/acceptance/MOD-008-015-atomic-repair.json"],
+      "issues": [57]
+    },
+    {
+      "gap_id": "HISTORICAL-GO-HOLD-CONTRADICTION",
+      "closed_by": ["reports/conformance/MOD-008-015-conformance.json"],
+      "issues": [58]
+    },
+    {
+      "gap_id": "ATOMIC-CONFORMANCE-VALIDATOR",
+      "closed_by": ["tools/validate_mod_008_015_conformance.py", ".github/workflows/test.yml"],
+      "issues": [59]
+    },
+    {
+      "gap_id": "DETERMINISTIC-FIXTURE-UNIVERSE",
+      "closed_by": ["tests/fixtures/brain/mod_008_015_complete_fixture_universe.json"],
+      "issues": [60]
+    },
+    {
+      "gap_id": "OPERATOR-SURFACE-COVERAGE",
+      "closed_by": ["docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"],
+      "issues": [61]
+    },
+    {
+      "gap_id": "STATE-TRANSITION-EVIDENCE",
+      "closed_by": ["brain/economic_conformance.py:EconomicStateMachineService"],
+      "issues": [62]
+    }
+  ],
+  "go_hold": "GO for MOD-008 through MOD-015 repository repair evidence. HOLD remains for live external autonomy and unsupported claims."
+}

@@ -10,10 +10,12 @@ __pycache__
 tests
 reports
 docs
+docs/archive
 scripts
-tools
 data
 infra
+artifacts
+node_modules
 *.md
 !README.md
 .env
