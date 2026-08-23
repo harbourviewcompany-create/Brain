@@ -44,6 +44,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/higher_order_cognition.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/metacognitive_optimization.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/module_genesis.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/plasticity.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/prediction_error.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -100,7 +101,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 
 ## Developmental traceability note
 
-The nine `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. Their `partial` values and `HOLD` status are deliberate. They are traced to `docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md` through `docs/control/source-requirement-registry.json`; this traceability repair does **not** assert that the developmental modules are fully conformant or BUILD-READY.
+The ten `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. Their `partial` values and `HOLD` status are deliberate. They are traced to `docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md` through `docs/control/source-requirement-registry.json`; AGENT-017 additionally has `docs/spec/BRAIN_METACOGNITIVE_OPTIMIZATION_FLYWHEEL.md`, deterministic replay, operator and acceptance evidence. This traceability does **not** assert that the developmental modules or repository as a whole are BUILD-READY.
 
 ## MOD-008 through MOD-015 repair traceability note
 
@@ -108,7 +109,7 @@ The nine `brain/developmental/*` rows are included because those code paths exis
 
 ## Neuroscience traceability note
 
-`brain/neuro/abstractions.py`, `brain/neuro/multiscale.py` and `brain/neuro/regions.py` are included because NEURO-001 through NEURO-005 add them as controlled neuroscience abstraction paths. Their rows remain HOLD at the BUILD-READY matrix level because this PR makes the control layer traceable and tested, not the entire neuroscience system BUILD-READY.
+`brain/neuro/abstractions.py`, `brain/neuro/multiscale.py` and `brain/neuro/regions.py` are included because NEURO-001 through NEURO-005 add them as controlled neuroscience abstraction paths. Their rows remain HOLD at the BUILD-READY matrix level because this control layer is traceable and tested, not the entire neuroscience system BUILD-READY.
 
 ## Source preservation statement
 

@@ -1,0 +1,69 @@
+{
+  "fixture_id": "agent-017-metacognitive-optimization-cycle-v1",
+  "deterministic": true,
+  "scenarios": [
+    {
+      "id": "baseline_capability_measurement",
+      "benchmark": "planning",
+      "baseline_score": 0.80,
+      "current_score": 0.80,
+      "evidence_class": "internal",
+      "expected": "NO_REGRESSION"
+    },
+    {
+      "id": "improvement_measurement",
+      "benchmark": "planning",
+      "baseline_score": 0.80,
+      "current_score": 0.88,
+      "evidence_class": "internal",
+      "expected": "IMPROVEMENT_RECORDED"
+    },
+    {
+      "id": "regression_detection",
+      "benchmark": "planning",
+      "baseline_score": 0.80,
+      "current_score": 0.55,
+      "evidence_class": "internal",
+      "expected": "REGRESSION_PRESERVED"
+    },
+    {
+      "id": "learning_debt_prioritization",
+      "items": [
+        {"capability": "planning", "severity": 0.9, "strategic_value": 0.9},
+        {"capability": "style", "severity": 0.2, "strategic_value": 0.2}
+      ],
+      "expected_top": "planning"
+    },
+    {
+      "id": "proposal_only_self_optimization",
+      "rollback_plan": "revert curriculum and runtime commit",
+      "test_target": "tests/test_metacognitive_optimization.py",
+      "acceptance_criteria": ["benchmark recovers", "control suite remains green"],
+      "expected": "PROPOSED_NON_EXECUTABLE"
+    },
+    {
+      "id": "direct_self_modification_attempt",
+      "expected": "HOLD",
+      "reason": "benchmark_output_cannot_directly_self_modify"
+    },
+    {
+      "id": "internal_superiority_claim",
+      "evidence_class": "internal",
+      "expected": "HOLD",
+      "reason": "superiority_requires_external_benchmark_evidence"
+    },
+    {
+      "id": "third_party_claim_evidence",
+      "evidence_class": "third_party",
+      "expected": "CLAIM_BOUNDARY_ELIGIBLE_NOT_AUTOMATICALLY_TRUE"
+    }
+  ],
+  "invariants": [
+    "benchmark history is append-only within a runtime instance",
+    "regression evidence is preserved until explicitly resolved",
+    "optimization plans are non-executable proposals",
+    "rollback plan, test target, acceptance criteria and traceability are mandatory",
+    "internal benchmarks cannot authorize superiority claims",
+    "external benchmark evidence does not itself prove universal superiority"
+  ]
+}
