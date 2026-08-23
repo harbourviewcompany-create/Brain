@@ -108,25 +108,23 @@ class PostgresEventStore:
             sql += " limit %s"
             params = (limit,)
 
-        with self.pool.connection() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(sql, params)
-                return [self._row_to_event(row) for row in cur.fetchall()]
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(sql, params)
+            return [self._row_to_event(row) for row in cur.fetchall()]
 
     def read_after(self, occurred_at: datetime, event_id: UUID) -> list[BrainEvent]:
-        with self.pool.connection() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(
-                    """
-                    select id, event_type, aggregate_type, aggregate_id,
-                           causation_id, correlation_id, payload, occurred_at
-                    from public.brain_events
-                    where (occurred_at, id) > (%s, %s)
-                    order by occurred_at asc, id asc
-                    """,
-                    (occurred_at, event_id),
-                )
-                return [self._row_to_event(row) for row in cur.fetchall()]
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                select id, event_type, aggregate_type, aggregate_id,
+                       causation_id, correlation_id, payload, occurred_at
+                from public.brain_events
+                where (occurred_at, id) > (%s, %s)
+                order by occurred_at asc, id asc
+                """,
+                (occurred_at, event_id),
+            )
+            return [self._row_to_event(row) for row in cur.fetchall()]
 
     @staticmethod
     def _row_to_event(row: dict[str, Any]) -> BrainEvent:
@@ -173,15 +171,14 @@ class ProjectionCheckpointStore:
             conn.commit()
 
     def get(self, projection_name: str) -> dict[str, Any] | None:
-        with self.pool.connection() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(
-                    """
-                    select projection_name, last_event_id, event_count, state, updated_at
-                    from public.projection_checkpoints
-                    where projection_name = %s
-                    """,
-                    (projection_name,),
-                )
-                row = cur.fetchone()
-                return dict(row) if row else None
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                select projection_name, last_event_id, event_count, state, updated_at
+                from public.projection_checkpoints
+                where projection_name = %s
+                """,
+                (projection_name,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
