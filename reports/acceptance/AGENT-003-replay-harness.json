@@ -1,0 +1,25 @@
+{
+  "report_id": "AGENT-003-replay-harness",
+  "ticket_id": "AGENT-003",
+  "verdict": "GO",
+  "tests": [
+    "test_source_to_signal_replay",
+    "test_replay_is_deterministic",
+    "test_approval_gate_blocks_external_action",
+    "test_reward_pain_reallocation_replay",
+    "test_contradiction_fixture_preserves_both_sides",
+    "test_formula_fixture_emits_audit_trace"
+  ],
+  "fixtures": [
+    "source_signal_evidence_belief",
+    "formula_run_attention_reward",
+    "approval_gate_external_action",
+    "outcome_reward_pain_learning",
+    "contradiction_review"
+  ],
+  "evidence": [
+    "brain/replay.py implements fixture replay",
+    "tests/test_replay_harness.py validates deterministic replay and GO/HOLD output"
+  ],
+  "unresolved_items": []
+}
