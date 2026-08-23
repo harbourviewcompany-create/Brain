@@ -36,6 +36,7 @@
   "go_hold_report": "reports/go-hold/DEVELOPMENTAL_INTELLIGENCE_GO_HOLD.json",
   "manifest": "docs/spec/developmental-intelligence-manifest.json",
   "handoff": "reports/agent-runs/AGENT-008-015-developmental-handoff.md",
+  "issue_state": "implementation evidence committed; issues may be reconciled separately if still open",
   "evidence": [
     "The Brain can now update learning priority from prediction error without external action",
     "The Brain can strengthen, weaken, quarantine, prune and roll back cognitive edges under evidence",
