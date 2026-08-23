@@ -1,0 +1,17 @@
+{
+  "report_id": "AGENT-012-sleep-consolidation",
+  "issue": 45,
+  "verdict": "GO",
+  "scope": "Offline dream simulation, memory compression and provenance-preserving consolidation",
+  "implementation_files": ["brain/developmental/consolidation.py"],
+  "tests": ["tests/test_developmental_consolidation.py"],
+  "fixtures": ["tests/fixtures/brain/sleep_consolidation_cycle.json"],
+  "evidence": [
+    "Memories require source_refs",
+    "Dream proposals are simulated only",
+    "Dream proposals cannot execute external action",
+    "Consolidation preserves provenance while compressing memory",
+    "Compression does not delete source evidence"
+  ],
+  "hold_conditions_remaining": ["Dream outputs remain proposal-only and require downstream approval gates"]
+}
