@@ -1,0 +1,17 @@
+{
+  "report_id": "AGENT-002-formula-runtime",
+  "ticket_id": "AGENT-002",
+  "verdict": "GO",
+  "tests": [
+    "test_formula_registry_has_required_formulas",
+    "test_formula_owner_input_output_and_decision_trace",
+    "test_bayesian_update_and_brier_score_are_bounded",
+    "test_missing_formula_inputs_fail"
+  ],
+  "fixtures": ["formula_run_attention_reward"],
+  "evidence": [
+    "brain/formulas.py implements deterministic formula registry",
+    "FormulaRunResult preserves owner object, service, store, dashboard, decision consequence and audit evidence"
+  ],
+  "unresolved_items": []
+}
