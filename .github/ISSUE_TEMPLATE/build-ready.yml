@@ -1,0 +1,61 @@
+name: BUILD-READY Brain module
+about: Declare a Brain module or build slice ready only when every required control field exists.
+title: "[BUILD-READY] "
+labels:
+  - BUILD-READY
+  - control
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this only when a module or build slice has all required implementation-readiness fields.
+  - type: input
+    id: module_id
+    attributes:
+      label: Module or slice ID
+    validations:
+      required: true
+  - type: textarea
+    id: source_records
+    attributes:
+      label: Source records
+      description: List preserved source paths, citations, archive references, or control documents.
+    validations:
+      required: true
+  - type: checkboxes
+    id: required_fields
+    attributes:
+      label: Required BUILD-READY fields
+      options:
+        - label: owner object
+          required: true
+        - label: schema
+          required: true
+        - label: runtime service
+          required: true
+        - label: state machine
+          required: true
+        - label: fixtures
+          required: true
+        - label: tests
+          required: true
+        - label: acceptance criteria
+          required: true
+        - label: audit events
+          required: true
+        - label: GO/HOLD status
+          required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation evidence
+      description: Commands run, results, and unresolved gaps.
+    validations:
+      required: true
+  - type: textarea
+    id: traceability
+    attributes:
+      label: Traceability statement
+      description: Explain how source maps to implementation, tests, and acceptance evidence.
+    validations:
+      required: true

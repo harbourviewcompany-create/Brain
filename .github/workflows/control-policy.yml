@@ -1,0 +1,41 @@
+name: Brain Control Policy
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - control/enforce-agent-build-rules
+
+jobs:
+  control-policy:
+    name: Validate Brain control policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile validator scripts
+        run: |
+          python -m py_compile scripts/validate_control_layer.py scripts/validate_archive_manifest.py scripts/validate_pr_body.py scripts/ingest_current_thread_archive.py
+
+      - name: Validate control layer
+        run: |
+          python scripts/validate_control_layer.py
+
+      - name: Validate archive manifest
+        run: |
+          python scripts/validate_archive_manifest.py
+
+      - name: Validate pull request body
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          python scripts/validate_pr_body.py
