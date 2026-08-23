@@ -1,0 +1,16 @@
+{
+  "report_id": "AGENT-004-contradiction-review",
+  "ticket_id": "AGENT-004",
+  "verdict": "GO",
+  "tests": [
+    "test_contradictions_are_preserved",
+    "test_conflicts_require_review_status",
+    "test_no_silent_resolution_by_agent_preference"
+  ],
+  "fixtures": ["contradiction_review"],
+  "evidence": [
+    "brain/contradiction_queue.py preserves both sides of a conflict",
+    "tests/test_contradiction_queue.py blocks agent-preference resolution"
+  ],
+  "unresolved_items": []
+}
