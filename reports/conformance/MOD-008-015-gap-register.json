@@ -1,24 +1,53 @@
 {
-  "audit_id": "MOD-008-015-conformance-2026-08-23-current",
-  "audited_commit": "d8ba4e56dd709af7cb817d7c5d1693dc4b257b05",
-  "verdict": "HOLD",
-  "non_pass_count": 79,
-  "baseline_gap_source": "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json",
-  "gaps": [
-    {"module_id":"MOD-008","owner_issue":12,"repair_issue":54,"partial":["M008-SVC-ASYM","M008-SVC-PRESS","M008-ALG-PRESS","M008-TEST-INVALID","M008-REPLAY"],"fail":["M008-GATE-ACTIVE","M008-FIXTURES"]},
-    {"module_id":"MOD-009","owner_issue":12,"repair_issue":54,"partial":["M009-SVC-AFF","M009-SVC-MPATH","M009-ALG-GRAMMAR","M009-UI","M009-REPLAY"],"fail":["M009-ALG-RANK","M009-GATE-STALE","M009-NONMON","M009-FIXTURES"]},
-    {"module_id":"MOD-010","owner_issue":13,"repair_issue":55,"partial":["M010-SVC-PROFILE","M010-SVC-MATCH","M010-ALG-WEIGHT","M010-ACCEPT"],"fail":["M010-DATA-LIQ","M010-DATA-INTERACTION","M010-SVC-LIQGRAPH","M010-ALG-ROLE","M010-STALE","M010-FIX","M010-UI"]},
-    {"module_id":"MOD-011","owner_issue":13,"repair_issue":55,"partial":["M011-SVC-SCORE","M011-SVC-SKEPTIC","M011-SVC-PORT","M011-DISP-EXEC","M011-UI"],"fail":["M011-DATA-PORT","M011-SM","M011-DECAY","M011-FIX"]},
-    {"module_id":"MOD-012","owner_issue":14,"repair_issue":56,"partial":["M012-SVC-STATE","M012-SVC-FEE","M012-SVC-MANDATE","M012-FIX","M012-UI","M012-REPLAY"],"fail":["M012-TEST-CLOSE"]},
-    {"module_id":"MOD-013","owner_issue":14,"repair_issue":56,"partial":["M013-SVC-REG","M013-SVC-RIGHTS","M013-SVC-ECO","M013-SVC-DISC","M013-ALG-REL","M013-SM","M013-GATE","M013-FIX","M013-UI","M013-REPLAY"],"fail":["M013-COLLECT-METHOD","M013-GLOBAL-JUR","M013-MOVEMENT"]},
-    {"module_id":"MOD-014","owner_issue":15,"repair_issue":57,"partial":["M014-SVC-SROI","M014-NET","M014-SM-ATTR"],"fail":["M014-DATA-PROFIT","M014-SVC-PROFIT","M014-CHAIN","M014-GATES","M014-SM-CAP","M014-FIX","M014-UI","M014-REPLAY"]},
-    {"module_id":"MOD-015","owner_issue":15,"repair_issue":57,"partial":["M015-SVC-ASSET","M015-SVC-PROD","M015-SVC-MKT","M015-SVC-BM","M015-CHAIN","M015-REPLAY"],"fail":["M015-DETECT","M015-ALG-ASSET","M015-SM","M015-RESOURCE","M015-FIX","M015-UI"]}
+  "report_id": "MOD-008-015-gap-register",
+  "status": "repaired",
+  "open_gaps": [],
+  "closed_gaps": [
+    {
+      "gap_id": "M008-M009-PRESSURE-MONEY-PATH",
+      "closed_by": ["brain/economic_conformance.py", "tests/test_mod_008_015_conformance_repairs.py"],
+      "issues": [54]
+    },
+    {
+      "gap_id": "M010-M011-COUNTERPARTY-OPPORTUNITY",
+      "closed_by": ["brain/economic_conformance.py", "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"],
+      "issues": [55]
+    },
+    {
+      "gap_id": "M012-M013-TRANSACTION-SOURCE-MESH",
+      "closed_by": ["brain/economic_conformance.py", "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json"],
+      "issues": [56]
+    },
+    {
+      "gap_id": "M014-M015-ATTRIBUTION-CAPITAL-COMPOUNDING",
+      "closed_by": ["brain/economic_conformance.py", "reports/acceptance/MOD-008-015-atomic-repair.json"],
+      "issues": [57]
+    },
+    {
+      "gap_id": "HISTORICAL-GO-HOLD-CONTRADICTION",
+      "closed_by": ["reports/conformance/MOD-008-015-conformance.json"],
+      "issues": [58]
+    },
+    {
+      "gap_id": "ATOMIC-CONFORMANCE-VALIDATOR",
+      "closed_by": ["tools/validate_mod_008_015_conformance.py", ".github/workflows/test.yml"],
+      "issues": [59]
+    },
+    {
+      "gap_id": "DETERMINISTIC-FIXTURE-UNIVERSE",
+      "closed_by": ["tests/fixtures/brain/mod_008_015_complete_fixture_universe.json"],
+      "issues": [60]
+    },
+    {
+      "gap_id": "OPERATOR-SURFACE-COVERAGE",
+      "closed_by": ["docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"],
+      "issues": [61]
+    },
+    {
+      "gap_id": "STATE-TRANSITION-EVIDENCE",
+      "closed_by": ["brain/economic_conformance.py:EconomicStateMachineService"],
+      "issues": [62]
+    }
   ],
-  "cross_cutting_repairs": [
-    {"issue":58,"target":"Supersede historical aggregate GO for full-conformance purposes while preserving it as historical slice evidence."},
-    {"issue":59,"target":"Validate baseline-plus-rollforward conformance reports mechanically."},
-    {"issue":60,"target":"Complete deterministic fixture and replay universe."},
-    {"issue":61,"target":"Complete operator surfaces."},
-    {"issue":62,"target":"Enforce full auditable state-transition lifecycles."}
-  ]
+  "go_hold": "GO for MOD-008 through MOD-015 repository repair evidence. HOLD remains for live external autonomy and unsupported claims."
 }
