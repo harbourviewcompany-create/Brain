@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -12,10 +13,11 @@ from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
+from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
 
-app = FastAPI(title="Brain Runtime API", version="0.4.0")
+app = FastAPI(title="Brain Runtime API", version="0.5.0")
 
 _memory_store = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
@@ -27,6 +29,7 @@ learning = LearningService(
     attributions=_learning_store,
     sources=_learning_store,
 )
+money_spine = MoneySpineService()
 
 
 def _configure_from_env() -> None:
@@ -105,6 +108,49 @@ class RecordOutcomeRequest(BaseModel):
     source_keys: list[str] = Field(default_factory=list)
 
 
+class RevenueSignalRequest(BaseModel):
+    raw_signal: str
+    source_id: str
+    money_lane_id: str
+    evidence_refs: list[str] = Field(default_factory=list)
+    named_buyer: str | None = None
+    named_seller: str | None = None
+    decision_maker: str | None = None
+    visible_pain: str | None = None
+    urgency_reason: str | None = None
+    payment_path: str | None = None
+    contact_channel: str | None = None
+    commercial_value: float = Field(default=0.5, ge=0, le=1)
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    urgency: float = Field(default=0.0, ge=0, le=1)
+    contactability: float = Field(default=0.0, ge=0, le=1)
+    execution_difficulty: float = Field(default=0.5, ge=0, le=1)
+    legal_access_risk: float = Field(default=0.0, ge=0, le=1)
+    time_delay: float = Field(default=0.0, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ExperimentResultRequest(BaseModel):
+    lane_id: str
+    outreach_sent: int = Field(ge=0)
+    replies: int = Field(ge=0)
+    meetings: int = Field(ge=0)
+    paid_conversions: int = Field(ge=0)
+    revenue: float = Field(ge=0)
+    operator_hours: float = Field(ge=0)
+    price: float | None = Field(default=None, ge=0)
+
+
+class DailyRevenueReportRequest(BaseModel):
+    raw_signals_reviewed: int = Field(ge=0)
+    signals_logged: int = Field(ge=0)
+    qualified_opportunities: int = Field(ge=0)
+    prioritized_opportunities: int = Field(ge=0)
+    direct_revenue_actions: int = Field(ge=0)
+    sellable_assets_created: int = Field(ge=0)
+    lessons_recorded: int = Field(ge=0)
+
+
 def _serialize_prediction(p) -> dict[str, Any]:
     return {
         "id": str(p.id),
@@ -153,10 +199,11 @@ def health():
         pass
     return {
         "status": "ok",
-        "version": "0.4.0",
+        "version": "0.5.0",
         "beliefs": len(runtime.store.beliefs),
         "events": event_count,
         "predictions": len(getattr(_learning_store, "predictions", {})),
+        "money_lanes": len(money_spine.lanes),
     }
 
 
@@ -266,3 +313,59 @@ def record_outcome(body: RecordOutcomeRequest):
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _serialize_learning(result)
+
+
+@app.get("/money-lanes")
+def list_money_lanes():
+    return [asdict(lane) for lane in money_spine.lanes.values()]
+
+
+@app.post("/revenue-signals/score")
+def score_revenue_signal(body: RevenueSignalRequest):
+    signal = RevenueSignal(**body.model_dump())
+    try:
+        scored = money_spine.score_signal(signal)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="money_lane_not_found") from exc
+    return asdict(scored)
+
+
+@app.post("/revenue-signals/package")
+def package_revenue_signal(body: RevenueSignalRequest):
+    signal = RevenueSignal(**body.model_dump())
+    try:
+        scored = money_spine.score_signal(signal)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="money_lane_not_found") from exc
+    if not scored.actionable:
+        return {"error": "opportunity_rejected", "score": asdict(scored)}
+    offer = money_spine.package_offer(signal, scored)
+    return {"score": asdict(scored), "offer": asdict(offer)}
+
+
+@app.post("/revenue-experiments/evaluate")
+def evaluate_revenue_experiment(body: ExperimentResultRequest):
+    try:
+        experiment = money_spine.create_experiment(body.lane_id, price=body.price)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="money_lane_not_found") from exc
+    result = money_spine.evaluate_experiment(
+        experiment,
+        outreach_sent=body.outreach_sent,
+        replies=body.replies,
+        meetings=body.meetings,
+        paid_conversions=body.paid_conversions,
+        revenue=body.revenue,
+        operator_hours=body.operator_hours,
+    )
+    return {"experiment": asdict(experiment), "result": asdict(result)}
+
+
+@app.post("/daily-revenue-report")
+def daily_revenue_report(body: DailyRevenueReportRequest):
+    report = DailyRevenueReport(**body.model_dump())
+    return {
+        "passed": report.passed,
+        "gaps": report.gaps,
+        "report": asdict(report),
+    }

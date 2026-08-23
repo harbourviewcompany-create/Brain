@@ -13,14 +13,16 @@
     {"source_id": "SRC-BUILD-PLAN", "path": "docs/build-plan.md", "label": "SOURCE"},
     {"source_id": "SRC-FUNCTION-MAP", "path": "docs/brain-function-map.md", "label": "SOURCE"},
     {"source_id": "SRC-CONTROL", "path": "docs/control", "label": "APPROVED"},
-    {"source_id": "SRC-ARCHIVE-WORKFLOW", "path": "docs/archive", "label": "APPROVED"}
+    {"source_id": "SRC-ARCHIVE-WORKFLOW", "path": "docs/archive", "label": "APPROVED"},
+    {"source_id": "SRC-V1-MONEY-SPINE", "path": "docs/revenue/V1_MONEY_SPINE.md", "label": "APPROVED"}
   ],
   "requirements": [
     {"requirement_id": "REQ-BRAIN-RUNTIME-MODULES", "source_ids": ["SRC-README", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-FUNCTION-MAP"], "label": "APPROVED"},
     {"requirement_id": "REQ-BRAIN-ADAPTERS", "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN"], "label": "APPROVED"},
     {"requirement_id": "REQ-BRAIN-APPS", "source_ids": ["SRC-README", "SRC-BUILD-PLAN"], "label": "APPROVED"},
     {"requirement_id": "REQ-CONTROL-ENFORCEMENT", "source_ids": ["SRC-CONTROL"], "label": "APPROVED"},
-    {"requirement_id": "REQ-ARCHIVE-INGESTION", "source_ids": ["SRC-ARCHIVE-WORKFLOW"], "label": "APPROVED"}
+    {"requirement_id": "REQ-ARCHIVE-INGESTION", "source_ids": ["SRC-ARCHIVE-WORKFLOW"], "label": "APPROVED"},
+    {"requirement_id": "REQ-V1-MONEY-SPINE", "source_ids": ["SRC-README", "SRC-BUILD-PLAN", "SRC-V1-MONEY-SPINE"], "label": "APPROVED"}
   ],
   "code_module_records": [
     {
@@ -75,6 +77,24 @@
       "audit_events": ["TRACEABILITY_RECORD_VERIFIED"],
       "source_preservation": "preserved",
       "unresolved_gaps": ["expand per-module traceability before BUILD-READY"]
+    },
+    {
+      "record_id": "TRACE-V1-MONEY-SPINE",
+      "paths": ["brain/money_spine.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-README", "SRC-BUILD-PLAN", "SRC-V1-MONEY-SPINE"],
+      "requirement_ids": ["REQ-V1-MONEY-SPINE"],
+      "owner_object": "V1 Money Spine commercial execution module",
+      "schema": "MoneyLane, RevenueSignal, ScoredOpportunity, PackagedOffer, RevenueExperiment, RevenueExperimentResult, DailyRevenueReport",
+      "runtime_service": "MoneySpineService",
+      "state_machine": "signal -> no-fantasy review -> scored opportunity -> packaged offer -> experiment -> outcome learning -> daily quota",
+      "fixtures": ["tests/test_money_spine.py", "tests/test_money_api.py", "data/opportunities/v1_seed_money_lanes.json"],
+      "tests": ["python -m pytest -q", "ruff check ."],
+      "acceptance_criteria": ["actionable signals can be scored and packaged", "weak signals are rejected", "experiments return scale/modify/kill/continue decisions", "daily quota rejects passive research days"],
+      "audit_events": ["MONEY_SPINE_SIGNAL_SCORED", "MONEY_SPINE_OFFER_PACKAGED", "MONEY_SPINE_EXPERIMENT_EVALUATED", "MONEY_SPINE_DAILY_QUOTA_REVIEWED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["persistent MoneySpine adapter pending", "10,000-lane registry import pending", "source connectors pending", "operator cockpit pending"]
     },
     {
       "record_id": "TRACE-BRAIN-ADAPTERS",
