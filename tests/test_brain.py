@@ -1,8 +1,13 @@
 from brain.attention import AttentionMarket, AttentionSignal
+from brain.cognitive_state import HomeostaticState, NeuromodulatorState
 from brain.domain import Edge, Evidence, Node, Outcome
+from brain.homeostasis import HomeostasisEngine
+from brain.projections import default_projection_engine
+from brain.protocol import EventProtocol
 from brain.reward import RewardSystem
 from brain.rewiring import RewiringEngine
 from brain.runtime import BrainRuntime
+from brain.scheduler import CognitiveScheduler, CognitiveTask
 
 
 def test_belief_updates_and_contradiction_event():
@@ -36,12 +41,6 @@ def test_reward_penalizes_legal_risk():
     safe = Outcome(Node("x", "y").id, 1, 0.1, 1, legal_risk=0)
     risky = Outcome(Node("x", "z").id, 1, 0.1, 1, legal_risk=1)
     assert system.score(safe) > system.score(risky)
-
-from brain.cognitive_state import HomeostaticState, NeuromodulatorState
-from brain.homeostasis import HomeostasisEngine
-from brain.projections import default_projection_engine
-from brain.protocol import EventProtocol
-from brain.scheduler import CognitiveScheduler, CognitiveTask
 
 
 def test_event_protocol_and_replay():

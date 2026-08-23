@@ -1,0 +1,54 @@
+name: BLOCKED Brain work
+about: Record a blocked Brain build, control, archive, or review item without deleting or narrowing source.
+title: "[BLOCKED] "
+labels:
+  - BLOCKED
+  - control
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when work cannot proceed because approval, source, tests, schema, fixtures, governance, or implementation detail is missing.
+  - type: input
+    id: source_id
+    attributes:
+      label: Source ID or path
+      description: Preserved source, archive path, user instruction, or citation.
+    validations:
+      required: true
+  - type: dropdown
+    id: source_authority
+    attributes:
+      label: Source authority
+      options:
+        - SOURCE
+        - APPROVED
+        - PROPOSAL
+        - SPECULATIVE
+        - REVIEW-ONLY
+        - BLOCKED
+        - BUILD-READY
+    validations:
+      required: true
+  - type: textarea
+    id: blocker
+    attributes:
+      label: Blocker
+      description: State exactly why the work is blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: unblock_condition
+    attributes:
+      label: Unblock condition
+      description: What approval, artifact, test, schema, fixture, or decision is required.
+    validations:
+      required: true
+  - type: textarea
+    id: preservation_statement
+    attributes:
+      label: Source preservation statement
+      description: Confirm that no source was deleted, narrowed, or reinterpreted.
+      value: "No source material is deleted or narrowed by this BLOCKED record."
+    validations:
+      required: true

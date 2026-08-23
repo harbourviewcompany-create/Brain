@@ -1,0 +1,53 @@
+name: SOURCE preservation record
+about: Record supplied Brain source material before transformation, implementation, or review.
+title: "[SOURCE] "
+labels:
+  - SOURCE
+  - control
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this to preserve a source pointer or source intake record. Summary is not a substitute for source preservation.
+  - type: input
+    id: source_id
+    attributes:
+      label: Source ID
+      description: Stable ID for this source record.
+    validations:
+      required: true
+  - type: textarea
+    id: source_location
+    attributes:
+      label: Source location
+      description: Repo path, archive path, citation, PR, issue, upload, or instruction pointer.
+    validations:
+      required: true
+  - type: dropdown
+    id: authority_label
+    attributes:
+      label: Authority label
+      options:
+        - SOURCE
+        - APPROVED
+        - PROPOSAL
+        - SPECULATIVE
+        - REVIEW-ONLY
+        - BLOCKED
+        - BUILD-READY
+    validations:
+      required: true
+  - type: textarea
+    id: preserved_content_description
+    attributes:
+      label: Preserved content description
+      description: Describe what was preserved without filtering or narrowing.
+    validations:
+      required: true
+  - type: textarea
+    id: downstream_use
+    attributes:
+      label: Downstream use
+      description: Planned docs, ontology, module, test, or review use.
+    validations:
+      required: false
