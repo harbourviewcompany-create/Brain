@@ -1,0 +1,50 @@
+{
+  "dashboard_id": "transaction-source-rights-console",
+  "status": "read_only_operator_surface_spec",
+  "sections": [
+    {
+      "name": "Transaction Control Console",
+      "fields": [
+        "transaction_id",
+        "jurisdiction",
+        "fee_sensitive",
+        "mandate_status",
+        "fee_agreement_status",
+        "origination_evidence_status",
+        "jurisdiction_review_status",
+        "operator_approval_status",
+        "GO_HOLD"
+      ]
+    },
+    {
+      "name": "Source Rights Console",
+      "fields": [
+        "source_key",
+        "rights_class",
+        "jurisdiction",
+        "permitted_collection",
+        "permitted_storage",
+        "permitted_commercial_use",
+        "required_approval",
+        "GO_HOLD"
+      ]
+    },
+    {
+      "name": "Global Source Mesh",
+      "fields": [
+        "source_plane_category",
+        "discovered_from",
+        "evidence_ref",
+        "source_roi",
+        "opportunity_yield",
+        "false_positive_rate"
+      ]
+    }
+  ],
+  "prohibited_actions": [
+    "execute_transaction_disclosure",
+    "activate_live_connector",
+    "bypass_rights_review",
+    "assume_legal_enforceability"
+  ]
+}
