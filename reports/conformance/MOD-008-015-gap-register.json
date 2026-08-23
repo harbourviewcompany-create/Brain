@@ -1,0 +1,23 @@
+{
+  "audit_id": "MOD-008-015-conformance-2026-08-23",
+  "audited_commit": "c18bea9b18551bc656593fd3e0875c3d80695ca0",
+  "verdict": "HOLD",
+  "non_pass_count": 79,
+  "gaps": [
+    {"module_id":"MOD-008","owner_issue":12,"repair_issue":54,"partial":["M008-SVC-ASYM","M008-SVC-PRESS","M008-ALG-PRESS","M008-TEST-INVALID","M008-REPLAY"],"fail":["M008-GATE-ACTIVE","M008-FIXTURES"],"repair_target":"Complete service ownership, pressure activation hard gate, invalidation tests, fixtures and replay."},
+    {"module_id":"MOD-009","owner_issue":12,"repair_issue":54,"partial":["M009-SVC-AFF","M009-SVC-MPATH","M009-ALG-GRAMMAR","M009-UI","M009-REPLAY"],"fail":["M009-ALG-RANK","M009-GATE-STALE","M009-NONMON","M009-FIXTURES"],"repair_target":"Complete path ranking/comparison, expiry enforcement, non-monetizable disposition, fixtures/replay and explorer."},
+    {"module_id":"MOD-010","owner_issue":13,"repair_issue":55,"partial":["M010-SVC-PROFILE","M010-SVC-MATCH","M010-ALG-WEIGHT","M010-ACCEPT"],"fail":["M010-DATA-LIQ","M010-DATA-INTERACTION","M010-SVC-LIQGRAPH","M010-ALG-ROLE","M010-STALE","M010-FIX","M010-UI"],"repair_target":"Add liquidity preferences/interactions, role inference, response history, staleness, graph, fixtures/replay and UI."},
+    {"module_id":"MOD-011","owner_issue":13,"repair_issue":55,"partial":["M011-SVC-SCORE","M011-SVC-SKEPTIC","M011-SVC-PORT","M011-DISP-EXEC","M011-UI"],"fail":["M011-DATA-PORT","M011-SM","M011-DECAY","M011-FIX"],"repair_target":"Persist portfolio, implement lifecycle/decay/expiry, complete dispositions, fixtures/replay and board."},
+    {"module_id":"MOD-012","owner_issue":14,"repair_issue":56,"partial":["M012-SVC-STATE","M012-SVC-FEE","M012-SVC-MANDATE","M012-UI","M012-REPLAY"],"fail":["M012-TEST-CLOSE","M012-FIX"],"repair_target":"Complete service boundaries, close/loss lifecycle tests, transaction fixture/replay family and operator pipeline."},
+    {"module_id":"MOD-013","owner_issue":14,"repair_issue":56,"partial":["M013-SVC-REG","M013-SVC-RIGHTS","M013-SVC-ECO","M013-SVC-DISC","M013-ALG-REL","M013-SM","M013-GATE","M013-UI","M013-REPLAY"],"fail":["M013-COLLECT-METHOD","M013-GLOBAL-JUR","M013-MOVEMENT","M013-FIX"],"repair_target":"Complete source lifecycle/provenance, collection method, international jurisdiction model, movement detector, fixture/replay and source mesh UI."},
+    {"module_id":"MOD-014","owner_issue":15,"repair_issue":57,"partial":["M014-SVC-SROI","M014-NET","M014-SM-ATTR"],"fail":["M014-DATA-PROFIT","M014-SVC-PROFIT","M014-CHAIN","M014-GATES","M014-SM-CAP","M014-FIX","M014-UI","M014-REPLAY"],"repair_target":"Add ProfitEvent/normalizer, full causal attribution chain and downstream gates, capital lifecycle, fixtures/replay and operator ledger."},
+    {"module_id":"MOD-015","owner_issue":15,"repair_issue":57,"partial":["M015-SVC-ASSET","M015-SVC-PROD","M015-SVC-MKT","M015-SVC-BM","M015-CHAIN","M015-REPLAY"],"fail":["M015-DETECT","M015-ALG-ASSET","M015-SM","M015-RESOURCE","M015-FIX","M015-UI"],"repair_target":"Add automatic repeat detection, strategic-asset scoring, transition-enforced emergence, universal resource gate, fixtures/replay and build-candidate board."}
+  ],
+  "cross_cutting_repairs": [
+    {"issue":58,"target":"Mark historical aggregate GO as superseded/contradicted by atomic audit without deleting historical evidence."},
+    {"issue":59,"target":"Add automated conformance schema/report validation."},
+    {"issue":60,"target":"Build complete deterministic fixture and replay universe."},
+    {"issue":61,"target":"Build complete operator surfaces."},
+    {"issue":62,"target":"Enforce complete auditable state-transition lifecycle semantics."}
+  ]
+}
