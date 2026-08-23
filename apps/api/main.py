@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from brain.adapters.belief_store import PostgresBeliefStore, serialize_belief
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
 from brain.learning import LearningService
@@ -18,7 +19,7 @@ from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSign
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
 
-app = FastAPI(title="Brain Runtime API", version="0.5.0")
+app = FastAPI(title="Brain Runtime API", version="0.5.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,6 +31,10 @@ app.add_middleware(
 
 _memory_store = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
+_event_store: Any = None
+_belief_store: PostgresBeliefStore | None = None
+_durable = False
+
 runtime = BrainRuntime(store=_memory_store)
 learning = LearningService(
     _memory_store,
@@ -42,7 +47,7 @@ money_spine = MoneySpineService()
 
 
 def _configure_from_env() -> None:
-    global learning
+    global learning, runtime, _event_store, _belief_store, _durable
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
@@ -58,6 +63,37 @@ def _configure_from_env() -> None:
         return
 
     event_store = PostgresEventStore(dsn)
+    _event_store = event_store
+    _belief_store = PostgresBeliefStore(event_store.pool)
+    _durable = True
+
+    # Dual-write: in-memory working set + durable event ledger + belief projection
+    runtime = BrainRuntime(
+        store=_memory_store,
+        event_store=event_store,
+        belief_projection=_belief_store,
+    )
+
+    # Hydrate working set from projection (fast path)
+    try:
+        loaded = _belief_store.load_into(_memory_store.beliefs)
+    except Exception:
+        loaded = 0
+
+    # If projection empty, try event replay via hydrate helper
+    if loaded == 0:
+        try:
+            from brain.hydrate import hydrate_belief_cache
+
+            hydrate_belief_cache(_memory_store.beliefs, event_store, from_checkpoint=False)
+            for b in _memory_store.beliefs.values():
+                try:
+                    _belief_store.upsert(b)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     learning = LearningService(
         event_store,
         predictions=PostgresPredictionStore(event_store.pool),
@@ -201,14 +237,21 @@ def _serialize_learning(result) -> dict[str, Any]:
 def health():
     event_count = len(getattr(_memory_store, "events", []) or [])
     try:
-        if hasattr(learning.event_store, "read_all"):
-            event_count = len(learning.event_store.read_all())
+        if _event_store is not None and hasattr(_event_store, "read_all"):
+            event_count = len(_event_store.read_all())
     except Exception:
         pass
+    belief_count = len(runtime.store.beliefs)
+    if _belief_store is not None:
+        try:
+            belief_count = max(belief_count, len(_belief_store.list_all()))
+        except Exception:
+            pass
     return {
         "status": "ok",
-        "version": "0.5.0",
-        "beliefs": len(runtime.store.beliefs),
+        "version": "0.5.1",
+        "durable": _durable,
+        "beliefs": belief_count,
         "events": event_count,
         "predictions": len(getattr(_learning_store, "predictions", {})),
         "money_lanes": len(money_spine.lanes),
@@ -217,31 +260,31 @@ def health():
 
 @app.get("/beliefs")
 def list_beliefs():
-    items = []
-    for b in runtime.store.beliefs.values():
-        items.append({
-            "id": str(b.id),
-            "statement": b.statement,
-            "confidence": b.confidence,
-            "state": str(b.state),
-            "version": getattr(b, "version", 1),
-            "created_at": b.created_at.isoformat() if getattr(b, "created_at", None) else None,
-        })
-    return {"items": items, "total": len(items)}
+    # Prefer durable projection when available
+    if _belief_store is not None:
+        try:
+            items = [serialize_belief(b) for b in _belief_store.list_all()]
+            return {"items": items, "total": len(items), "source": "postgres"}
+        except Exception:
+            pass
+    items = [serialize_belief(b) for b in runtime.store.beliefs.values()]
+    return {"items": items, "total": len(items), "source": "memory"}
 
 
 @app.get("/beliefs/{belief_id}")
 def get_belief(belief_id: str):
-    belief = runtime.store.beliefs.get(UUID(belief_id))
+    bid = UUID(belief_id)
+    if _belief_store is not None:
+        try:
+            belief = _belief_store.get(bid)
+            if belief is not None:
+                return serialize_belief(belief)
+        except Exception:
+            pass
+    belief = runtime.store.beliefs.get(bid)
     if belief is None:
         raise HTTPException(status_code=404, detail="belief_not_found")
-    return {
-        "id": str(belief.id),
-        "statement": belief.statement,
-        "confidence": belief.confidence,
-        "state": str(belief.state),
-        "version": getattr(belief, "version", 1),
-    }
+    return serialize_belief(belief)
 
 
 @app.get("/predictions")
@@ -255,28 +298,22 @@ def list_predictions():
 @app.post("/beliefs")
 def create_belief(body: CreateBeliefRequest):
     belief = runtime.create_belief(body.statement, body.confidence)
-    return {
-        "id": str(belief.id),
-        "statement": belief.statement,
-        "confidence": belief.confidence,
-        "state": str(belief.state),
-    }
+    return serialize_belief(belief)
 
 
 @app.post("/learn")
 def learn(body: LearnRequest):
-    belief = runtime.store.beliefs.get(UUID(body.belief_id))
+    bid = UUID(body.belief_id)
+    belief = runtime.store.beliefs.get(bid)
+    if belief is None and _belief_store is not None:
+        belief = _belief_store.get(bid)
+        if belief is not None:
+            runtime.store.beliefs[bid] = belief
     if belief is None:
         raise HTTPException(status_code=404, detail="belief_not_found")
     evidence = Evidence(claim=body.claim, source_id=body.source_id, reliability=body.reliability)
     updated = runtime.learn(belief, evidence, body.supports)
-    return {
-        "id": str(updated.id),
-        "statement": updated.statement,
-        "confidence": updated.confidence,
-        "state": str(updated.state),
-        "version": updated.version,
-    }
+    return serialize_belief(updated)
 
 
 @app.post("/edges")
