@@ -15,7 +15,9 @@
     {"source_id": "SRC-CONTROL", "path": "docs/control", "label": "APPROVED"},
     {"source_id": "SRC-ARCHIVE-WORKFLOW", "path": "docs/archive", "label": "APPROVED"},
     {"source_id": "SRC-V1-MONEY-SPINE", "path": "docs/revenue/V1_MONEY_SPINE.md", "label": "APPROVED"},
-    {"source_id": "SRC-CAPITAL-CORTEX", "path": "docs/spec/CAPITAL_DISCOVERY_CORTEX.md", "label": "APPROVED"}
+    {"source_id": "SRC-CAPITAL-CORTEX", "path": "docs/spec/CAPITAL_DISCOVERY_CORTEX.md", "label": "APPROVED"},
+    {"source_id": "SRC-DEVELOPMENTAL", "path": "docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md", "label": "APPROVED"},
+    {"source_id": "SRC-NEUROSCIENCE", "path": "docs/neuroscience", "label": "APPROVED"}
   ],
   "requirements": [
     {"requirement_id": "REQ-BRAIN-RUNTIME-MODULES", "source_ids": ["SRC-README", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-FUNCTION-MAP"], "label": "APPROVED"},
@@ -24,7 +26,11 @@
     {"requirement_id": "REQ-CONTROL-ENFORCEMENT", "source_ids": ["SRC-CONTROL"], "label": "APPROVED"},
     {"requirement_id": "REQ-ARCHIVE-INGESTION", "source_ids": ["SRC-ARCHIVE-WORKFLOW"], "label": "APPROVED"},
     {"requirement_id": "REQ-V1-MONEY-SPINE", "source_ids": ["SRC-README", "SRC-BUILD-PLAN", "SRC-V1-MONEY-SPINE"], "label": "APPROVED"},
-    {"requirement_id": "REQ-ECONOMIC-RUNTIME", "source_ids": ["SRC-CAPITAL-CORTEX"], "label": "APPROVED"}
+    {"requirement_id": "REQ-ECONOMIC-RUNTIME", "source_ids": ["SRC-CAPITAL-CORTEX"], "label": "APPROVED"},
+    {"requirement_id": "REQ-DEVELOPMENTAL-RUNTIME", "source_ids": ["SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN"], "label": "APPROVED"},
+    {"requirement_id": "REQ-NEUROSCIENCE-ABSTRACTION", "source_ids": ["SRC-NEUROSCIENCE", "SRC-FUNCTION-MAP"], "label": "APPROVED"},
+    {"requirement_id": "REQ-PRODUCTION-HARDENING", "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-CONTROL"], "label": "APPROVED"},
+    {"requirement_id": "REQ-MIGRATION-INTEGRITY", "source_ids": ["SRC-ARCHITECTURE", "SRC-CONTROL"], "label": "APPROVED"}
   ],
   "code_module_records": [
     {
@@ -55,6 +61,65 @@
       "unresolved_gaps": ["expand per-module traceability before BUILD-READY"]
     },
     {
+      "record_id": "TRACE-OPTIMIZED-COGNITION",
+      "paths": ["brain/model_cortex.py", "brain/observability.py", "brain/orchestration.py", "brain/planning.py", "brain/security.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-DEVELOPMENTAL"],
+      "requirement_ids": ["REQ-BRAIN-RUNTIME-MODULES", "REQ-DEVELOPMENTAL-RUNTIME", "REQ-PRODUCTION-HARDENING"],
+      "owner_object": "Replaceable model cortex, causal planner, cognition telemetry, durable workflow, and security policy",
+      "schema": "ModelProfile/ModelRoute, causal planning objects, CognitiveSpan/Metric, Temporal workflow contract, SecurityConfig",
+      "runtime_service": "ModelCortexRouter, CounterfactualPlanner, CognitiveTelemetry, ContinuousCognitionWorkflow, ApiKeyAuthenticator",
+      "state_machine": "route/simulate/trace/orchestrate/authenticate with fail-closed production gates",
+      "fixtures": ["tests/test_optimized_cognition.py"],
+      "tests": ["tests/test_optimized_cognition.py", "python -m pytest -q", "ruff check ."],
+      "acceptance_criteria": ["models remain replaceable", "external irreversible plans require approval", "production API requires authentication", "durable cognition can use Temporal"],
+      "audit_events": ["MODEL_ROUTE_SELECTED", "COUNTERFACTUAL_SIMULATED", "COGNITIVE_TRACE_RECORDED", "PRODUCTION_AUTH_EVALUATED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["provider-specific model adapters and production telemetry exporter remain environment integrations"]
+    },
+    {
+      "record_id": "TRACE-DEVELOPMENTAL-RUNTIME",
+      "paths": [
+        "brain/developmental/consolidation.py", "brain/developmental/global_workspace.py", "brain/developmental/immune.py",
+        "brain/developmental/module_genesis.py", "brain/developmental/plasticity.py", "brain/developmental/prediction_error.py",
+        "brain/developmental/runtime.py", "brain/developmental/self_model.py", "brain/developmental/spine.py",
+        "brain/developmental/theory_registry.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"],
+      "requirement_ids": ["REQ-DEVELOPMENTAL-RUNTIME"],
+      "owner_object": "Developmental Intelligence Spine DEV-001 through DEV-008 plus stage/score integration",
+      "schema": "developmental domain objects and db/migrations/010_developmental_intelligence.sql",
+      "runtime_service": "PredictionError, Plasticity, ModuleGenesis, Workspace, Consolidation, Immune, SelfModel, TheoryRegistry, DevelopmentalRuntime",
+      "state_machine": "evidence -> prediction error -> pressure -> governed plasticity/consolidation -> immune scan -> stage promotion/rollback",
+      "fixtures": ["tests/test_developmental_intelligence.py", "tests/test_developmental_runtime.py"],
+      "tests": ["tests/test_developmental_intelligence.py", "tests/test_developmental_runtime.py", "python -m pytest -q"],
+      "acceptance_criteria": ["rewires are evidence-bound and reversible", "dreams cannot execute external action", "workspace suppression is preserved", "capability claims require evidence", "unknowns and competing theories are preserved"],
+      "audit_events": ["DEVELOPMENT_PRESSURE_RECORDED", "PLASTICITY_PROPOSED", "WORKSPACE_BROADCAST_RECORDED", "IMMUNE_ALERT_RECORDED", "DEVELOPMENTAL_STAGE_TRANSITION"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["exact-head acceptance reports and production persistence migration execution pending validation"]
+    },
+    {
+      "record_id": "TRACE-NEUROSCIENCE-RUNTIME",
+      "paths": ["brain/neuro/abstractions.py", "brain/neuro/multiscale.py", "brain/neuro/regions.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-NEUROSCIENCE", "SRC-FUNCTION-MAP", "SRC-DEVELOPMENTAL"],
+      "requirement_ids": ["REQ-NEUROSCIENCE-ABSTRACTION"],
+      "owner_object": "NEURO-001 through NEURO-003 neuroscience abstraction, region mapping, and L0-L11 multi-scale stack",
+      "schema": "docs/neuroscience/json registries and db/migrations/008_neuroscience_abstraction_layer.sql plus 009_neuro_region_multiscale_maps.sql",
+      "runtime_service": "NeuroAbstractionRegistryService, BrainRegionMappingService, MultiscaleCognitionService",
+      "state_machine": "mapped/provisional/disputed/unknown/speculative concepts remain explicitly classified and evidence gated",
+      "fixtures": ["tests/fixtures/neuro"],
+      "tests": ["tests/test_neuro_abstraction_registry.py", "tests/test_brain_region_mapping.py", "tests/test_multiscale_cognition_stack.py"],
+      "acceptance_criteria": ["L0-L11 coverage exists", "unknowns and disputed theories are preserved", "no literal biological equivalence claim", "region mappings have executable software equivalents"],
+      "audit_events": ["NEURO_ABSTRACTION_VALIDATED", "BRAIN_REGION_MAPPING_VALIDATED", "MULTISCALE_STACK_VALIDATED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["registry is an extensible root and does not claim the neuroscience universe complete"]
+    },
+    {
       "record_id": "TRACE-V1-MONEY-SPINE",
       "paths": ["brain/money_spine.py"],
       "classification": "APPROVED",
@@ -74,39 +139,39 @@
     },
     {
       "record_id": "TRACE-BRAIN-ADAPTERS",
-      "paths": ["brain/adapters/cognition.py", "brain/adapters/learning_store.py", "brain/adapters/postgres.py"],
+      "paths": ["brain/adapters/brain_store.py", "brain/adapters/cognition.py", "brain/adapters/developmental_store.py", "brain/adapters/learning_store.py", "brain/adapters/postgres.py"],
       "classification": "APPROVED",
       "go_hold_status": "REVIEW",
-      "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN"],
-      "requirement_ids": ["REQ-BRAIN-ADAPTERS"],
-      "owner_object": "Brain adapter modules",
-      "schema": "minimum traceability",
-      "runtime_service": "brain adapters",
-      "state_machine": "REVIEW pending adapter state maps",
-      "fixtures": ["tests"],
-      "tests": ["python -m pytest -q", "ruff check ."],
-      "acceptance_criteria": ["adapter path is traceable", "no source narrowing"],
-      "audit_events": ["TRACEABILITY_RECORD_VERIFIED"],
+      "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-DEVELOPMENTAL"],
+      "requirement_ids": ["REQ-BRAIN-ADAPTERS", "REQ-DEVELOPMENTAL-RUNTIME"],
+      "owner_object": "Brain persistence and infrastructure adapters",
+      "schema": "event ledger, beliefs/evidence/graph, cognitive inbox/checkpoints, learning stores, developmental objects/transitions/scores",
+      "runtime_service": "PostgresBrainStore, cognition adapters, PostgresDevelopmentalStore, learning stores, PostgresEventStore",
+      "state_machine": "startup hydration -> write-through persistence -> replay/recovery",
+      "fixtures": ["tests", "db/migrations"],
+      "tests": ["python -m pytest -q", "ruff check .", "python scripts/validate_migrations.py"],
+      "acceptance_criteria": ["canonical state survives process restart", "event history remains append-only", "development state is durable", "no source narrowing"],
+      "audit_events": ["BRAIN_STATE_HYDRATED", "BRAIN_STATE_PERSISTED", "DEVELOPMENT_STATE_PERSISTED"],
       "source_preservation": "preserved",
-      "unresolved_gaps": ["expand adapter traceability before BUILD-READY"]
+      "unresolved_gaps": ["production migration execution and restore drill are environment-specific"]
     },
     {
       "record_id": "TRACE-BRAIN-APPS",
       "paths": ["apps/api/main.py", "apps/worker/main.py", "apps/operator/main.py"],
       "classification": "APPROVED",
       "go_hold_status": "REVIEW",
-      "source_ids": ["SRC-README", "SRC-BUILD-PLAN"],
-      "requirement_ids": ["REQ-BRAIN-APPS"],
+      "source_ids": ["SRC-README", "SRC-BUILD-PLAN", "SRC-DEVELOPMENTAL"],
+      "requirement_ids": ["REQ-BRAIN-APPS", "REQ-PRODUCTION-HARDENING", "REQ-DEVELOPMENTAL-RUNTIME"],
       "owner_object": "Brain app entrypoints",
-      "schema": "minimum traceability",
-      "runtime_service": "apps",
-      "state_machine": "REVIEW pending app state maps",
+      "schema": "API, durable worker, and operator surfaces",
+      "runtime_service": "FastAPI API/operator and Temporal-capable cognition worker",
+      "state_machine": "request/workflow -> authenticated or governed processing -> durable state -> response/audit",
       "fixtures": ["tests"],
       "tests": ["python -m pytest -q", "ruff check ."],
-      "acceptance_criteria": ["app path is traceable", "no source narrowing"],
-      "audit_events": ["TRACEABILITY_RECORD_VERIFIED"],
+      "acceptance_criteria": ["production API fails closed without authentication", "database health affects readiness", "worker can use durable Temporal workflow", "no unauthorized external action"],
+      "audit_events": ["APP_REQUEST_AUTHENTICATED", "COGNITION_WORKFLOW_TICK", "OPERATOR_SURFACE_READ"],
       "source_preservation": "preserved",
-      "unresolved_gaps": ["expand app traceability before BUILD-READY"]
+      "unresolved_gaps": ["operator surface production auth and full cockpit expansion remain under current optimization branch"]
     },
     {
       "record_id": "TRACE-ECONOMIC-RUNTIME",
@@ -128,7 +193,7 @@
       "acceptance_criteria": ["economic scores have formula traces", "source rights fail closed", "hard gates block unauthorized revenue action", "replay is deterministic"],
       "audit_events": ["ECONOMIC_TRANSITION_RECORDED", "ECONOMIC_FORMULA_RUN_RECORDED", "ECONOMIC_HARD_GATE_EVALUATED"],
       "source_preservation": "preserved",
-      "unresolved_gaps": ["live external source connectors and real transaction execution remain approval-gated deployment work"]
+      "unresolved_gaps": ["issue #34 atomic conformance audit remains authoritative until every mandatory row passes"]
     },
     {
       "record_id": "TRACE-ECONOMIC-ADAPTER",
@@ -164,25 +229,25 @@
       "acceptance_criteria": ["ACT NOW/VERIFY/WATCH/suppression visible", "fee-control and source-rights state visible", "no external action endpoint introduced"],
       "audit_events": ["OPERATOR_SURFACE_READ"],
       "source_preservation": "preserved",
-      "unresolved_gaps": ["authentication and production deployment use the repository infrastructure layer"]
+      "unresolved_gaps": ["authentication and developmental cockpit are being expanded on this branch"]
     },
     {
       "record_id": "TRACE-CONTROL-SCRIPTS",
-      "paths": ["scripts/validate_control_layer.py", "scripts/validate_pr_body.py", "scripts/validate_build_ready_traceability.py"],
+      "paths": ["scripts/validate_control_layer.py", "scripts/validate_pr_body.py", "scripts/validate_build_ready_traceability.py", "scripts/validate_migrations.py"],
       "classification": "APPROVED",
       "go_hold_status": "GO",
-      "source_ids": ["SRC-CONTROL"],
-      "requirement_ids": ["REQ-CONTROL-ENFORCEMENT"],
-      "owner_object": "Control enforcement scripts",
-      "schema": "policy registry and module BUILD-READY traceability matrix",
+      "source_ids": ["SRC-CONTROL", "SRC-ARCHITECTURE"],
+      "requirement_ids": ["REQ-CONTROL-ENFORCEMENT", "REQ-MIGRATION-INTEGRITY"],
+      "owner_object": "Control enforcement and migration integrity scripts",
+      "schema": "policy registry, BUILD-READY traceability matrix, and deterministic migration namespace",
       "runtime_service": "CI validators",
       "state_machine": "validate input -> fail/pass",
-      "fixtures": ["docs/control/policy-registry.json", "docs/control/module-build-ready-traceability.md"],
-      "tests": ["python scripts/validate_control_layer.py", "python scripts/validate_pr_body.py", "python scripts/validate_build_ready_traceability.py"],
-      "acceptance_criteria": ["validators compile", "validators pass", "unsupported BUILD-READY claims fail closed"],
-      "audit_events": ["CONTROL_POLICY_VALIDATED", "MODULE_BUILD_READY_TRACEABILITY_VALIDATED"],
+      "fixtures": ["docs/control/policy-registry.json", "docs/control/module-build-ready-traceability.md", "db/migrations"],
+      "tests": ["python scripts/validate_control_layer.py", "python scripts/validate_pr_body.py", "python scripts/validate_build_ready_traceability.py", "python scripts/validate_migrations.py"],
+      "acceptance_criteria": ["validators compile", "validators pass", "unsupported BUILD-READY claims fail closed", "new duplicate migration versions fail closed"],
+      "audit_events": ["CONTROL_POLICY_VALIDATED", "MODULE_BUILD_READY_TRACEABILITY_VALIDATED", "MIGRATION_SEQUENCE_VALIDATED"],
       "source_preservation": "preserved",
-      "unresolved_gaps": ["PR API enforcement can be expanded"]
+      "unresolved_gaps": ["legacy duplicate migration version 006 is explicitly allowlisted rather than rewritten after possible application"]
     },
     {
       "record_id": "TRACE-ARCHIVE-SCRIPTS",
@@ -200,7 +265,7 @@
       "acceptance_criteria": ["archive manifest validates", "present assets hash-check"],
       "audit_events": ["ARCHIVE_MANIFEST_VALIDATED"],
       "source_preservation": "preserved",
-      "unresolved_gaps": ["binary assets still pending file-byte upload"]
+      "unresolved_gaps": ["binary assets still pending real file-byte upload; placeholders are forbidden"]
     }
   ]
 }
