@@ -1,0 +1,25 @@
+{
+  "fixture_id": "module_birth_acceptance_gate",
+  "scenario": "repeated unresolved patterns create a module hypothesis, but activation is held until schema, service, fixture, test and acceptance evidence exist",
+  "input": {
+    "hypothesis": {
+      "name": "PatternMemoryModule",
+      "repeated_pattern": "same unresolved mechanism appears in three prediction-error traces",
+      "source_refs": ["docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md"]
+    },
+    "maturity_evidence": {
+      "schema_path": "brain/schemas.py",
+      "service_path": "brain/developmental/module_genesis.py",
+      "fixture_path": "tests/fixtures/brain/module_birth_acceptance_gate.json",
+      "test_path": "tests/test_developmental_module_genesis.py",
+      "acceptance_report_path": "reports/acceptance/AGENT-010-module-genesis.json"
+    }
+  },
+  "expected": {
+    "objects_created": ["ModuleHypothesis", "ModuleMaturityEvidence", "ModuleActivationRecord"],
+    "state_transitions": ["module.hypothesis->module.maturity_evidence_attached", "module.maturity_evidence_attached->module.active"],
+    "blocked_transitions": ["module.hypothesis->active_without_acceptance", "module.retire_without_history"],
+    "dashboard_output": ["Development Console", "Module Genesis Console"],
+    "go_hold_result": "GO"
+  }
+}
