@@ -35,6 +35,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/attention.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/attribution.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/beliefs.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/circadian.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_state.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/contradiction.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/contradiction_queue.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
