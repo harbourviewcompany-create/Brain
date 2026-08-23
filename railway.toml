@@ -2,7 +2,7 @@
 # Docs: https://docs.railway.com
 #
 # Deploy: connect GitHub repo → set DATABASE_URL → deploy
-# Start command is inferred from Dockerfile CMD / Procfile.
+# Start command is inferred from the Dockerfile CMD (Procfile removed -- redundant with builder = DOCKERFILE).
 
 [build]
 builder = "DOCKERFILE"
