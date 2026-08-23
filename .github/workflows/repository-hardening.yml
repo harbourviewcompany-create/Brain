@@ -23,11 +23,11 @@ jobs:
 
       - name: Compile hardening audit
         run: |
-          python -m py_compile scripts/check_repository_hardening.py
+          python -m py_compile tools/check_repository_hardening.py
 
       - name: Audit hardening gaps
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          python scripts/check_repository_hardening.py
+          python tools/check_repository_hardening.py
