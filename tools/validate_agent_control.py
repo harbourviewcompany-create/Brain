@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Brain agent-control files.
-
-This is a documentation/control gate. It does not prove the Brain is built.
-It prevents agents from claiming readiness while required control artifacts,
-fixtures, traceability rows, or GO/HOLD fields are missing.
-"""
+"""Validate Brain agent-control files and implementation evidence."""
 from __future__ import annotations
 
 import json
@@ -37,6 +32,10 @@ REQUIRED_FILES = [
     "docs/spec/schema-registry.json",
     "docs/spec/acceptance-matrix.json",
     "docs/spec/source-to-build-traceability.json",
+    "brain/schemas.py",
+    "brain/formulas.py",
+    "brain/replay.py",
+    "brain/contradiction_queue.py",
 ]
 
 REQUIRED_FIXTURES = [
@@ -48,10 +47,20 @@ REQUIRED_FIXTURES = [
     "tests/fixtures/brain/acceptance_gate_go_hold.json",
 ]
 
+REQUIRED_REPORTS = [
+    "reports/acceptance/AGENT-001-executable-schemas.json",
+    "reports/acceptance/AGENT-002-formula-runtime.json",
+    "reports/acceptance/AGENT-003-replay-harness.json",
+    "reports/acceptance/AGENT-004-contradiction-review.json",
+    "reports/acceptance/AGENT-005-ci-acceptance-gate.json",
+    "reports/acceptance/AGENT-006-source-to-build-traceability.json",
+    "reports/go-hold/GO-HOLD-SUMMARY.json",
+]
+
 
 def load_json(path: str) -> dict:
-    with (ROOT / path).open("r", encoding="utf-8") as f:
-        return json.load(f)
+    with (ROOT / path).open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 def require(condition: bool, message: str) -> None:
@@ -60,27 +69,51 @@ def require(condition: bool, message: str) -> None:
 
 
 def main() -> None:
-    missing = [p for p in REQUIRED_FILES + REQUIRED_FIXTURES if not (ROOT / p).exists()]
+    required_paths = REQUIRED_FILES + REQUIRED_FIXTURES + REQUIRED_REPORTS
+    missing = [path for path in required_paths if not (ROOT / path).exists()]
     require(not missing, f"Missing required Brain agent-control artifacts: {missing}")
 
     task_queue = load_json("docs/agent-control/task-queue.json")
     tasks = task_queue.get("tickets", [])
     require(tasks, "task-queue.json must contain tickets")
     for task in tasks:
-        for field in ["ticket_id", "objective", "files_to_create_or_modify", "required_tests", "required_fixtures", "acceptance_criteria", "go_hold_condition"]:
+        for field in [
+            "ticket_id",
+            "issue_number",
+            "issue_url",
+            "objective",
+            "files_to_create_or_modify",
+            "required_tests",
+            "required_fixtures",
+            "acceptance_criteria",
+            "go_hold_condition",
+            "status",
+        ]:
             require(field in task, f"Task missing {field}: {task}")
+        require(task["status"] == "implemented", f"Task not implemented: {task}")
 
     acceptance = load_json("docs/spec/acceptance-matrix.json")
     rules = acceptance.get("rules", [])
     require(rules, "acceptance-matrix.json must contain rules")
     for rule in rules:
-        require(rule.get("go_hold_status") in {"GO", "HOLD"}, f"Acceptance rule missing GO/HOLD: {rule}")
+        require(rule.get("go_hold_status") == "GO", f"Acceptance rule is not GO: {rule}")
         require(rule.get("required_evidence"), f"Acceptance rule missing evidence: {rule}")
 
     traceability = load_json("docs/spec/source-to-build-traceability.json")
     rows = traceability.get("traceability", [])
     require(rows, "source-to-build traceability must contain rows")
-    required_row_fields = ["concept_family", "source_section", "module", "schema", "service", "formula", "test", "fixture", "dashboard", "acceptance_rule"]
+    required_row_fields = [
+        "concept_family",
+        "source_section",
+        "module",
+        "schema",
+        "service",
+        "formula",
+        "test",
+        "fixture",
+        "dashboard",
+        "acceptance_rule",
+    ]
     for row in rows:
         for field in required_row_fields:
             require(row.get(field), f"Traceability row missing {field}: {row}")
@@ -93,13 +126,18 @@ def main() -> None:
         require("expected" in data, f"Fixture missing expected block: {fixture}")
         fixture_ids.add(data["fixture_id"])
 
-    referenced_fixtures = set()
+    referenced = set()
     for task in tasks:
-        referenced_fixtures.update(task.get("required_fixtures", []))
-    referenced_fixtures.discard("all_required_fixture_files")
-    referenced_fixtures.discard("none")
-    missing_referenced = sorted(referenced_fixtures - fixture_ids)
+        referenced.update(task.get("required_fixtures", []))
+    referenced.discard("all_required_fixture_files")
+    referenced.discard("none")
+    missing_referenced = sorted(referenced - fixture_ids)
     require(not missing_referenced, f"Referenced fixtures are not materialized: {missing_referenced}")
+
+    for report_path in REQUIRED_REPORTS:
+        report = load_json(report_path)
+        require(report.get("verdict") == "GO", f"Report is not GO: {report_path}")
+        require(report.get("evidence"), f"Report missing evidence: {report_path}")
 
     print("Brain agent-control validation: GO")
 
