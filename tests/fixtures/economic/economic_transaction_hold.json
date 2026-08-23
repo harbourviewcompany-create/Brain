@@ -1,0 +1,19 @@
+{
+  "fixture_id": "economic_transaction_hold",
+  "scenario": "Fee-sensitive introduction is held when economic control is incomplete",
+  "scenario_type": "transaction_control",
+  "opportunity_id": "51111111-1111-4111-8111-111111111111",
+  "buyer_entity_id": "61111111-1111-4111-8111-111111111111",
+  "seller_entity_id": "71111111-1111-4111-8111-111111111111",
+  "payment_model": "success_fee",
+  "expected_revenue": 15000,
+  "expected_profit": 14000,
+  "capital_at_risk": 100,
+  "mandate": false,
+  "introduction_logged": true,
+  "fee_agreement": false,
+  "origination_evidence": true,
+  "jurisdiction_reviewed": true,
+  "operator_approved": true,
+  "expected_hold": true
+}
