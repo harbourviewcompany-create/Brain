@@ -1,0 +1,33 @@
+{
+  "report_id": "ISSUES-3-8-ACCEPTANCE-PACKAGE",
+  "verdict": "GO",
+  "issues": [3, 4, 5, 6, 7, 8],
+  "tests": [
+    "tests/test_schemas.py",
+    "tests/test_formulas.py",
+    "tests/test_replay_harness.py",
+    "tests/test_contradiction_queue.py",
+    "tests/test_agent_control_validation.py",
+    "tools/validate_agent_control.py"
+  ],
+  "fixtures": [
+    "source_signal_evidence_belief",
+    "formula_run_attention_reward",
+    "approval_gate_external_action",
+    "outcome_reward_pain_learning",
+    "contradiction_review",
+    "acceptance_gate_go_hold"
+  ],
+  "evidence": [
+    "Executable schemas exist",
+    "Formula registry runtime exists",
+    "Deterministic replay harness exists",
+    "Contradiction review queue exists",
+    "CI validation gate exists",
+    "Source-to-build traceability matrix exists",
+    "GO/HOLD acceptance reports exist"
+  ],
+  "hold_conditions_remaining": [
+    "This does not prove completion of the entire future Brain beyond issues #3-#8."
+  ]
+}
