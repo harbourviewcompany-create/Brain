@@ -13,14 +13,16 @@
     {"source_id": "SRC-BUILD-PLAN", "path": "docs/build-plan.md", "label": "SOURCE"},
     {"source_id": "SRC-FUNCTION-MAP", "path": "docs/brain-function-map.md", "label": "SOURCE"},
     {"source_id": "SRC-CONTROL", "path": "docs/control", "label": "APPROVED"},
-    {"source_id": "SRC-ARCHIVE-WORKFLOW", "path": "docs/archive", "label": "APPROVED"}
+    {"source_id": "SRC-ARCHIVE-WORKFLOW", "path": "docs/archive", "label": "APPROVED"},
+    {"source_id": "SRC-CAPITAL-CORTEX", "path": "docs/spec/CAPITAL_DISCOVERY_CORTEX.md", "label": "APPROVED"}
   ],
   "requirements": [
     {"requirement_id": "REQ-BRAIN-RUNTIME-MODULES", "source_ids": ["SRC-README", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-FUNCTION-MAP"], "label": "APPROVED"},
     {"requirement_id": "REQ-BRAIN-ADAPTERS", "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN"], "label": "APPROVED"},
     {"requirement_id": "REQ-BRAIN-APPS", "source_ids": ["SRC-README", "SRC-BUILD-PLAN"], "label": "APPROVED"},
     {"requirement_id": "REQ-CONTROL-ENFORCEMENT", "source_ids": ["SRC-CONTROL"], "label": "APPROVED"},
-    {"requirement_id": "REQ-ARCHIVE-INGESTION", "source_ids": ["SRC-ARCHIVE-WORKFLOW"], "label": "APPROVED"}
+    {"requirement_id": "REQ-ARCHIVE-INGESTION", "source_ids": ["SRC-ARCHIVE-WORKFLOW"], "label": "APPROVED"},
+    {"requirement_id": "REQ-ECONOMIC-RUNTIME", "source_ids": ["SRC-CAPITAL-CORTEX"], "label": "APPROVED"}
   ],
   "code_module_records": [
     {
@@ -111,6 +113,72 @@
       "audit_events": ["TRACEABILITY_RECORD_VERIFIED"],
       "source_preservation": "preserved",
       "unresolved_gaps": ["expand app traceability before BUILD-READY"]
+    },
+    {
+      "record_id": "TRACE-ECONOMIC-RUNTIME",
+      "paths": [
+        "brain/economic_runtime.py",
+        "brain/economic_replay.py",
+        "brain/economic_capital.py",
+        "brain/economic_compounding.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-CAPITAL-CORTEX"],
+      "requirement_ids": ["REQ-ECONOMIC-RUNTIME"],
+      "owner_object": "MOD-008 through MOD-015 Capital Discovery Cortex runtime",
+      "schema": "docs/spec/BRAIN_SCHEMA_REGISTRY.md and db/migrations/007_economic_cognition.sql",
+      "runtime_service": "EconomicRuntime, CapitalStateService, CompoundingService, EconomicReplayHarness",
+      "state_machine": "docs/spec/BRAIN_STATE_MACHINES.md MOD-008 through MOD-015",
+      "fixtures": ["tests/fixtures/economic"],
+      "tests": ["tests/test_economic_runtime_full.py", "tests/test_economic_compounding_capital.py", "ruff check ."],
+      "acceptance_criteria": [
+        "economic scores have formula traces",
+        "source rights fail closed",
+        "transaction action is approval and fee-control gated",
+        "major learning is attribution gated",
+        "replay is deterministic",
+        "operator attention surfaces preserve suppression without deletion"
+      ],
+      "audit_events": ["ECONOMIC_TRANSITION_RECORDED", "ECONOMIC_FORMULA_RUN_RECORDED", "ECONOMIC_REPLAY_VERIFIED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["live external source connectors and real transaction execution remain approval-gated deployment work"]
+    },
+    {
+      "record_id": "TRACE-ECONOMIC-ADAPTER",
+      "paths": ["brain/adapters/economic_store.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-CAPITAL-CORTEX", "SRC-ARCHITECTURE"],
+      "requirement_ids": ["REQ-ECONOMIC-RUNTIME", "REQ-BRAIN-ADAPTERS"],
+      "owner_object": "Persistent economic cognition adapter",
+      "schema": "public.economic_objects, public.economic_transitions, public.economic_formula_runs",
+      "runtime_service": "PostgresEconomicStore",
+      "state_machine": "durable object write and startup rehydration",
+      "fixtures": ["tests/fixtures/economic"],
+      "tests": ["python -m pytest -q", "ruff check ."],
+      "acceptance_criteria": ["typed economic state survives process restart when PostgreSQL tables exist", "formula and transition evidence is durable"],
+      "audit_events": ["ECONOMIC_OBJECT_PERSISTED", "ECONOMIC_STATE_REHYDRATED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["production database migration execution is environment-specific"]
+    },
+    {
+      "record_id": "TRACE-ECONOMIC-OPERATOR",
+      "paths": ["apps/operator/main.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-CAPITAL-CORTEX"],
+      "requirement_ids": ["REQ-ECONOMIC-RUNTIME", "REQ-BRAIN-APPS"],
+      "owner_object": "Economic operator surface",
+      "schema": "read-only attention, pressure, money-path, counterparty, transaction, source and compounding views",
+      "runtime_service": "FastAPI economic operator",
+      "state_machine": "operator read surface; consequential writes remain outside this surface",
+      "fixtures": ["tests/fixtures/economic"],
+      "tests": ["tests/test_economic_runtime_full.py", "ruff check ."],
+      "acceptance_criteria": ["ACT NOW/VERIFY/WATCH/suppression visible", "fee-control and source-rights state visible", "no external action endpoint introduced"],
+      "audit_events": ["OPERATOR_SURFACE_READ"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["authentication and production deployment use the repository infrastructure layer"]
     },
     {
       "record_id": "TRACE-CONTROL-SCRIPTS",
