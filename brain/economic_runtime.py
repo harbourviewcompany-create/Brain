@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from math import exp
@@ -9,7 +9,6 @@ from uuid import UUID, uuid4
 
 from .economic import (
     AsymmetryType,
-    CapitalState,
     CommercialDisposition,
     CounterpartyProfile,
     CounterpartyRole,
@@ -18,7 +17,6 @@ from .economic import (
     EconomicOpportunity,
     MoneyPath,
     MoneyVerb,
-    OpportunityType,
     PaymentModel,
     PressureEvent,
     PressureType,
@@ -399,7 +397,9 @@ class EconomicRuntime:
         self.store.put("pressure", obj.id, obj)
         return obj
 
-    def pressure_effective_magnitude(self, pressure: PressureEvent, at: datetime | None = None) -> float:
+    def pressure_effective_magnitude(
+        self, pressure: PressureEvent, at: datetime | None = None
+    ) -> float:
         at = at or utcnow()
         age_days = max((at - pressure.created_at).total_seconds() / 86400.0, 0.0)
         half_life = max(float(pressure.metadata.get("half_life_days", 30.0)), 0.01)
@@ -430,7 +430,10 @@ class EconomicRuntime:
             obj = EconomicAffordance(
                 entity_id=entity_id,
                 verb=verb,
-                rationale=f"{verb.value} is an economic affordance of {','.join(p.value for p in pressure_types)}",
+                rationale=(
+                    f"{verb.value} is an economic affordance of "
+                    f"{','.join(p.value for p in pressure_types)}"
+                ),
                 confidence=0.65,
                 evidence_ids=evidence_ids,
             )
@@ -494,8 +497,12 @@ class EconomicRuntime:
         return path
 
     # MOD-010
-    def upsert_counterparty(self, profile: CounterpartyProfile, *, verified: bool = False) -> CounterpartyProfile:
-        profile.metadata["state"] = "verified" if verified else profile.metadata.get("state", "discovered")
+    def upsert_counterparty(
+        self, profile: CounterpartyProfile, *, verified: bool = False
+    ) -> CounterpartyProfile:
+        profile.metadata["state"] = (
+            "verified" if verified else profile.metadata.get("state", "discovered")
+        )
         self.store.put("counterparty", profile.id, profile)
         return profile
 
@@ -559,7 +566,9 @@ class EconomicRuntime:
         opportunity = self._required("opportunity", opportunity_id)
         reasons: list[str] = []
         paths = [self.store.get("money_path", path_id) for path_id in opportunity.money_path_ids]
-        qualified_paths = [p for p in paths if p and p.metadata.get("state") == "qualified"]
+        qualified_paths = [
+            path for path in paths if path and path.metadata.get("state") == "qualified"
+        ]
         if not qualified_paths:
             reasons.append("no_qualified_payer_payment_path")
         if opportunity.evidence_confidence < 0.5:
@@ -586,15 +595,27 @@ class EconomicRuntime:
         self.store.put("kill_decision", decision.id, decision)
         return decision
 
-    def portfolio(self, *, act_now_limit: int = 3, verify_limit: int = 7, watch_limit: int = 20) -> OpportunityPortfolio:
+    def portfolio(
+        self, *, act_now_limit: int = 3, verify_limit: int = 7, watch_limit: int = 20
+    ) -> OpportunityPortfolio:
         decisions = sorted(self.store.list("kill_decision"), key=lambda d: d.score, reverse=True)
         portfolio = OpportunityPortfolio()
         for decision in decisions:
-            if decision.disposition is CommercialDisposition.ACT_NOW and len(portfolio.act_now) < act_now_limit:
+            if (
+                decision.disposition is CommercialDisposition.ACT_NOW
+                and len(portfolio.act_now) < act_now_limit
+            ):
                 portfolio.act_now.append(decision.opportunity_id)
-            elif decision.disposition is CommercialDisposition.VERIFY_FIRST and len(portfolio.verify_first) < verify_limit:
+            elif (
+                decision.disposition is CommercialDisposition.VERIFY_FIRST
+                and len(portfolio.verify_first) < verify_limit
+            ):
                 portfolio.verify_first.append(decision.opportunity_id)
-            elif decision.disposition in {CommercialDisposition.WATCH, CommercialDisposition.BUILD_AS_ASSET} and len(portfolio.watch) < watch_limit:
+            elif (
+                decision.disposition
+                in {CommercialDisposition.WATCH, CommercialDisposition.BUILD_AS_ASSET}
+                and len(portfolio.watch) < watch_limit
+            ):
                 portfolio.watch.append(decision.opportunity_id)
             else:
                 portfolio.suppressed.append(decision.opportunity_id)
@@ -611,9 +632,15 @@ class EconomicRuntime:
         self.store.put("fee_control", control.id, control)
         return control
 
-    def approve_transaction_action(self, transaction_id: UUID, *, operator_approved: bool) -> Transaction:
+    def approve_transaction_action(
+        self, transaction_id: UUID, *, operator_approved: bool
+    ) -> Transaction:
         transaction = self._required("transaction", transaction_id)
-        controls = [c for c in self.store.list("fee_control") if c.transaction_id == transaction_id]
+        controls = [
+            control
+            for control in self.store.list("fee_control")
+            if control.transaction_id == transaction_id
+        ]
         control = controls[-1] if controls else None
         fee_sensitive = transaction.expected_revenue > 0
         if control is None or not control.sufficient(fee_sensitive=fee_sensitive):
@@ -653,7 +680,9 @@ class EconomicRuntime:
         return source
 
     # MOD-014
-    def attribute_revenue(self, attribution: RevenueAttribution, *, total_external_cost: float = 0.0) -> EconomicROI:
+    def attribute_revenue(
+        self, attribution: RevenueAttribution, *, total_external_cost: float = 0.0
+    ) -> EconomicROI:
         self.store.put("revenue_attribution", attribution.id, attribution)
         cost = attribution.data_compute_cost + total_external_cost
         roi = (attribution.net_profit - cost) / max(cost, 1.0)
@@ -682,7 +711,14 @@ class EconomicRuntime:
         expected_value: float,
         resource_estimate: float,
     ) -> CompoundingAsset:
-        asset = CompoundingAsset(kind, key, evidence_count, payer_count, expected_value, resource_estimate)
+        asset = CompoundingAsset(
+            kind,
+            key,
+            evidence_count,
+            payer_count,
+            expected_value,
+            resource_estimate,
+        )
         if evidence_count >= 3 and payer_count >= 2:
             asset.status = EconomicObjectState.VALIDATED
         self.store.put("compounding_asset", asset.id, asset)
@@ -721,32 +757,44 @@ class EconomicRuntime:
             "verify_first": [str(x) for x in portfolio.verify_first],
             "watch": [str(x) for x in portfolio.watch],
             "suppressed_count": len(portfolio.suppressed),
-            "active_pressures": len([
-                p for p in self.store.list("pressure")
-                if p.metadata.get("state") not in {"resolved", "invalidated"}
-            ]),
-            "qualified_money_paths": len([
-                p for p in self.store.list("money_path") if p.metadata.get("state") == "qualified"
-            ]),
-            "active_sources": len([s for s in sources if s.status == "active"]),
+            "active_pressures": len(
+                [
+                    pressure
+                    for pressure in self.store.list("pressure")
+                    if pressure.metadata.get("state") not in {"resolved", "invalidated"}
+                ]
+            ),
+            "qualified_money_paths": len(
+                [
+                    path
+                    for path in self.store.list("money_path")
+                    if path.metadata.get("state") == "qualified"
+                ]
+            ),
+            "active_sources": len([source for source in sources if source.status == "active"]),
             "source_roi": sorted(
-                ({"source_key": s.source_key, "roi": s.roi} for s in sources),
+                ({"source_key": source.source_key, "roi": source.roi} for source in sources),
                 key=lambda row: row["roi"],
                 reverse=True,
             ),
             "transactions": [
                 {
-                    "id": str(t.id),
-                    "status": t.status,
-                    "expected_revenue": t.expected_revenue,
-                    "expected_profit": t.expected_profit,
-                    "fee_protected": t.fee_protected,
+                    "id": str(transaction.id),
+                    "status": transaction.status,
+                    "expected_revenue": transaction.expected_revenue,
+                    "expected_profit": transaction.expected_profit,
+                    "fee_protected": transaction.fee_protected,
                 }
-                for t in self.store.list("transaction")
+                for transaction in self.store.list("transaction")
             ],
             "compounding_assets": [
-                {"id": str(a.id), "kind": a.kind, "key": a.key, "status": str(a.status)}
-                for a in self.store.list("compounding_asset")
+                {
+                    "id": str(asset.id),
+                    "kind": asset.kind,
+                    "key": asset.key,
+                    "status": str(asset.status),
+                }
+                for asset in self.store.list("compounding_asset")
             ],
         }
 
