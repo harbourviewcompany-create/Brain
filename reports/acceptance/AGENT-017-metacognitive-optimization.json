@@ -1,8 +1,9 @@
 {
   "report_id": "AGENT-017-metacognitive-optimization",
-  "verdict": "GO_CANDIDATE_PENDING_PROTECTED_CI",
+  "verdict": "GO_VALIDATED_PENDING_FINAL_EVIDENCE_HEAD_CI",
   "issue": 77,
   "audit_issues": [82, 83, 84],
+  "validated_implementation_head": "63d77b303a1e25c8abcc5acb6c3baa1a8d171193",
   "implemented_files": [
     "brain/developmental/metacognitive_optimization.py",
     "tests/test_metacognitive_optimization.py",
@@ -26,11 +27,12 @@
     "optimization_without_traceability_rollback_test_acceptance": "HOLD",
     "superiority_claim_from_internal_benchmarks": "HOLD"
   },
-  "required_validation": [
-    "python scripts/validate_control_layer.py",
-    "python scripts/validate_build_ready_traceability.py",
-    "python tools/validate_agent_control.py",
-    "pytest -q",
-    "ruff check --select E4,E7,E9,F ."
-  ]
+  "validated_results": [
+    "Brain Control Policy success",
+    "agent-control validation success",
+    "MOD-008-015 conformance validator success",
+    "pytest success",
+    "ruff success"
+  ],
+  "closure_rule": "Final evidence metadata head must pass the same protected workflows before merge."
 }
