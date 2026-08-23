@@ -2,14 +2,16 @@
   "fixture_id": "contradiction_review",
   "scenario": "conflicting evidence is preserved and routed to review",
   "input": {
-    "belief": {"id": "belief_001", "statement": "Company A is expanding", "confidence": 0.72},
-    "supporting_evidence": {"id": "ev_support", "direction": "supports"},
-    "contradicting_evidence": {"id": "ev_contra", "direction": "contradicts"}
+    "contradiction": {
+      "belief_id": "belief_001",
+      "supporting_claim": "Company A is expanding",
+      "contradicting_claim": "Company A has shut down the facility",
+      "source_ids": ["ev_support", "ev_contra"],
+      "severity": 0.9
+    }
   },
   "expected": {
-    "objects_created": ["ContradictionReviewItem"],
-    "formula_runs": ["contradiction_value"],
-    "state_transitions": ["belief.active->belief.contradicted"],
+    "state_transitions": ["open", "user_decision_required"],
     "dashboard_output": ["Contradiction Inbox"],
     "go_hold_result": "GO",
     "preservation_requirement": "supporting and contradicting evidence must both remain attached"
