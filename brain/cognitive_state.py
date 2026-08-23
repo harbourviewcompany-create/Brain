@@ -51,7 +51,7 @@ class NeuromodulatorState:
     acetylcholine: float = 0.5
     stress: float = 0.2
 
-    def clamp(self) -> "NeuromodulatorState":
+    def clamp(self) -> NeuromodulatorState:
         for name in ("dopamine", "norepinephrine", "serotonin", "acetylcholine", "stress"):
             setattr(self, name, max(0.0, min(1.0, float(getattr(self, name)))))
         return self
