@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -63,9 +63,15 @@ class EconomicReplayHarness:
             data["fixture_id"],
             tuple(events),
             tuple(assertions),
-            tuple(snapshot["act_now"]),
-            tuple(snapshot["verify_first"]),
+            len(snapshot["act_now"]),
+            len(snapshot["verify_first"]),
+            len(snapshot["watch"]),
             snapshot["suppressed_count"],
+            snapshot["active_pressures"],
+            snapshot["qualified_money_paths"],
+            snapshot["active_sources"],
+            len(snapshot["transactions"]),
+            len(snapshot["compounding_assets"]),
         )
         return EconomicReplayResult(
             fixture_id=data["fixture_id"],
@@ -159,7 +165,9 @@ class EconomicReplayHarness:
             if path.metadata["state"] == "qualified"
             else "FAIL:qualified_payment_path"
         )
-        assertions.append("GO:not_killed" if decision.disposition.value != "kill" else "FAIL:killed")
+        assertions.append(
+            "GO:not_killed" if decision.disposition.value != "kill" else "FAIL:killed"
+        )
 
     def _source_rights(
         self,
@@ -233,9 +241,17 @@ class EconomicReplayHarness:
             )
         except ValueError:
             held = True
-        events.extend(("fee_control.recorded", "transaction.held" if held else "transaction.approved"))
-        assertions.append("GO:transaction_gate" if held == data["expected_hold"] else "FAIL:transaction_gate")
-        assertions.append("GO:fee_control_persisted" if control.transaction_id == transaction.id else "FAIL:fee_control")
+        events.extend(
+            ("fee_control.recorded", "transaction.held" if held else "transaction.approved")
+        )
+        assertions.append(
+            "GO:transaction_gate" if held == data["expected_hold"] else "FAIL:transaction_gate"
+        )
+        assertions.append(
+            "GO:fee_control_persisted"
+            if control.transaction_id == transaction.id
+            else "FAIL:fee_control"
+        )
 
     def _compounding(
         self,
@@ -272,16 +288,28 @@ class EconomicReplayHarness:
             expected_net_value=data["expected_value"],
             resource_estimate=data["resource_estimate"],
         )
-        events.extend(("revenue.attributed", "compounding_asset.detected", "business_model.evaluated"))
-        assertions.append("GO:profit_not_revenue" if attr.net_profit < attr.gross_revenue else "FAIL:profit_not_revenue")
-        assertions.append("GO:attribution_gate" if runtime.can_major_learn(attr.attribution_confidence) else "FAIL:attribution_gate")
+        events.extend(
+            ("revenue.attributed", "compounding_asset.detected", "business_model.evaluated")
+        )
+        assertions.append(
+            "GO:profit_not_revenue"
+            if attr.net_profit < attr.gross_revenue
+            else "FAIL:profit_not_revenue"
+        )
+        assertions.append(
+            "GO:attribution_gate"
+            if runtime.can_major_learn(attr.attribution_confidence)
+            else "FAIL:attribution_gate"
+        )
         assertions.append("GO:positive_roi" if roi.roi > 0 else "FAIL:positive_roi")
         assertions.append(
             "GO:build_candidate"
             if str(hypothesis.status) == "build_candidate"
             else "FAIL:build_candidate"
         )
-        assertions.append("GO:asset_evidence" if asset.evidence_count >= 3 else "FAIL:asset_evidence")
+        assertions.append(
+            "GO:asset_evidence" if asset.evidence_count >= 3 else "FAIL:asset_evidence"
+        )
 
     @staticmethod
     def _load(fixture: str | Path | dict[str, Any]) -> dict[str, Any]:
