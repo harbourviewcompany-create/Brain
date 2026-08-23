@@ -1,0 +1,66 @@
+{
+  "fixture_id": "transaction_source_rights",
+  "scenario": "source rights and fee-sensitive transaction disclosure are gated before external consequence",
+  "input": {
+    "sources": [
+      {
+        "source_key": "forbidden-dataset",
+        "rights_class": "PROHIBITED",
+        "jurisdiction": "US",
+        "expected_disposition": "REJECT"
+      },
+      {
+        "source_key": "candidate-pii-feed",
+        "rights_class": "PII_SENSITIVE",
+        "jurisdiction": "CA-ON",
+        "expected_disposition": "HOLD"
+      },
+      {
+        "source_key": "brokerage-sensitive-feed",
+        "rights_class": "PUBLIC_SAFE",
+        "jurisdiction": "US-NY",
+        "expected_disposition": "HOLD"
+      }
+    ],
+    "transaction": {
+      "jurisdiction": "CA-ON",
+      "fee_sensitive": true,
+      "required_controls": [
+        "mandate",
+        "introduction_record",
+        "fee_agreement",
+        "origination_evidence",
+        "jurisdiction_review",
+        "explicit_operator_approval"
+      ]
+    }
+  },
+  "expected": {
+    "objects_created": [
+      "SourceRightsProfile",
+      "SourceRightsDecision",
+      "Mandate",
+      "IntroductionRecord",
+      "FeeAgreement",
+      "ReferralAgreement",
+      "ExclusivityRecord",
+      "OriginationEvidence",
+      "DealRoom",
+      "FeeControl",
+      "GateDecision"
+    ],
+    "blocked_transitions": [
+      "prohibited_source_to_active_connector",
+      "sensitive_source_to_collection_without_review",
+      "transaction_to_external_disclosure_without_fee_controls",
+      "transaction_to_external_disclosure_without_operator_approval"
+    ],
+    "dashboard_output": [
+      "Transaction Control Console",
+      "Source Rights Console",
+      "Global Source Mesh",
+      "GO/HOLD Console"
+    ],
+    "go_hold_result": "GO"
+  }
+}
