@@ -1,6 +1,6 @@
 # Brain Source-to-Build Traceability
 
-Status: GO for issues #3-#8.
+Status: GO for issues #3-#8 and NEURO-001 registry foundation.
 
 This file maps preserved Brain source concepts to the implementation/control artifacts used by the agent execution pass.
 
@@ -13,5 +13,6 @@ This file maps preserved Brain source concepts to the implementation/control art
 | Reward/pain rewiring | How the Brain Learns From Outcomes | Reward Pain Learning | Outcome, RewardEvent, PainEvent, GraphEdge | RewardPainService, GraphLearningService | reward_score, pain_score, graph_weight_update | test_reward_pain_reallocation_replay | outcome_reward_pain_learning | Learning Console | ACC-005 |
 | Contradiction review | Contradictions and Open Questions | Contradiction Review | ContradictionReviewItem | ContradictionReviewService | contradiction_value | tests/test_contradiction_queue.py | contradiction_review | Contradiction Inbox | ACC-006 |
 | Agent GO/HOLD control | Tests, Fixtures and Acceptance | Governance and Acceptance | AcceptanceReport | validate_agent_control | go_no_go_score | tools/validate_agent_control.py | acceptance_gate_go_hold | GO/HOLD Console | ACC-007 |
+| Neuroscience abstraction registry | Full neuroscience abstraction system / multi-scale cognition / unknown mechanism preservation | Neuroscience Abstraction Registry | NeuroAbstraction, NeuroScaleLevel, MechanismCertainty, ImplementationStatus | NeuroAbstractionRegistryService, NeuroAbstractionValidationService | registry_completeness_check, unknown_overclaim_check | tests/test_neuro_abstraction_registry.py | neuro_abstraction_registry | Neuro Abstraction Console | NEURO-ACC-001 |
 
 No row may be removed by agent preference. Any future module must extend this matrix rather than replacing it.

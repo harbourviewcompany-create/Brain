@@ -159,6 +159,21 @@ Fixtures: repeated buyer matching, repeated market-entry requests, one-off non-r
 Dashboard: compounding-assets and build-candidates board.
 Acceptance: no build candidate is promoted without repeated evidence, payer evidence, and resource estimate.
 
+## Neuroscience abstraction modules
+
+These modules extend the full Brain architecture without narrowing it to money, an LLM wrapper, a dashboard, a source registry or a V0 proof harness.
+
+### MOD-NEURO-001 Neuroscience Abstraction Registry
+Purpose: preserve and validate neuroscience abstractions across molecular, cellular, synaptic, circuit, region, system, behavioral and meta-cognitive layers.
+Data: NeuroAbstraction, NeuroScaleLevel, MechanismCertainty, ImplementationStatus.
+Services: NeuroAbstractionRegistryService, NeuroAbstractionValidationService.
+Algorithms: registry completeness check, unknown overclaim check, scale coverage check.
+State machine: proposed -> mapped -> implemented/research_debt -> accepted/HOLD.
+Tests: registry field coverage, unknown/disputed overclaim prevention, dashboard/acceptance coverage, scale coverage.
+Fixtures: neuro_abstraction_registry.
+Dashboard: Neuro Abstraction Console.
+Acceptance: every neuroscience abstraction maps to executable artifacts or explicit unknown/research debt without narrowing scope.
+
 ## Later cognitive modules
 
 Memory, dreaming, theory of mind, active inference, social cognition, strategy mutation, consciousness-adjacent layers, richer international market models, and advanced autonomous source discovery remain preserved and staged V1 to V4. Staging is not deletion.
