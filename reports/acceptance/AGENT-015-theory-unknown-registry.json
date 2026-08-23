@@ -1,0 +1,16 @@
+{
+  "report_id": "AGENT-015-theory-unknown-registry",
+  "issue": 48,
+  "verdict": "GO",
+  "scope": "Unknown-mechanism registry and theory competition preservation",
+  "implementation_files": ["brain/developmental/theory_registry.py"],
+  "tests": ["tests/test_developmental_theory_registry.py"],
+  "fixtures": ["tests/fixtures/brain/unknown_mechanism_theory_competition.json"],
+  "evidence": [
+    "Unknown mechanisms are registered and preserved",
+    "Theory competition preserves alternatives",
+    "Speculative status is explicit",
+    "Theory promotion requires evidence"
+  ],
+  "hold_conditions_remaining": ["Speculative theories remain non-authoritative until promoted with evidence"]
+}
