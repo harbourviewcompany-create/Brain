@@ -2,6 +2,8 @@
 
 This directory is reserved for evidence generated under `docs/control/MOD_008_015_CONFORMANCE_AUDIT_PROTOCOL.md`.
 
+Governing audit issue: #34.
+
 Required MOD-008 through MOD-015 outputs:
 
 - `MOD-008-015-conformance.json` — complete atomic requirement matrix.
