@@ -6,11 +6,12 @@ from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from brain.adapters.developmental_store import InMemoryDevelopmentalStore
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.developmental.runtime import DevelopmentalRuntime
 from brain.domain import Edge, Evidence, Node, Outcome
@@ -19,24 +20,39 @@ from brain.memory import InMemoryBrainStore
 from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
+from brain.security import ApiKeyAuthenticator, SecurityConfig
+
+_security = SecurityConfig.from_env()
+_authenticator = ApiKeyAuthenticator(_security)
 
 app = FastAPI(title="Brain Runtime API", version="0.7.0")
 
+_origins = _security.allowed_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_origins,
+    allow_credentials=_origins != ["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Brain-Api-Key", "X-Request-Id"],
 )
 
-_memory_store = InMemoryBrainStore()
+
+@app.middleware("http")
+async def production_authentication(request: Request, call_next):
+    if request.url.path != "/health" and not _authenticator.authorized(
+        authorization=request.headers.get("authorization"),
+        x_api_key=request.headers.get("x-brain-api-key"),
+    ):
+        return JSONResponse(status_code=401, content={"detail": "brain_authentication_required"})
+    return await call_next(request)
+
+
+_brain_store: InMemoryBrainStore = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
-_brain_store = None
-_developmental_store = None
-runtime = BrainRuntime(store=_memory_store)
+_developmental_store = InMemoryDevelopmentalStore()
+runtime = BrainRuntime(store=_brain_store)
 learning = LearningService(
-    _memory_store,
+    _brain_store,
     predictions=_learning_store,
     edges=_learning_store,
     attributions=_learning_store,
@@ -72,19 +88,6 @@ def _configure_from_env() -> None:
         sources=PostgresSourceStore(store.pool),
     )
     development = DevelopmentalRuntime(PostgresDevelopmentalStore(dsn, pool=store.pool))
-
-
-def _database_ready() -> tuple[bool, str]:
-    if not os.environ.get("DATABASE_URL"):
-        return True, "not_configured"
-    if _brain_store is None:
-        return False, "configured_without_durable_store"
-    try:
-        if hasattr(_brain_store, "database_healthy") and not _brain_store.database_healthy():
-            return False, "unreachable"
-        return True, "ok"
-    except Exception:
-        return False, "error"
 
 
 _configure_from_env()
@@ -217,6 +220,15 @@ def _serialize_learning(result) -> dict[str, Any]:
     }
 
 
+def _database_ready() -> tuple[bool, str]:
+    if not os.environ.get("DATABASE_URL"):
+        return True, "not_configured"
+    checker = getattr(_brain_store, "database_healthy", None)
+    if checker is None:
+        return False, "configured_without_durable_store"
+    return (True, "connected") if checker() else (False, "unavailable")
+
+
 @app.get("/health")
 def health():
     database_ok, database_status = _database_ready()
@@ -245,10 +257,12 @@ def health():
 @app.get("/ready")
 def ready():
     database_ok, database_status = _database_ready()
-    payload = {"ready": database_ok, "database": database_status}
     if not database_ok:
-        return JSONResponse(status_code=503, content=payload)
-    return payload
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": database_status},
+        )
+    return {"status": "ready", "database": database_status}
 
 
 @app.get("/beliefs")
@@ -287,9 +301,19 @@ def get_belief(belief_id: str):
 @app.get("/predictions")
 def list_predictions():
     store = learning.predictions if learning.predictions is not None else _learning_store
-    preds = getattr(store, "predictions", {}) or {}
-    items = [_serialize_prediction(p) for p in preds.values()]
+    if hasattr(store, "predictions"):
+        predictions = list(store.predictions.values())
+    elif hasattr(store, "list_open"):
+        predictions = store.list_open()
+    else:
+        predictions = []
+    items = [_serialize_prediction(prediction) for prediction in predictions]
     return {"items": items, "total": len(items)}
+
+
+@app.get("/development/pressures")
+def list_development_pressures():
+    return {"items": development.store.list("development_pressure")}
 
 
 @app.post("/beliefs")
@@ -397,7 +421,24 @@ def record_outcome(body: RecordOutcomeRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return _serialize_learning(result)
+    pressure = development.ingest_learning_signal(
+        outcome_id=outcome.id,
+        prediction_id=result.attribution.prediction_id,
+        prediction_error=result.attribution.prediction_error,
+        reward_score=result.attribution.reward_score,
+        evidence_refs=[
+            f"outcome:{outcome.id}",
+            f"attribution:{result.attribution.id}",
+        ],
+    )
+    payload = _serialize_learning(result)
+    payload["development_pressure"] = {
+        "id": str(pressure.id),
+        "pressure": pressure.pressure,
+        "learning_priority": pressure.learning_priority,
+        "reasons": pressure.reasons,
+    }
+    return payload
 
 
 @app.get("/money-lanes")
