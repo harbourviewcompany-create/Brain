@@ -69,6 +69,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/economic_sources.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_transaction.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/events.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/executive.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/experiments.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/formulas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
 | brain/governance.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
