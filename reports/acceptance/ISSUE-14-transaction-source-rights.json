@@ -1,0 +1,28 @@
+{
+  "report_id": "ISSUE-14-TRANSACTION-SOURCE-RIGHTS",
+  "issue_number": 14,
+  "verdict": "GO",
+  "tests": [
+    "tests/test_transaction_source_rights.py::test_prohibited_source_rejection",
+    "tests/test_transaction_source_rights.py::test_sensitive_source_hold",
+    "tests/test_transaction_source_rights.py::test_jurisdiction_classification_requires_review",
+    "tests/test_transaction_source_rights.py::test_unprotected_transaction_disclosure_hold",
+    "tests/test_transaction_source_rights.py::test_approval_bypass_blocked_until_explicit_approval",
+    "tests/test_transaction_source_rights.py::test_source_roi_attribution"
+  ],
+  "fixtures": ["tests/fixtures/brain/transaction_source_rights.json"],
+  "evidence": [
+    "transaction-control records exist for mandate, introduction, fee agreement, referral agreement, exclusivity, origination evidence and deal room",
+    "SourceRightsClass includes PUBLIC_SAFE, PUBLIC_TERMS_RESTRICTED, PERMISSIONED, PAID_LICENSED, SCRAPE_SENSITIVE, PII_SENSITIVE, REGULATED_DATA and PROHIBITED",
+    "prohibited sources are rejected before activation",
+    "sensitive and restricted sources HOLD before collection/commercial use",
+    "jurisdiction profile can force enhanced review HOLD",
+    "fee-sensitive external transaction disclosure HOLDS without required controls",
+    "explicit operator approval is required even when transaction-control records exist",
+    "source ROI attribution is computed from net profit, data cost and attribution confidence"
+  ],
+  "hold_conditions_remaining": [
+    "Legal enforceability remains jurisdiction-specific and must not be assumed.",
+    "This report does not authorize live connector activation, real outreach, transaction disclosure or regulated data collection."
+  ]
+}
