@@ -17,7 +17,7 @@ class BrainSchema(BaseModel):
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     source_refs: list[str] = Field(default_factory=list)
-    provenance: list["ProvenanceRef"] = Field(default_factory=list)
+    provenance: list[ProvenanceRef] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
