@@ -29,8 +29,7 @@ class CapitalLedger:
     updated_at: datetime = field(default_factory=utcnow)
 
     def __post_init__(self) -> None:
-        if self.warning_threshold < self.survival_threshold:
-            self.warning_threshold = self.survival_threshold
+        self.warning_threshold = max(self.warning_threshold, self.survival_threshold)
 
     @property
     def is_starving(self) -> bool:
