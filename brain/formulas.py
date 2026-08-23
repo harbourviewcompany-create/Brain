@@ -166,6 +166,27 @@ def _trust_adjusted_value(v: dict[str, float]) -> float:
     )
 
 
+def _economic_opportunity_priority(v: dict[str, float]) -> float:
+    positive = (
+        max(v["net_value"], 0.0)
+        * clamp(v["conversion_probability"])
+        * clamp(v["urgency"])
+        * clamp(v["access_advantage"])
+        * clamp(v["evidence_confidence"])
+        * clamp(v["repeatability"])
+        * clamp(v["strategic_compounding_value"])
+    )
+    denominator = (
+        1.0
+        + max(v["required_capital"], 0.0)
+        + max(v["required_operator_hours"], 0.0)
+        + max(v["legal_reputation_risk"], 0.0)
+        + max(v["operational_complexity"], 0.0)
+        + max(v["time_decay"], 0.0)
+    )
+    return positive / denominator
+
+
 def default_formula_registry() -> FormulaRegistry:
     registry = FormulaRegistry()
     specs = [
@@ -306,6 +327,31 @@ def default_formula_registry() -> FormulaRegistry:
             "Approval Inbox",
             "Block, escalate, or approve action simulation.",
             _trust_adjusted_value,
+        ),
+        FormulaSpec(
+            "economic_opportunity_priority",
+            "Risk-adjusted economic opportunity priority",
+            "net_value*p*urgency*access*evidence*repeatability*compounding / (1+capital+hours+risk+complexity+decay)",
+            [
+                "net_value",
+                "conversion_probability",
+                "urgency",
+                "access_advantage",
+                "evidence_confidence",
+                "repeatability",
+                "strategic_compounding_value",
+                "required_capital",
+                "required_operator_hours",
+                "legal_reputation_risk",
+                "operational_complexity",
+                "time_decay",
+            ],
+            "EconomicOpportunity",
+            "EconomicOpportunityScoringService",
+            "economic_formula_runs",
+            "Economic Operator Board",
+            "Rank, suppress, verify, kill, or surface a commercial opportunity.",
+            _economic_opportunity_priority,
         ),
     ]
     for spec in specs:
