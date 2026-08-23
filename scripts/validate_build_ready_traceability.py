@@ -1,20 +1,31 @@
 #!/usr/bin/env python3
-"""Validate per-module BUILD-READY traceability documentation.
+"""Validate BUILD-READY traceability and migration integrity.
 
 This validator is dependency-free. It does not decide whether a Brain module
 should be built. It enforces that currently enforced Python code paths are
-represented in the traceability matrix and that no module is marked BUILD-READY
-while unresolved HOLD/missing/partial fields remain.
+represented in the traceability matrix, that no module is marked BUILD-READY
+while unresolved HOLD/missing/partial fields remain, and that migration version
+history cannot accumulate unapproved collisions.
 """
 
 from __future__ import annotations
 
 import json
+import re
+from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = ROOT / "docs" / "control" / "module-build-ready-traceability.md"
 POLICY = ROOT / "docs" / "control" / "policy-registry.json"
+MIGRATIONS = ROOT / "db" / "migrations"
+MIGRATION_NAME = re.compile(r"^(\d{3})_[a-z0-9][a-z0-9_]*\.sql$")
+ALLOWED_MIGRATION_COLLISIONS = {
+    "006": {
+        "006_money_spine.sql",
+        "006_working_memory_predictions_learning.sql",
+    }
+}
 
 REQUIRED_FIELDS = [
     "owner object",
@@ -58,6 +69,35 @@ def discover_modules(policy: dict) -> list[str]:
     return sorted(modules)
 
 
+def validate_migrations() -> None:
+    if not MIGRATIONS.is_dir():
+        fail("db/migrations directory is missing")
+    versions: dict[str, set[str]] = defaultdict(set)
+    files = sorted(path for path in MIGRATIONS.iterdir() if path.is_file())
+    if not files:
+        fail("no migration files found")
+    for path in files:
+        match = MIGRATION_NAME.match(path.name)
+        if path.suffix == ".sql" and match is None:
+            fail(f"malformed SQL migration filename: {path.name}")
+        if match:
+            versions[match.group(1)].add(path.name)
+    for version, names in versions.items():
+        if len(names) <= 1:
+            continue
+        allowed = ALLOWED_MIGRATION_COLLISIONS.get(version)
+        if allowed is None:
+            fail(f"duplicate migration version {version}: {', '.join(sorted(names))}")
+        if names != allowed:
+            fail(
+                f"historical collision {version} changed: expected "
+                f"{', '.join(sorted(allowed))}; got {', '.join(sorted(names))}"
+            )
+    for version, allowed in ALLOWED_MIGRATION_COLLISIONS.items():
+        if versions.get(version, set()) != allowed:
+            fail(f"preserved historical migration set {version} changed")
+
+
 def table_rows(text: str) -> list[str]:
     return [line for line in text.splitlines() if line.startswith("| ")]
 
@@ -66,6 +106,7 @@ def main() -> None:
     if not MATRIX.exists():
         fail(f"missing matrix file: {MATRIX.relative_to(ROOT)}")
 
+    validate_migrations()
     policy = load_policy()
     module_paths = discover_modules(policy)
     text = MATRIX.read_text(encoding="utf-8")
@@ -95,7 +136,10 @@ def main() -> None:
         if cells[-1] != "hold":
             fail("runtime module rows must remain HOLD until all evidence is present: " + row)
 
-    print(f"Module BUILD-READY traceability validation: GO ({len(module_paths)} enforced modules)")
+    print(
+        f"Module BUILD-READY traceability validation: GO "
+        f"({len(module_paths)} enforced modules; migration integrity GO)"
+    )
 
 
 if __name__ == "__main__":
