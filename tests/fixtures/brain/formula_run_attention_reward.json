@@ -1,17 +1,36 @@
 {
   "fixture_id": "formula_run_attention_reward",
-  "scenario": "formula run must preserve owner, inputs, output, service, table and decision consequence",
+  "scenario": "formula runs preserve owner, inputs, output, service, table and decision consequence",
   "input": {
-    "owner_object": "Signal",
-    "service": "AttentionAllocatorService",
-    "formula": "attention_score",
-    "inputs": {"commercial_upside": 0.7, "novelty": 0.8, "urgency": 0.6, "source_quality": 0.95, "noise_probability": 0.1},
-    "expected_output_range": [0.0, 1.0]
+    "owner_object_id": "signal-1",
+    "owner_object_type": "Signal",
+    "formulas": {
+      "attention_score": {
+        "commercial_upside": 0.7,
+        "novelty": 0.8,
+        "urgency": 0.6,
+        "contradiction_value": 0.1,
+        "source_quality": 0.95,
+        "learning_value": 0.7,
+        "noise_probability": 0.1,
+        "operator_load_penalty": 0.2
+      },
+      "reward_score": {
+        "commercial_value": 1.0,
+        "prediction_accuracy": 0.8,
+        "source_quality": 0.95,
+        "actionability": 0.7,
+        "novelty": 0.8,
+        "timing_advantage": 0.6,
+        "false_positive_cost": 0.1,
+        "uncertainty_penalty": 0.2,
+        "operator_time_cost": 0.1
+      }
+    }
   },
   "expected": {
-    "objects_created": ["FormulaRun"],
-    "formula_runs": ["attention_score"],
-    "state_transitions": ["signal.scored->signal.promoted"],
+    "formula_runs": ["attention_score", "reward_score"],
+    "state_transitions": ["formula_run", "audit_trace"],
     "dashboard_output": ["Formula Audit Dashboard", "Perception Inbox"],
     "go_hold_result": "GO"
   }
