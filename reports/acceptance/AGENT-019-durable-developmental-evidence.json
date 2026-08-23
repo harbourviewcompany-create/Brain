@@ -1,0 +1,24 @@
+{
+  "report_id":"AGENT-019-durable-developmental-evidence",
+  "issue":89,
+  "verdict":"GO_CANDIDATE_PENDING_PROTECTED_CI",
+  "implemented_files":[
+    "brain/developmental/evidence_store.py",
+    "brain/adapters/developmental_evidence_store.py",
+    "db/migrations/011_developmental_evidence_ledger.sql",
+    "tests/test_developmental_evidence_store.py",
+    "tests/fixtures/brain/developmental_evidence_restart.json",
+    "docs/spec/BRAIN_DURABLE_DEVELOPMENTAL_EVIDENCE.md",
+    "docs/operator-surfaces/developmental-evidence-ledger.json"
+  ],
+  "capabilities":[
+    "typed developmental evidence codec",
+    "snapshot upsert with append-only event history",
+    "PostgreSQL developmental evidence adapter",
+    "ordered restart replay",
+    "sequence-gap and unknown-type fail-closed behavior",
+    "failed experiment and unresolved regression preservation",
+    "persistence integrity read model"
+  ],
+  "hold":["production migration execution","autonomous code mutation","automatic merge","deployment","external action"]
+}
