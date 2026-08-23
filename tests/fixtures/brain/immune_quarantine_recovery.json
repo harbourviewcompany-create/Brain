@@ -1,0 +1,16 @@
+{
+  "fixture_id": "immune_quarantine_recovery",
+  "scenario": "approval bypass, contaminated source and overconfidence trigger immune alerts, quarantine and recovery requirements",
+  "input": {
+    "approval_bypass": {"action_ref": "action:send-without-approval", "evidence_refs": ["audit:approval-missing"]},
+    "contaminated_source": {"source_ref": "source:unlicensed-feed", "evidence_refs": ["rights:prohibited"]},
+    "overconfidence": {"claim_ref": "claim:brain-complete", "confidence": 0.97, "evidence_count": 1}
+  },
+  "expected": {
+    "objects_created": ["ImmuneAlert", "QuarantineRecord", "RecoveryPlan"],
+    "state_transitions": ["unsafe_signal.detected->immune_alert", "immune_alert->quarantine", "quarantine->recovery_plan"],
+    "blocked_transitions": ["approval_bypass->execute", "contaminated_source->active", "recovery_without_evidence"],
+    "dashboard_output": ["Cognitive Immune Console"],
+    "go_hold_result": "GO"
+  }
+}
