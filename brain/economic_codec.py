@@ -26,6 +26,12 @@ from .economic_compounding import (
     ProductHypothesis,
     RepeatedTransactionPattern,
 )
+from .economic_liquidity import (
+    CounterpartyInteraction,
+    CounterpartyMatch,
+    LiquidityPreference,
+    OpportunityDispositionRecord,
+)
 from .economic_runtime import (
     BusinessModelHypothesis,
     CompoundingAsset,
@@ -55,6 +61,10 @@ ECONOMIC_CLASSES: tuple[type[Any], ...] = (
     MoneyPath,
     EconomicOpportunity,
     CounterpartyProfile,
+    LiquidityPreference,
+    CounterpartyInteraction,
+    CounterpartyMatch,
+    OpportunityDispositionRecord,
     Transaction,
     RevenueAttribution,
     CapitalState,
@@ -96,6 +106,10 @@ KIND_CLASS = {
     "money_path": MoneyPath,
     "opportunity": EconomicOpportunity,
     "counterparty": CounterpartyProfile,
+    "liquidity_preference": LiquidityPreference,
+    "counterparty_interaction": CounterpartyInteraction,
+    "counterparty_match": CounterpartyMatch,
+    "opportunity_disposition": OpportunityDispositionRecord,
     "transaction": Transaction,
     "revenue_attribution": RevenueAttribution,
     "capital_state": CapitalState,
