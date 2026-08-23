@@ -1,8 +1,10 @@
 {
   "report_id":"AGENT-019-DURABLE-DEVELOPMENTAL-EVIDENCE-GO-HOLD",
   "issue":89,
-  "status":"GO_CANDIDATE_PENDING_EXACT_HEAD_CI",
+  "status":"GO_VALIDATED_PENDING_FINAL_EVIDENCE_HEAD_CI",
+  "validated_implementation_head":"7f0e37b08c9ef3f3f480a6fac4ff4b1968cfc1da",
   "go":["typed evidence persistence runtime","append-only evidence history","restart replay","persistence integrity reporting"],
   "hold":["production database migration execution","autonomous code mutation","automatic merge","deployment","external action"],
-  "closure_rule":"Protected control, test and lint workflows must pass on the exact implementation head."
+  "validated_results":["protected control workflow passed","agent-control passed","economic conformance regression gate passed","pytest passed","ruff passed"],
+  "closure_rule":"Final evidence metadata head must pass protected control, test and lint workflows before merge and issue closure."
 }
