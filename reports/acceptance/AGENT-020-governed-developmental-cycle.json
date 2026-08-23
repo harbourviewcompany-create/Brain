@@ -1,0 +1,24 @@
+{
+  "report_id":"AGENT-020-governed-developmental-cycle",
+  "issue":91,
+  "verdict":"GO_CANDIDATE_PENDING_PROTECTED_CI",
+  "implemented_files":[
+    "brain/developmental/improvement_cycle.py",
+    "brain/developmental/evidence_store.py",
+    "tests/test_developmental_improvement_cycle.py",
+    "tests/fixtures/brain/governed_improvement_cycle.json",
+    "docs/spec/BRAIN_GOVERNED_DEVELOPMENTAL_IMPROVEMENT_CYCLE.md",
+    "docs/operator-surfaces/governed-developmental-cycle.json"
+  ],
+  "capabilities":[
+    "persisted benchmark and capability assessment",
+    "durable regression/no-regression checkpoints",
+    "regression-to-learning-debt/hypothesis/plan orchestration",
+    "separate plan and experiment operator approvals",
+    "bounded candidate experiment evaluation",
+    "durable promotion/hold/reject/rollback evidence",
+    "restart-reconstructable cycle timeline",
+    "self-approval and mutation prohibition"
+  ],
+  "hold":["self-approval","autonomous code mutation","automatic merge","deployment","spending","external action","unsupported superiority claims"]
+}
