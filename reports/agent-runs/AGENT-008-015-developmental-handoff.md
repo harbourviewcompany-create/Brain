@@ -11,6 +11,7 @@ Work completed:
 - Implemented cognitive immune runtime with alert, quarantine and recovery planning.
 - Implemented self-model and capability ledger runtime.
 - Implemented unknown-mechanism and theory registry runtime.
+- Finalized manifest, build queue, operator surface, combined acceptance and GO/HOLD reports.
 
 Files changed:
 - `brain/developmental/*.py`
