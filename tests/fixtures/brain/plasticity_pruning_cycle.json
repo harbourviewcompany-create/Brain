@@ -1,0 +1,23 @@
+{
+  "fixture_id": "plasticity_pruning_cycle",
+  "scenario": "reward strengthens a cognitive edge, pain weakens it, contradiction quarantines it, and rollback restores prior weight",
+  "input": {
+    "edge": {
+      "source": "source:registry",
+      "target": "belief:license-expansion",
+      "relation": "supports",
+      "weight": 0.4,
+      "evidence_refs": ["evidence:initial"]
+    },
+    "reward": {"score": 0.3, "evidence_refs": ["outcome:validated"]},
+    "pain": {"score": 0.5, "evidence_refs": ["outcome:false-positive"]},
+    "contradiction": {"evidence_refs": ["evidence:contradiction"]}
+  },
+  "expected": {
+    "objects_created": ["CognitiveEdge", "PlasticityEvent", "RewireProposal", "PruningDecision", "RollbackRecord"],
+    "state_transitions": ["edge.active->edge.strengthened", "edge.strengthened->edge.weakened", "edge.weakened->edge.quarantined", "edge.changed->edge.rolled_back"],
+    "blocked_transitions": ["edge.change_without_evidence", "edge.prune_without_replay", "edge.delete_without_history"],
+    "dashboard_output": ["Rewire Timeline", "Plasticity Console"],
+    "go_hold_result": "GO"
+  }
+}
