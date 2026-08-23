@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Validate Brain agent-control files and implementation evidence."""
 from __future__ import annotations
 
