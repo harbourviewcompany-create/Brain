@@ -11,7 +11,8 @@ RUN python -m pip install --upgrade pip
 COPY pyproject.toml README.md ./
 COPY brain ./brain
 COPY apps ./apps
+COPY tools ./tools
 
 RUN python -m pip install -e .
 
-CMD ["sh", "-c", "python -m uvicorn apps.api.live_main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["sh", "-c", "python -m uvicorn tools.live_cockpit_routes:app --host 0.0.0.0 --port ${PORT:-8080}"]
