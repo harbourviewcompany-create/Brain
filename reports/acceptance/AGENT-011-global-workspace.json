@@ -1,0 +1,17 @@
+{
+  "report_id": "AGENT-011-global-workspace",
+  "issue": 44,
+  "verdict": "GO",
+  "scope": "Global workspace proxy for evidence-bound attention competition and broadcast",
+  "implementation_files": ["brain/developmental/global_workspace.py"],
+  "tests": ["tests/test_developmental_global_workspace.py"],
+  "fixtures": ["tests/fixtures/brain/workspace_competition_broadcast.json"],
+  "evidence": [
+    "Workspace candidates require evidence",
+    "Highest priority item wins broadcast",
+    "Suppressed alternatives are logged",
+    "Broadcast records consuming modules",
+    "Broadcast explicitly makes no consciousness claim"
+  ],
+  "hold_conditions_remaining": ["This is a global workspace proxy, not a consciousness claim"]
+}
