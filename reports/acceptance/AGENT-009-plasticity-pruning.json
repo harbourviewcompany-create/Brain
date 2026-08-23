@@ -1,0 +1,17 @@
+{
+  "report_id": "AGENT-009-plasticity-pruning",
+  "issue": 42,
+  "verdict": "GO",
+  "scope": "Evidence-bound cognitive edge plasticity, pruning and rollback",
+  "implementation_files": ["brain/developmental/plasticity.py"],
+  "tests": ["tests/test_developmental_plasticity.py"],
+  "fixtures": ["tests/fixtures/brain/plasticity_pruning_cycle.json"],
+  "evidence": [
+    "Edges require evidence before creation",
+    "Reward strengthens edges with audit events",
+    "Pain weakens edges with audit events",
+    "Pruning and quarantine require evidence",
+    "Rollback restores prior weight and preserves evidence"
+  ],
+  "hold_conditions_remaining": ["Does not authorize unreviewed graph rewiring outside this runtime"]
+}
