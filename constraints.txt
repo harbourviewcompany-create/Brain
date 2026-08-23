@@ -1,0 +1,39 @@
+# Locked transitive dependency versions for reproducible builds.
+# Generated from a real `pip install .` resolution against pyproject.toml
+# (tested end-to-end in this session). Direct version *ranges* stay defined
+# in pyproject.toml; this file pins the exact resolved graph so two builds
+# on two different days can't silently diverge.
+#
+# Regenerate after any pyproject.toml dependency change:
+#   pip install . && pip freeze | grep -v brain-runtime > constraints.txt
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+certifi==2026.7.22
+click==8.4.2
+fastapi==0.141.1
+h11==0.16.0
+httpcore==1.0.9
+httptools==0.8.0
+httpx==0.28.1
+idna==3.19
+neo4j==6.2.0
+nexus-rpc==1.4.0
+protobuf==7.36.0
+psycopg==3.3.4
+psycopg-binary==3.3.4
+psycopg-pool==3.3.1
+pydantic==2.13.4
+pydantic_core==2.46.4
+python-dotenv==1.2.3
+pytz==2026.3.post1
+PyYAML==6.0.3
+starlette==1.6.0
+temporalio==1.31.0
+types-protobuf==7.35.1.20260823
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+uvicorn==0.52.4
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==17.0.1
