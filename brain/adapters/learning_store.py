@@ -36,6 +36,9 @@ class InMemoryLearningStore:
     def get(self, prediction_id: UUID) -> Prediction | None:
         return self.predictions.get(prediction_id)
 
+    def list_open(self) -> list[Prediction]:
+        return [p for p in self.predictions.values() if p.status is PredictionStatus.OPEN]
+
     def get_edge(self, edge_id: UUID) -> Edge | None:
         return self.edges.get(edge_id)
 
@@ -114,22 +117,39 @@ class PostgresPredictionStore:
                 row = cur.fetchone()
                 if row is None:
                     return None
-                return Prediction(
-                    id=row["id"],
-                    statement=row["statement"],
-                    expected_value=float(row["expected_value"]),
-                    confidence=float(row["confidence"]),
-                    horizon=timedelta(seconds=int(row["horizon_seconds"])),
-                    belief_id=row["belief_id"],
-                    action_id=row["action_id"],
-                    edge_ids=list(row["edge_ids"] or []),
-                    source_keys=list(row["source_keys"] or []),
-                    status=PredictionStatus(row["status"]),
-                    created_at=row["created_at"],
-                    resolve_by=row["resolve_by"],
-                    resolved_at=row["resolved_at"],
-                    metadata=dict(row["metadata"] or {}),
+                return self._row_to_prediction(row)
+
+    def list_open(self) -> list[Prediction]:
+        with self.pool.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    select id, statement, expected_value, confidence, horizon_seconds,
+                           belief_id, action_id, edge_ids, source_keys, status,
+                           created_at, resolve_by, resolved_at, metadata
+                    from public.predictions where status = 'open'
+                    """
                 )
+                return [self._row_to_prediction(row) for row in cur.fetchall()]
+
+    @staticmethod
+    def _row_to_prediction(row: dict) -> Prediction:
+        return Prediction(
+            id=row["id"],
+            statement=row["statement"],
+            expected_value=float(row["expected_value"]),
+            confidence=float(row["confidence"]),
+            horizon=timedelta(seconds=int(row["horizon_seconds"])),
+            belief_id=row["belief_id"],
+            action_id=row["action_id"],
+            edge_ids=list(row["edge_ids"] or []),
+            source_keys=list(row["source_keys"] or []),
+            status=PredictionStatus(row["status"]),
+            created_at=row["created_at"],
+            resolve_by=row["resolve_by"],
+            resolved_at=row["resolved_at"],
+            metadata=dict(row["metadata"] or {}),
+        )
 
 
 class PostgresEdgeStore:
