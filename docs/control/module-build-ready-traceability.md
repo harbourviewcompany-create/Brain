@@ -52,6 +52,8 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/domain.py | partial | present | partial | missing | partial | missing | partial | HOLD |
 | brain/dreaming.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/economic.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_atomic_lifecycles.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/economic_atomic_services.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/economic_attribution.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_capital.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_codec.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
@@ -102,7 +104,7 @@ The nine `brain/developmental/*` rows are included because those code paths exis
 
 ## MOD-008 through MOD-015 repair traceability note
 
-`brain/economic_conformance.py` and `tools/validate_mod_008_015_conformance.py` are included because the repair branch adds them as controlled evidence paths. Their rows remain HOLD at the BUILD-READY matrix level because BUILD-READY is a stricter repository-wide status than the MOD-008 through MOD-015 repair verdict.
+`brain/economic_conformance.py`, `brain/economic_atomic_services.py`, `brain/economic_atomic_lifecycles.py`, and `tools/validate_mod_008_015_conformance.py` are included because the repair work adds them as controlled evidence paths. Their rows remain HOLD at the BUILD-READY matrix level because BUILD-READY is a stricter repository-wide status than the MOD-008 through MOD-015 atomic conformance verdict.
 
 ## Neuroscience traceability note
 
