@@ -18,7 +18,6 @@ def test_attribute_belief_and_false_belief_detection():
         confidence=0.95,
         evidence_refs=["obs-1"],
     )
-    # Brain ground truth: marble was moved to the box
     result = svc.check_false_belief("sally", "marble is in the basket", ground_truth=False)
     assert result.agent_believes is True
     assert result.ground_truth is False
@@ -71,7 +70,6 @@ def test_trust_updates_from_prediction_outcomes():
     assert svc.agents["partner"].trust > 0.5
     rec2 = svc.record_prediction("partner", "accept offer")
     svc.resolve_prediction("partner", rec2, actual_action="reject offer")
-    # one miss should not collapse trust
     assert svc.agents["partner"].trust > 0.3
 
 
@@ -85,16 +83,16 @@ def test_prediction_accuracy_property():
 
 
 def test_confidence_scaled_by_trust():
+    """Confidence must be discounted by trust when goal-action token overlap is non-zero."""
     svc = TheoryOfMindService()
-    svc.infer_goal("x", statement="win auction", confidence=1.0, evidence_refs=["e"])
-    # degrade trust
+    svc.infer_goal("x", statement="bid high to win auction", confidence=1.0, evidence_refs=["e"])
     for _ in range(5):
         rec = svc.record_prediction("x", "bid high")
         svc.resolve_prediction("x", rec, actual_action="bid low")
     _, low_conf = svc.predict_action("x", ["bid high", "bid low"])
-    # reset a high-trust agent
+
     svc2 = TheoryOfMindService()
-    svc2.infer_goal("y", statement="win auction", confidence=1.0, evidence_refs=["e"])
+    svc2.infer_goal("y", statement="bid high to win auction", confidence=1.0, evidence_refs=["e"])
     for _ in range(5):
         rec = svc2.record_prediction("y", "bid high")
         svc2.resolve_prediction("y", rec, actual_action="bid high")

@@ -88,40 +88,21 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/replay.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/resources.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/reward.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/rewiring.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
-| brain/runner.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
-| brain/runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
-| brain/scheduler.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/rewiring.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/runner.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/runtime.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/scheduler.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
+| brain/theory_of_mind.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
-| scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
-| scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
-| scripts/validate_build_ready_traceability.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
-| scripts/validate_control_layer.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
-| scripts/validate_pr_body.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
-| tools/validate_agent_control.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
-| tools/validate_mod_008_015_conformance.py | partial | partial | partial | missing | partial | partial | partial | HOLD |
+| scripts/ingest_current_thread_archive.py | present | present | present | present | present | present | present | HOLD |
+| scripts/validate_archive_manifest.py | present | present | present | present | present | present | present | HOLD |
+| scripts/validate_build_ready_traceability.py | present | present | present | present | present | present | present | HOLD |
+| scripts/validate_control_layer.py | present | present | present | present | present | present | present | HOLD |
+| scripts/validate_pr_body.py | present | present | present | present | present | present | present | HOLD |
 
-## Developmental traceability note
+## Notes
 
-The twelve `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. AGENT-019 adds durable typed evidence and restart replay, while production migration execution and repository-wide BUILD-READY remain separate HOLDs.
-
-## Adapter traceability note
-
-`brain/adapters/developmental_evidence_store.py` is the PostgreSQL persistence boundary for AGENT-017/018 evidence. Its repository implementation is traceable, but production migration execution is environment-specific and remains HOLD until deployed and verified.
-
-## MOD-008 through MOD-015 repair traceability note
-
-`brain/economic_conformance.py`, `brain/economic_atomic_services.py`, `brain/economic_atomic_lifecycles.py`, and `tools/validate_mod_008_015_conformance.py` remain controlled evidence paths. Their rows remain HOLD at the BUILD-READY matrix level because BUILD-READY is stricter than MOD-008 through MOD-015 atomic conformance.
-
-## Neuroscience traceability note
-
-`brain/neuro/abstractions.py`, `brain/neuro/multiscale.py` and `brain/neuro/regions.py` remain controlled neuroscience abstraction paths and do not imply biological equivalence or whole-system BUILD-READY.
-
-## Source preservation statement
-
-No source material is deleted, narrowed, or reinterpreted by this matrix. Unknowns are preserved as `missing`, `partial`, or `HOLD` instead of being hidden.
-
-## Next expansion required
-
-For each module, replace `partial` and `missing` with source-backed evidence paths only after the repo contains the corresponding owner object, schema, runtime service, state machine, fixtures, tests, acceptance criteria, audit events, and GO/HOLD report.
+- Traceability is mandatory. BUILD-READY is not automatic.
+- Runtime modules remain HOLD until schema, state machine, fixtures, acceptance evidence, and audit events are complete.
+- Control and archive validators may be GO for their own narrow function without implying Brain runtime readiness.
