@@ -1,0 +1,20 @@
+{
+  "report_id": "AGENT-017-METACOGNITIVE-OPTIMIZATION-GO-HOLD",
+  "issue": 77,
+  "status": "GO_CANDIDATE_PENDING_EXACT_HEAD_CI",
+  "go": [
+    "repository metacognitive benchmark runtime",
+    "regression detection and preserved history",
+    "learning debt prioritization",
+    "proposal-only self-optimization planning",
+    "operator capability/regression/debt/proposal visibility"
+  ],
+  "hold": [
+    "live autonomous self-modification",
+    "automatic code mutation from benchmark output",
+    "regression deletion or suppression",
+    "superior-intelligence claims without external benchmark evidence",
+    "universal superiority claims from any single benchmark suite"
+  ],
+  "closure_rule": "GO only after protected control, test and lint workflows pass on the exact implementation head."
+}
