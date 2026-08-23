@@ -7,6 +7,7 @@ on:
       - main
       - control/enforce-agent-build-rules
       - traceability/deep-source-module-mapping
+      - control/repository-hardening-audit
 
 jobs:
   control-policy:
@@ -23,7 +24,7 @@ jobs:
 
       - name: Compile validator scripts
         run: |
-          python -m py_compile scripts/validate_control_layer.py scripts/validate_archive_manifest.py scripts/validate_pr_body.py scripts/validate_build_ready_traceability.py scripts/ingest_current_thread_archive.py
+          python -m py_compile scripts/validate_control_layer.py scripts/validate_archive_manifest.py scripts/validate_pr_body.py scripts/validate_build_ready_traceability.py tools/check_repository_hardening.py scripts/ingest_current_thread_archive.py
 
       - name: Validate control layer
         run: |
