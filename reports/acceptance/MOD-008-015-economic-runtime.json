@@ -1,0 +1,105 @@
+{
+  "report_id": "MOD-008-015-economic-runtime",
+  "modules": ["MOD-008", "MOD-009", "MOD-010", "MOD-011", "MOD-012", "MOD-013", "MOD-014", "MOD-015"],
+  "verdict": "GO",
+  "evidence_commit": "ab328a4200df4bbe34ff6656ef569e553b75ee60",
+  "ci": {
+    "brain_control_policy": {
+      "run_id": 32647565825,
+      "conclusion": "success"
+    },
+    "test_workflow": {
+      "run_id": 32647565819,
+      "job_id": 97214059714,
+      "conclusion": "success",
+      "agent_control_validation": "GO",
+      "pytest": "101 passed, 1 warning in 0.82s",
+      "ruff": "All checks passed"
+    }
+  },
+  "implemented": {
+    "persistence": [
+      "public.economic_objects JSONB ledger",
+      "public.economic_transitions audit ledger",
+      "public.economic_formula_runs score-trace ledger",
+      "PostgresEconomicStore startup rehydration",
+      "generic typed economic codec with pre-class-metadata fallback"
+    ],
+    "services": [
+      "EconomicRuntime",
+      "SourceMeshService",
+      "TransactionControlService",
+      "EconomicAttributionService",
+      "CapitalStateService",
+      "CompoundingService",
+      "EconomicReplayHarness"
+    ],
+    "state_machines": [
+      "pressure",
+      "money_path",
+      "counterparty",
+      "transaction",
+      "attribution",
+      "compounding",
+      "capital approval gate",
+      "source rights activation gate"
+    ],
+    "operator_surfaces": [
+      "/operator",
+      "/operator/pressure",
+      "/operator/money-paths",
+      "/operator/counterparties",
+      "/operator/transactions",
+      "/operator/sources",
+      "/operator/ui"
+    ]
+  },
+  "acceptance_criteria": [
+    {"criterion": "Pressure and economic asymmetry require evidence", "status": "GO"},
+    {"criterion": "Qualified money paths require verified payer/payment mechanism", "status": "GO"},
+    {"criterion": "Opportunity priority is registered and formula-traced", "status": "GO"},
+    {"criterion": "Counterparty ranking preserves explanation", "status": "GO"},
+    {"criterion": "Commercial skeptic can KILL no-payment opportunities", "status": "GO"},
+    {"criterion": "Operator portfolio enforces ACT_NOW/VERIFY/WATCH/suppression limits", "status": "GO"},
+    {"criterion": "Fee-sensitive transaction action cannot bypass control and operator approval", "status": "GO"},
+    {"criterion": "Source activation fails closed on prohibited/restricted conditions", "status": "GO"},
+    {"criterion": "Recursive source discovery creates proposals rather than auto-activation", "status": "GO"},
+    {"criterion": "SourceROI, ActionROI and OpportunityROI are distinct persisted outputs", "status": "GO"},
+    {"criterion": "Major economic learning is blocked below attribution confidence threshold", "status": "GO"},
+    {"criterion": "Capital allocation requires operator approval and cannot exceed deployable capital", "status": "GO"},
+    {"criterion": "Product and marketplace build candidates require repeated payer/liquidity proof", "status": "GO"},
+    {"criterion": "Deterministic fixture replay covers both GO and HOLD behavior", "status": "GO"},
+    {"criterion": "Operator HTTP/UI surface is readable and exposes no consequential write route", "status": "GO"}
+  ],
+  "fixtures": [
+    "tests/fixtures/economic/economic_distress_pipeline.json",
+    "tests/fixtures/economic/economic_source_rights_hold.json",
+    "tests/fixtures/economic/economic_transaction_hold.json",
+    "tests/fixtures/economic/economic_compounding.json"
+  ],
+  "source_preservation": [
+    "docs/spec/CAPITAL_DISCOVERY_CORTEX.md remains canonical",
+    "existing V1 Money Spine on main is preserved",
+    "existing cognitive runtime is not replaced or narrowed"
+  ],
+  "unresolved_items": [
+    "Live source connectors are not activated by this implementation.",
+    "Production PostgreSQL migration execution depends on deployment environment.",
+    "Authenticated production operator deployment remains infrastructure work.",
+    "Legal enforceability and brokerage/licensing decisions remain jurisdiction-specific review items.",
+    "Live external transaction execution remains approval-gated and is not added here.",
+    "Autonomous spending or capital deployment remains prohibited without explicit approval."
+  ],
+  "evidence": [
+    "reports/replay/MOD-008-015-economic-replay.json",
+    "tests/test_economic_runtime_full.py",
+    "tests/test_economic_state_operator.py",
+    "tests/test_economic_transaction.py",
+    "tests/test_economic_sources.py",
+    "tests/test_economic_attribution.py",
+    "tests/test_economic_compounding_capital.py",
+    "tests/test_economic_codec.py",
+    "docs/spec/BRAIN_STATE_MACHINES.md",
+    "docs/control/source-requirement-registry.json"
+  ]
+}
