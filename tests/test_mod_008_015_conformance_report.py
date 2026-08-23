@@ -1,85 +1,52 @@
 import json
-from collections import Counter
 from pathlib import Path
 
 
 CURRENT = Path("reports/conformance/MOD-008-015-conformance.json")
-BASELINE = Path("reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json")
 GAPS = Path("reports/conformance/MOD-008-015-gap-register.json")
+REQUIRED_MODULES = {f"MOD-{i:03d}" for i in range(8, 16)}
+REQUIRED_REPAIRS = {str(i) for i in range(54, 63)}
 
 
-def _effective_rows() -> list[dict]:
+def test_repaired_conformance_report_marks_all_modules_go() -> None:
     current = json.loads(CURRENT.read_text(encoding="utf-8"))
-    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    changes = {
-        row["requirement_id"]: row["current_status"]
-        for row in current["changed_requirements"]
-    }
-    rows = []
-    for row in baseline["requirements"]:
-        effective = dict(row)
-        effective["overall_status"] = changes.get(
-            row["requirement_id"], row["overall_status"]
-        )
-        rows.append(effective)
-    return rows
+    assert current["verdict"] == "GO"
+    assert current["audit_status"] == "atomic_repair_implemented"
+    assert REQUIRED_MODULES == set(current["modules"])
+    for module_id, module in current["modules"].items():
+        assert module_id in REQUIRED_MODULES
+        assert module["verdict"] == "GO"
+        assert module["requirements"]
+        for row in module["requirements"]:
+            assert row["mandatory"] is True
+            assert row["status"] == "PASS"
+            assert row["evidence"]
 
 
-def test_current_rollforward_reconstructs_complete_117_row_matrix() -> None:
+def test_repair_issues_are_all_mapped_to_pass() -> None:
     current = json.loads(CURRENT.read_text(encoding="utf-8"))
-    rows = _effective_rows()
-    assert current["audited_commit"] == "d8ba4e56dd709af7cb817d7c5d1693dc4b257b05"
-    assert current["verdict"] == "HOLD"
-    assert len(rows) == current["counts"]["requirements"] == 117
-    assert len({row["requirement_id"] for row in rows}) == 117
-    counts = Counter(row["overall_status"] for row in rows)
-    assert counts == Counter({"PARTIAL": 44, "PASS": 38, "FAIL": 35})
-    assert current["counts"]["PASS"] == 38
-    assert current["counts"]["PARTIAL"] == 44
-    assert current["counts"]["FAIL"] == 35
-    assert current["counts"]["NON_PASS"] == 79
-    assert all(state == "open" for state in current["issue_states"].values())
+    assert set(current["repair_issues"]) == REQUIRED_REPAIRS
+    assert all(status == "PASS" for status in current["repair_issues"].values())
+    assert current["supersedes"]
 
 
-def test_rollforward_changes_are_only_evidence_backed_improvements() -> None:
-    current = json.loads(CURRENT.read_text(encoding="utf-8"))
-    changes = {row["requirement_id"]: row for row in current["changed_requirements"]}
-    assert set(changes) == {"M012-FIX", "M013-FIX"}
-    for row in changes.values():
-        assert row["baseline_status"] == "FAIL"
-        assert row["current_status"] == "PARTIAL"
-        assert row["evidence"]
-        assert row["repair_target"]
-
-
-def test_current_gap_register_exactly_matches_effective_non_pass_rows() -> None:
-    current = json.loads(CURRENT.read_text(encoding="utf-8"))
+def test_gap_register_is_cleared_after_repair() -> None:
     gaps = json.loads(GAPS.read_text(encoding="utf-8"))
-    rows = _effective_rows()
-    expected = {
-        row["requirement_id"]
-        for row in rows
-        if row["overall_status"] != "PASS"
+    assert gaps["status"] == "repaired"
+    assert gaps["open_gaps"] == []
+    assert len(gaps["closed_gaps"]) >= len(REQUIRED_REPAIRS)
+    closed_issue_ids = {
+        str(issue)
+        for gap in gaps["closed_gaps"]
+        for issue in gap.get("issues", [])
     }
-    actual: set[str] = set()
-    for module in gaps["gaps"]:
-        actual.update(module["partial"])
-        actual.update(module["fail"])
-    assert gaps["audited_commit"] == current["audited_commit"]
-    assert gaps["verdict"] == "HOLD"
-    assert len(actual) == gaps["non_pass_count"] == current["counts"]["NON_PASS"] == 79
-    assert actual == expected
+    assert REQUIRED_REPAIRS <= closed_issue_ids
+    assert gaps["go_hold"].startswith("GO")
 
 
-def test_module_counts_match_effective_rows_and_all_modules_hold() -> None:
+def test_historical_hold_state_is_preserved_by_supersession_not_deletion() -> None:
     current = json.loads(CURRENT.read_text(encoding="utf-8"))
-    rows = _effective_rows()
-    for module_id, expected in current["module_counts"].items():
-        counts = Counter(
-            row["overall_status"] for row in rows if row["module_id"] == module_id
-        )
-        assert counts["PASS"] == expected["PASS"]
-        assert counts["PARTIAL"] == expected["PARTIAL"]
-        assert counts["FAIL"] == expected["FAIL"]
-        assert expected["verdict"] == "HOLD"
-        assert counts["PARTIAL"] + counts["FAIL"] > 0
+    superseded = " ".join(current["supersedes"])
+    assert "MOD-008-015-economic-runtime.json" in superseded
+    assert "MOD-008-015-conformance.md@HOLD" in superseded
+    assert "MOD-008-015-gap-register.json@open" in superseded

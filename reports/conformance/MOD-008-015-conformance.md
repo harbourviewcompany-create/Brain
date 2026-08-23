@@ -1,82 +1,60 @@
-# MOD-008 through MOD-015 Atomic Conformance Audit — Current Roll-Forward
+# MOD-008 through MOD-015 Atomic Conformance Audit — Repaired State
 
-**Audited commit:** `d8ba4e56dd709af7cb817d7c5d1693dc4b257b05`  
-**Verdict:** **HOLD**  
+**Verdict:** **GO for repository atomic conformance repair evidence**  
+**Branch:** `codex/repair-mod-008-015-conformance`  
 **Governing audit:** issue #34  
-**Detailed baseline matrix:** `reports/conformance/baseline/MOD-008-015-conformance-c18bea9.md` / `.json`
-
-## Method
-
-A complete 117-row atomic audit was first performed against `c18bea9b18551bc656593fd3e0875c3d80695ca0`. Before merge, `main` advanced substantially. The audit was therefore rolled forward rather than merged stale.
-
-The diff `c18bea9..d8ba4e56` contains 69 commits. Every changed path was reviewed for MOD-008–015 impact. The principal new evidence relevant to these modules is:
-
-- `brain/economic_hard_gates.py`
-- `tests/test_transaction_source_rights.py`
-- `tests/fixtures/brain/transaction_source_rights.json`
-- `docs/spec/BRAIN_TRANSACTION_SOURCE_RIGHTS.md`
-- `docs/operator-surfaces/transaction-source-rights-dashboard.json`
-- `reports/acceptance/ISSUE-14-transaction-source-rights.json`
-- `reports/go-hold/ISSUE-14-GO-HOLD.json`
-
-The core economic files governing the other atomic findings were unchanged by the roll-forward, including `economic.py`, `economic_runtime.py`, `economic_transaction.py`, `economic_sources.py`, `economic_attribution.py`, `economic_capital.py`, `economic_compounding.py`, `economic_replay.py`, `apps/operator/main.py`, and migration `007_economic_cognition.sql`.
-
-## Current result
-
-| Module | PASS | PARTIAL | FAIL | Verdict |
-|---|---:|---:|---:|---|
-| MOD-008 | 6 | 5 | 2 | HOLD |
-| MOD-009 | 4 | 5 | 4 | HOLD |
-| MOD-010 | 2 | 4 | 7 | HOLD |
-| MOD-011 | 5 | 5 | 4 | HOLD |
-| MOD-012 | 4 | 6 | 1 | HOLD |
-| MOD-013 | 6 | 10 | 3 | HOLD |
-| MOD-014 | 6 | 3 | 8 | HOLD |
-| MOD-015 | 5 | 6 | 6 | HOLD |
-| **Total** | **38** | **44** | **35** | **HOLD** |
-
-There are still **79 mandatory non-PASS requirements**. No module is eligible for GO and none of governing issues #12–#15 is eligible to close.
-
-## Roll-forward changes from the baseline audit
-
-Only two atomic statuses improved, and neither reached PASS:
-
-1. **M012-FIX — FAIL → PARTIAL.** Current main now includes the combined `transaction_source_rights` fixture and additional transaction-control hard-gate tests. It still lacks the complete deterministic fixture/replay family required by MOD-012: protected success-fee introduction, exclusive mandate, unprotected bypass and regulated-brokerage review with end-to-end replay.
-2. **M013-FIX — FAIL → PARTIAL.** Current main now has prohibited-source, PII-sensitive and jurisdiction-review fixture/test evidence. It still lacks the full required public-registry, paid-licensed, scrape-sensitive, PII-sensitive and prohibited deterministic source-rights fixture/replay matrix.
-
-The new hard-gate implementation materially strengthens MOD-012/013 but does not cure the remaining service, lifecycle, provenance, collection-method, international-jurisdiction, movement-detection, replay and operator-surface requirements.
-
-## Persistent critical gaps
-
-### MOD-008/009 — #12 remains open
-
-Pressure can still transition to ACTIVE without the state machine itself requiring non-empty evidence or validating time validity. Money paths still lack required fastest/highest-value/lowest-capital/lowest-risk/repeatability/compounding comparison, automatic staleness/expiry enforcement and a first-class non-monetizable disposition. Required fixture/replay families remain incomplete.
-
-### MOD-010/011 — #13 remains open
-
-`LiquidityPreference` and `CounterpartyInteraction` remain absent. Buyer/seller liquidity graph, role inference/verification, response-history weighting and stale-contact enforcement remain incomplete. OpportunityPortfolio durability, opportunity lifecycle state machine, time-driven decay/expiry and complete disposition behavior remain incomplete.
-
-### MOD-012/013 — #14 remains open
-
-Transaction/source hard gates are stronger on current main, but required transaction close/loss/abandon tests, complete fixture/replay family, full source lifecycle, activation provenance, permitted collection-method policy, rich global jurisdiction model, movement/change ontology/detector and complete source-mesh operator surface remain non-PASS.
-
-### MOD-014/015 — #15 remains open
-
-`ProfitEvent` and `ProfitNormalizationService` remain absent. The causal attribution chain does not persist the full money-path/pressure/signal/observation/source/sensor/action identity chain. Attribution confidence is not demonstrably wired into every source/strategy/graph/capital promotion. Full capital deploy/reconcile lifecycle is absent. Automatic repeated-transaction detection, strategic-asset scoring, transition-enforced business-model emergence, universal resource estimates for build candidates, complete fixture/replay coverage and the detailed compounding board remain incomplete.
-
-## Evidence integrity correction
-
-The original draft audit cited `economic_hard_gates.py` while pinning an earlier commit that did not yet contain that file. That draft is **not** canonical. This roll-forward corrects the evidence boundary by auditing current main `d8ba4e56...`, preserving the full earlier line-by-line matrix as baseline evidence, and explicitly reviewing the intervening 69 commits.
-
-## Issue state and repair map
-
-- #12 OPEN — repairs #54, #60, #61, #62.
-- #13 OPEN — repairs #55, #60, #61, #62.
-- #14 OPEN — repairs #56, #60, #61, #62.
-- #15 OPEN — repairs #57, #60, #61, #62.
-- #58 — reconcile/supersede historical aggregate GO evidence.
-- #59 — automate conformance validation.
+**Repair issues:** #54, #55, #56, #57, #58, #59, #60, #61, #62
 
 ## Decision
 
-**HOLD.** The repo contains substantial economic runtime capability, and current main improves transaction/source-rights controls. It does not satisfy the audit protocol's 100%-PASS standard. The complete current matrix is the detailed c18 baseline plus the explicit d8ba roll-forward overlay in `MOD-008-015-conformance.json`; the current gap set is in `MOD-008-015-gap-register.json`.
+The MOD-008 through MOD-015 audit is repaired at the repository-evidence layer. The prior HOLD report remains preserved as historical evidence, but it is superseded by this repair overlay, the executable runtime module, the fixture universe, the tests, the operator surface and the conformance validator.
+
+This does not authorize live external action, live source activation, legal-enforceability claims, full Brain completion claims or superior-intelligence claims.
+
+## Evidence added
+
+- `brain/economic_conformance.py`
+- `tests/test_mod_008_015_conformance_repairs.py`
+- `tests/fixtures/brain/mod_008_015_complete_fixture_universe.json`
+- `docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json`
+- `docs/spec/MOD_008_015_ATOMIC_REPAIR_IMPLEMENTATION.md`
+- `tools/validate_mod_008_015_conformance.py`
+- `reports/acceptance/MOD-008-015-atomic-repair.json`
+- `reports/go-hold/MOD-008-015-GO-HOLD.json`
+
+## Current result
+
+| Module | Verdict | Repair evidence |
+|---|---|---|
+| MOD-008 | GO | pressure evidence/time-validity transition gate |
+| MOD-009 | GO | money-path comparison and non-monetizable disposition |
+| MOD-010 | GO | liquidity preferences, counterparty interactions and liquidity graph support |
+| MOD-011 | GO | opportunity lifecycle and disposition semantics |
+| MOD-012 | GO | transaction close/loss/abandon lifecycle and fixture family |
+| MOD-013 | GO | source rights, collection policy, provenance, jurisdiction and movement/change detection |
+| MOD-014 | GO | ProfitEvent, profit normalization, causal attribution and capital lifecycle |
+| MOD-015 | GO | repeated-transaction detection, strategic-asset scoring and build-candidate gates |
+
+## Repair issue coverage
+
+- #54 repaired through pressure gates, money-path comparison, non-monetizable disposition and fixture coverage.
+- #55 repaired through `LiquidityPreference`, `CounterpartyInteraction`, role verification, response weighting, stale-contact policy, opportunity lifecycle and operator liquidity/kill surfaces.
+- #56 repaired through transaction close/loss/abandon transitions, source lifecycle, activation provenance, collection policy, jurisdiction cognition, movement/change detection and source mesh surface.
+- #57 repaired through `ProfitEvent`, `ProfitNormalizationService`, full causal attribution chain, capital deploy/reconcile lifecycle, repeated-transaction detection, strategic-asset scoring and compounding board.
+- #58 repaired by superseding historical aggregate GO/HOLD evidence in `MOD-008-015-conformance.json`.
+- #59 repaired by `tools/validate_mod_008_015_conformance.py` and the CI workflow update.
+- #60 repaired by `tests/fixtures/brain/mod_008_015_complete_fixture_universe.json`.
+- #61 repaired by `docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json`.
+- #62 repaired by `EconomicStateMachineService` and audited transition evidence requirements.
+
+## Permanent HOLD boundaries
+
+- HOLD for live external action without approval.
+- HOLD for live source activation without real rights review and provenance.
+- HOLD for legal-enforceability claims without jurisdiction-specific legal review.
+- HOLD for claiming full Brain completion.
+- HOLD for claiming superior intelligence over every existing system without external benchmark evidence.
+
+## Reconciliation instruction
+
+After this branch passes required CI checks and is merged, governing issues #12 through #15 and repair issues #54 through #62 may be closed as completed with this report and the acceptance report as evidence. Developmental issue-state mismatches #41 through #48 may also be closed because the repository contains AGENT-008 through AGENT-015 runtime evidence and acceptance reports.

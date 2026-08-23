@@ -143,7 +143,8 @@
       "paths": [
         "brain/economic_runtime.py", "brain/economic_replay.py", "brain/economic_capital.py",
         "brain/economic_compounding.py", "brain/economic_attribution.py", "brain/economic_transaction.py",
-        "brain/economic_sources.py", "brain/economic_codec.py", "brain/economic_hard_gates.py"
+        "brain/economic_sources.py", "brain/economic_codec.py", "brain/economic_hard_gates.py",
+        "brain/economic_conformance.py"
       ],
       "classification": "APPROVED",
       "go_hold_status": "REVIEW",
@@ -151,12 +152,12 @@
       "requirement_ids": ["REQ-ECONOMIC-RUNTIME"],
       "owner_object": "MOD-008 through MOD-015 Capital Discovery Cortex runtime",
       "schema": "docs/spec/BRAIN_SCHEMA_REGISTRY.md and db/migrations/007_economic_cognition.sql",
-      "runtime_service": "EconomicRuntime and economic hard-gate services",
-      "state_machine": "docs/spec/BRAIN_STATE_MACHINES.md MOD-008 through MOD-015",
-      "fixtures": ["tests/fixtures/economic"],
-      "tests": ["python -m pytest -q", "ruff check ."],
-      "acceptance_criteria": ["economic scores have formula traces", "source rights fail closed", "hard gates block unauthorized revenue action", "replay is deterministic"],
-      "audit_events": ["ECONOMIC_TRANSITION_RECORDED", "ECONOMIC_FORMULA_RUN_RECORDED", "ECONOMIC_HARD_GATE_EVALUATED"],
+      "runtime_service": "EconomicRuntime, economic hard-gate services, and MOD-008-015 conformance repair runtime",
+      "state_machine": "docs/spec/BRAIN_STATE_MACHINES.md MOD-008 through MOD-015 plus EconomicStateMachineService",
+      "fixtures": ["tests/fixtures/economic", "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json"],
+      "tests": ["python -m pytest -q", "ruff check .", "python tools/validate_mod_008_015_conformance.py"],
+      "acceptance_criteria": ["economic scores have formula traces", "source rights fail closed", "hard gates block unauthorized revenue action", "replay is deterministic", "atomic conformance rows pass"],
+      "audit_events": ["ECONOMIC_TRANSITION_RECORDED", "ECONOMIC_FORMULA_RUN_RECORDED", "ECONOMIC_HARD_GATE_EVALUATED", "MOD_008_015_ATOMIC_CONFORMANCE_VERIFIED"],
       "source_preservation": "preserved",
       "unresolved_gaps": ["live external source connectors and real transaction execution remain approval-gated deployment work"]
     },

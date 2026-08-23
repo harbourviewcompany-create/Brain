@@ -16,6 +16,8 @@ jobs:
         run: pip install -e '.[dev]'
       - name: Validate Brain agent-control artifacts
         run: python tools/validate_agent_control.py
+      - name: Validate MOD-008 through MOD-015 conformance
+        run: python tools/validate_mod_008_015_conformance.py
       - name: Test
         run: pytest -q
       - name: Lint
