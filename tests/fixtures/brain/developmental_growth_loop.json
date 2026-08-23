@@ -1,0 +1,58 @@
+{
+  "fixture_id": "developmental_growth_loop",
+  "scenario": "prediction error creates development pressure, proposes a rewire, routes it through immune review, and holds activation until acceptance evidence exists",
+  "input": {
+    "prediction": {
+      "prediction_id": "pred_001",
+      "owner_object_type": "Belief",
+      "owner_object_id": "belief_market_pressure_001",
+      "forecast_probability": 0.82,
+      "predicted_outcome": "buyer replies within 72 hours",
+      "actual_outcome": false,
+      "source_refs": ["docs/brain-readable-concept-manual.md#learning-from-outcomes"]
+    },
+    "reward_pain": {
+      "reward_score": 0.0,
+      "pain_score": 0.61,
+      "attribution_confidence": 0.74
+    },
+    "candidate_growth": {
+      "target": "source_to_opportunity_edge",
+      "proposal": "weaken overconfident source-to-buyer-reply pathway and create calibration learning task",
+      "external_action": false
+    }
+  },
+  "expected": {
+    "objects_created": [
+      "PredictionError",
+      "CalibrationTrace",
+      "DevelopmentPressure",
+      "RewireProposal",
+      "ImmuneAlert",
+      "AcceptanceGate"
+    ],
+    "formula_runs": [
+      "prediction_error_score",
+      "development_pressure_score",
+      "immune_risk_score"
+    ],
+    "state_transitions": [
+      "prediction.active->prediction.resolved",
+      "edge.active->edge.rewire_proposed",
+      "rewire_proposal.draft->immune_review",
+      "immune_review->acceptance_hold"
+    ],
+    "blocked_transitions": [
+      "rewire_proposal.draft->active_without_replay",
+      "dream_output->external_action",
+      "capability_claim->accepted_without_evidence"
+    ],
+    "dashboard_output": [
+      "Development Console",
+      "Rewire Timeline",
+      "Cognitive Immune Console",
+      "Self Model Console"
+    ],
+    "go_hold_result": "HOLD_until_implementation_acceptance"
+  }
+}
