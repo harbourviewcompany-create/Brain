@@ -6,10 +6,17 @@ from .abstractions import (
     NeuroAbstractionValidationService,
     NeuroScaleLevel,
 )
+from .multiscale import CognitionScaleLayer, MultiscaleCognitionService, MultiscaleCognitionStack
+from .regions import BrainRegionFunction, BrainRegionMappingService
 
 __all__ = [
+    "BrainRegionFunction",
+    "BrainRegionMappingService",
+    "CognitionScaleLayer",
     "ImplementationStatus",
     "MechanismCertainty",
+    "MultiscaleCognitionService",
+    "MultiscaleCognitionStack",
     "NeuroAbstraction",
     "NeuroAbstractionRegistryService",
     "NeuroAbstractionValidationService",
