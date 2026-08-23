@@ -4,7 +4,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from .attribution import LearningResult, OutcomeAttribution
-from .domain import Edge, Outcome
+from .domain import Edge, Outcome, utcnow
 from .events import BrainEvent
 from .prediction import Prediction, PredictionEngine, PredictionStatus
 
@@ -75,12 +75,7 @@ class LearningService:
         if self.predictions is not None:
             self.predictions.save(prediction)
         self.event_store.append(
-            BrainEvent(
-                "prediction.created",
-                "prediction",
-                prediction.id,
-                _prediction_payload(prediction),
-            )
+            BrainEvent("prediction.created", "prediction", prediction.id, _prediction_payload(prediction))
         )
         return prediction
 
@@ -141,6 +136,27 @@ class LearningService:
 
         self._emit_learning_events(outcome, result)
         return result
+
+    def expire_due_predictions(self, *, now=None) -> list[Prediction]:
+        """Mark open predictions past resolve_by as expired; emit events and persist."""
+        now = now or utcnow()
+        expired: list[Prediction] = []
+        if self.predictions is None or not hasattr(self.predictions, "list_open"):
+            return expired
+        for pred in self.predictions.list_open():  # type: ignore[attr-defined]
+            updated = self.prediction_engine.expire(pred, now=now)
+            if updated.status is PredictionStatus.EXPIRED and pred.status is PredictionStatus.OPEN:
+                self.predictions.save(updated)
+                self.event_store.append(
+                    BrainEvent(
+                        "prediction.expired",
+                        "prediction",
+                        updated.id,
+                        _prediction_payload(updated),
+                    )
+                )
+                expired.append(updated)
+        return expired
 
     def _emit_learning_events(self, outcome: Outcome, result: LearningResult) -> None:
         self.event_store.append(
