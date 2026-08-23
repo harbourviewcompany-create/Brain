@@ -28,6 +28,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | apps/operator/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | apps/worker/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | brain/adapters/cognition.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| brain/adapters/developmental_evidence_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/adapters/economic_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/learning_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/postgres.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -41,6 +42,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/cycle.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/debate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/developmental/consolidation.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/evidence_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/higher_order_cognition.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -102,7 +104,11 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 
 ## Developmental traceability note
 
-The eleven `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. Their `partial` values and `HOLD` status are deliberate. AGENT-017 and AGENT-018 add metacognitive optimization and bounded improvement-experiment evidence, but neither grants repository-wide BUILD-READY or autonomous mutation authority.
+The twelve `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. AGENT-019 adds durable typed evidence and restart replay, while production migration execution and repository-wide BUILD-READY remain separate HOLDs.
+
+## Adapter traceability note
+
+`brain/adapters/developmental_evidence_store.py` is the PostgreSQL persistence boundary for AGENT-017/018 evidence. Its repository implementation is traceable, but production migration execution is environment-specific and remains HOLD until deployed and verified.
 
 ## MOD-008 through MOD-015 repair traceability note
 
