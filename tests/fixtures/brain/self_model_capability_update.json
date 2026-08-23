@@ -1,0 +1,22 @@
+{
+  "fixture_id": "self_model_capability_update",
+  "scenario": "capability claims require evidence, limitations are preserved, and learning debt affects developmental priority",
+  "input": {
+    "capability_claim": {
+      "name": "prediction-error-runtime",
+      "confidence": 0.8,
+      "evidence_refs": ["reports/acceptance/AGENT-008-prediction-error-runtime.json"],
+      "test_refs": ["tests/test_developmental_prediction_error.py"],
+      "acceptance_refs": ["reports/acceptance/AGENT-008-prediction-error-runtime.json"]
+    },
+    "limitation": "full Brain is not complete until all modules have evidence",
+    "learning_debt": {"area": "calibration", "severity": 0.8, "evidence_gap": "insufficient outcomes"}
+  },
+  "expected": {
+    "objects_created": ["CapabilityClaim", "LimitationRecord", "LearningDebt", "SelfAssessment"],
+    "state_transitions": ["capability.unclaimed->capability.evidence_bound", "learning_debt.open->learning_debt.prioritized"],
+    "blocked_transitions": ["capability_claim_without_evidence", "full_brain_complete_claim_without_acceptance"],
+    "dashboard_output": ["Self Model Console"],
+    "go_hold_result": "GO"
+  }
+}
