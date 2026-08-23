@@ -2,15 +2,32 @@
   "fixture_id": "source_signal_evidence_belief",
   "scenario": "trusted source emits a signal that creates evidence and updates a belief",
   "input": {
-    "source": {"id": "src_regulator_001", "name": "Regulator registry", "reliability": 0.95, "status": "active"},
-    "signal": {"id": "sig_001", "claim": "Company A received a new license", "novelty": 0.8, "urgency": 0.6, "commercial_upside": 0.7},
-    "evidence": {"id": "ev_001", "direction": "supports", "evidence_strength": 0.85}
+    "stimulus": {
+      "content": "Regulator registry shows Company A received a new license.",
+      "source_id": "src_regulator_001",
+      "claim": "Company A received a new license",
+      "source_reliability": 0.95,
+      "supports": true,
+      "belief_statement": "Company A is licensed for expansion",
+      "belief_confidence": 0.5,
+      "commercial_upside": 0.7,
+      "novelty": 0.8,
+      "urgency": 0.6,
+      "contradiction_value": 0.0,
+      "uncertainty_reduction": 0.8,
+      "noise_probability": 0.05,
+      "operator_burden": 0.1,
+      "metadata": {"fixture_id": "source_signal_evidence_belief"}
+    }
   },
   "expected": {
-    "objects_created": ["Source", "Signal", "EvidenceItem", "Belief", "FormulaRun"],
-    "formula_runs": ["source_priority_score", "attention_score", "bayesian_belief_update"],
-    "state_transitions": ["signal.captured->signal.scored", "belief.draft->belief.active"],
-    "dashboard_output": ["Perception Inbox", "Belief Ledger"],
+    "event_types_subset": [
+      "observation.received",
+      "attention.scored",
+      "evidence.created",
+      "belief.updated",
+      "cycle.completed"
+    ],
     "go_hold_result": "GO"
   }
 }
