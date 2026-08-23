@@ -24,7 +24,7 @@ jobs:
 
       - name: Compile validator scripts
         run: |
-          python -m py_compile scripts/validate_control_layer.py scripts/validate_archive_manifest.py scripts/validate_pr_body.py scripts/validate_build_ready_traceability.py scripts/validate_migrations.py tools/check_repository_hardening.py scripts/ingest_current_thread_archive.py
+          python -m py_compile scripts/validate_control_layer.py scripts/validate_archive_manifest.py scripts/validate_pr_body.py scripts/validate_build_ready_traceability.py tools/check_repository_hardening.py scripts/ingest_current_thread_archive.py
 
       - name: Validate control layer
         run: |
@@ -34,11 +34,7 @@ jobs:
         run: |
           python scripts/validate_archive_manifest.py
 
-      - name: Validate migration integrity
-        run: |
-          python scripts/validate_migrations.py
-
-      - name: Validate module BUILD-READY traceability
+      - name: Validate module BUILD-READY traceability and migrations
         run: |
           python scripts/validate_build_ready_traceability.py
 
