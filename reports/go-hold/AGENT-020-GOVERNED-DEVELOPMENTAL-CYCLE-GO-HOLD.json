@@ -1,0 +1,8 @@
+{
+  "report_id":"AGENT-020-GOVERNED-DEVELOPMENTAL-CYCLE-GO-HOLD",
+  "issue":91,
+  "status":"GO_CANDIDATE_PENDING_EXACT_HEAD_CI",
+  "go":["end-to-end developmental improvement orchestration","durable cycle checkpoints","separate approval gates","evidence-only experiment decisions","restart reconstruction"],
+  "hold":["self-approval","autonomous code mutation","automatic merge","deployment","spending","external action","unsupported intelligence-superiority claims"],
+  "closure_rule":"Protected control, test and lint workflows must pass on the exact implementation head."
+}
