@@ -1,0 +1,19 @@
+{
+  "fixture_id": "sleep_consolidation_cycle",
+  "scenario": "offline dream simulation produces rewire proposals but cannot execute external actions; consolidation compresses memory while preserving provenance",
+  "input": {
+    "memories": [
+      {"content": "buyer replied after licensing signal", "salience": 0.8, "source_refs": ["source:email-outcome"]},
+      {"content": "fast timing improved reply rate", "salience": 0.7, "source_refs": ["source:timing-experiment"]}
+    ],
+    "dream_proposal": "simulate timing-sensitive licensing outreach variant",
+    "compressed_summary": "licensing signal timing may matter"
+  },
+  "expected": {
+    "objects_created": ["MemoryTrace", "DreamProposal", "ConsolidationRecord"],
+    "state_transitions": ["memory.active->sleep.rehearsed", "sleep.rehearsed->memory.consolidated"],
+    "blocked_transitions": ["dream_output->external_action", "compression->delete_source_evidence"],
+    "dashboard_output": ["Sleep Consolidation Console", "Rewire Proposal Queue"],
+    "go_hold_result": "GO"
+  }
+}
