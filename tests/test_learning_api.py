@@ -9,7 +9,6 @@ from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
 from brain.prediction import PredictionEngine, PredictionStatus
 
-
 client = TestClient(app)
 
 

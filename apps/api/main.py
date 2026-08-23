@@ -42,7 +42,8 @@ def _configure_from_env() -> None:
             PostgresSourceStore,
         )
         from brain.adapters.postgres import PostgresEventStore
-    except Exception:
+    except ImportError:
+        # Optional Postgres extras (psycopg) aren't installed; keep the in-memory store.
         return
 
     event_store = PostgresEventStore(dsn)
@@ -148,7 +149,7 @@ def health():
     try:
         if hasattr(learning.event_store, "read_all"):
             event_count = len(learning.event_store.read_all())
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 - health check must stay up even if this secondary metric fails
         pass
     return {
         "status": "ok",

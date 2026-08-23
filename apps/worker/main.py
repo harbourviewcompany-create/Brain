@@ -24,7 +24,7 @@ def build_runner() -> ContinuousCognitionRunner:
     try:
         loaded = cycle.hydrate_beliefs(from_checkpoint=True)
         print(f"hydrated {loaded} beliefs from projection checkpoint")
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # noqa: BLE001 - pragma: no cover - startup hydration is best-effort; worker must still boot on failure
         print(f"belief hydration skipped: {exc}")
     inbox = PostgresSensoryInbox(event_store.pool)
     runs = CognitiveCycleRunStore(event_store.pool)

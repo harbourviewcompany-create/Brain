@@ -103,34 +103,32 @@ class PostgresPredictionStore:
             conn.commit()
 
     def get(self, prediction_id: UUID) -> Prediction | None:
-        with self.pool.connection() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(
-                    """
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
                     select id, statement, expected_value, confidence, horizon_seconds,
                            belief_id, action_id, edge_ids, source_keys, status,
                            created_at, resolve_by, resolved_at, metadata
                     from public.predictions where id = %s
                     """,
-                    (prediction_id,),
-                )
-                row = cur.fetchone()
-                if row is None:
-                    return None
-                return self._row_to_prediction(row)
+                (prediction_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return self._row_to_prediction(row)
 
     def list_open(self) -> list[Prediction]:
-        with self.pool.connection() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(
-                    """
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
                     select id, statement, expected_value, confidence, horizon_seconds,
                            belief_id, action_id, edge_ids, source_keys, status,
                            created_at, resolve_by, resolved_at, metadata
                     from public.predictions where status = 'open'
                     """
-                )
-                return [self._row_to_prediction(row) for row in cur.fetchall()]
+            )
+            return [self._row_to_prediction(row) for row in cur.fetchall()]
 
     @staticmethod
     def _row_to_prediction(row: dict) -> Prediction:
@@ -157,29 +155,28 @@ class PostgresEdgeStore:
         self.pool = pool
 
     def get_edge(self, edge_id: UUID) -> Edge | None:
-        with self.pool.connection() as conn:
-            with conn.cursor(row_factory=dict_row) as cur:
-                cur.execute(
-                    """
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
                     select id, source_id, target_id, relation, weight, confidence,
                            evidence_ids, updated_at
                     from public.graph_edges where id = %s
                     """,
-                    (edge_id,),
-                )
-                row = cur.fetchone()
-                if row is None:
-                    return None
-                return Edge(
-                    id=row["id"],
-                    source=row["source_id"],
-                    target=row["target_id"],
-                    relation=row["relation"],
-                    weight=float(row["weight"]),
-                    confidence=float(row["confidence"]),
-                    evidence_ids=set(row["evidence_ids"] or []),
-                    updated_at=row["updated_at"],
-                )
+                (edge_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return Edge(
+                id=row["id"],
+                source=row["source_id"],
+                target=row["target_id"],
+                relation=row["relation"],
+                weight=float(row["weight"]),
+                confidence=float(row["confidence"]),
+                evidence_ids=set(row["evidence_ids"] or []),
+                updated_at=row["updated_at"],
+            )
 
     def upsert_edge(self, edge: Edge) -> None:
         with self.pool.connection() as conn:
