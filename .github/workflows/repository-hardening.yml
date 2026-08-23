@@ -1,0 +1,33 @@
+name: Brain Repository Hardening Audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 11 * * *'
+
+jobs:
+  hardening-audit:
+    name: Audit branch protection and archive file bytes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      metadata: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile hardening audit
+        run: |
+          python -m py_compile scripts/check_repository_hardening.py
+
+      - name: Audit hardening gaps
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/check_repository_hardening.py
