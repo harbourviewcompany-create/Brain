@@ -40,6 +40,14 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/curiosity.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cycle.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/debate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/developmental/consolidation.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/module_genesis.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/plasticity.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/prediction_error.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/theory_registry.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/domain.py | partial | present | partial | missing | partial | missing | partial | HOLD |
 | brain/dreaming.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/economic.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
@@ -81,6 +89,10 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | scripts/validate_control_layer.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_pr_body.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | tools/validate_agent_control.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+
+## Developmental traceability note
+
+The eight `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. Their `partial` values and `HOLD` status are deliberate. They are traced to `docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md` through `docs/control/source-requirement-registry.json`; this traceability repair does **not** assert that the developmental modules are fully conformant or BUILD-READY.
 
 ## Source preservation statement
 
