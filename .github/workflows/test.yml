@@ -40,11 +40,14 @@ jobs:
             -e POSTGRES_DB=brain \
             pgvector/pgvector:pg16
           for i in $(seq 1 30); do
-            if docker exec brain-postgres pg_isready -U brain -d brain; then exit 0; fi
+            if docker exec brain-postgres pg_isready -U brain -d brain; then break; fi
+            if [ "${i}" = "30" ]; then docker logs brain-postgres; exit 1; fi
             sleep 1
           done
-          docker logs brain-postgres
-          exit 1
+          docker exec brain-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          SQL
 
       - name: Apply all database migrations
         run: |
