@@ -1,1 +1,121 @@
-# Brain
+# Brain Runtime
+
+A cloud-native, event-sourced, self-rewiring cognitive runtime.
+
+## What this repository is
+
+This repository is the first executable substrate for the Brain discussed in the project: evidence-backed beliefs, explicit uncertainty, a mutable relationship topology, attention allocation, contradiction handling, curiosity, offline recombination, outcome reward, resource allocation, and human-governed external action.
+
+It is intentionally **not** an LLM wrapper. Language/reasoning models are replaceable tools used by cognitive organs; they are not the Brain's persistent identity.
+
+## Why this architecture
+
+Human-brain equivalence cannot currently be specified honestly because neuroscience does not yet explain every brain function mechanistically. The design therefore supports an expanding registry of cognitive functions instead of pretending unknown functions are solved.
+
+## Recommended production cloud
+
+1. Supabase/PostgreSQL: canonical event ledger and structured memory.
+2. Neo4j AuraDB: graph projection / associative topology.
+3. Temporal Cloud: durable cognition workflows.
+4. Python workers: cognition and model adapters.
+5. Vercel + Next.js: operator control plane.
+6. Object storage: raw evidence/artifacts.
+
+PostgreSQL is canonical. Neo4j is rebuildable. This prevents the graph engine from becoming a single irreversible source of truth.
+
+## Local start
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+uvicorn apps.api.main:app --reload
+```
+
+Test:
+
+```bash
+pytest
+```
+
+Minimal cognitive loop:
+
+```bash
+curl -X POST http://127.0.0.1:8000/beliefs \
+  -H 'content-type: application/json' \
+  -d '{"statement":"A market is expanding","confidence":0.6}'
+```
+
+Then POST evidence to `/learn` using the returned belief ID.
+
+## Build sequence
+
+### Slice 1 — executable substrate (included)
+- Domain objects
+- In-memory executable runtime
+- Belief updating
+- Contradiction detection
+- Attention scoring
+- Rewiring primitives
+- Curiosity tasks
+- Dream hypotheses
+- Debate shell
+- Reward system
+- Capital allocation primitive
+- Governance gate
+- PostgreSQL schema
+
+### Slice 2 — persistence
+- Postgres event-store adapter
+- Supabase auth/RLS
+- Neo4j projection writer
+- projection rebuild command
+- outbox pattern
+
+### Slice 3 — durable cognition
+- Temporal workflows for sensing, evidence processing, belief decay, dreams and outcomes
+- source connector SDK
+- task scheduling / retry / idempotency
+
+### Slice 4 — model cortex
+- provider-neutral model interface
+- extraction model
+- entity-resolution model
+- hypothesis generator
+- skeptic / judge evaluators
+- calibration logging
+
+### Slice 5 — control plane
+- Graph explorer
+- Belief ledger
+- Contradiction inbox
+- Curiosity queue
+- Approval queue
+- Rewire timeline
+- Resource/cost telemetry
+
+### Slice 6 — research expansion
+- causal simulation
+- counterfactuals
+- working memory
+- homeostasis
+- social cognition
+- richer neuromodulatory state
+- embodied sensor/action adapters where useful
+
+## Guardrail
+
+The Brain may autonomously modify internal belief and graph state under bounded, reversible rules. Consequential external actions remain permissioned unless explicitly enabled by policy.
+
+## v0.2 cognitive substrate
+
+Version 0.2 adds memory-class primitives, bitemporal cognition, neuromodulator state, homeostasis, finite cognitive-budget scheduling, replayable projections, and cognitive experimentation. See `docs/build-plan.md`.
+
+Run tests:
+
+```bash
+python -m pytest -q
+```
+
+Current verified result: 7 tests passing.

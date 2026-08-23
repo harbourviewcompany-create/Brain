@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: brain
+      POSTGRES_DB: brain
+    ports: ["5432:5432"]
+    volumes: ["brain_pg:/var/lib/postgresql/data"]
+
+  neo4j:
+    image: neo4j:2025.04
+    environment:
+      NEO4J_AUTH: neo4j/brainpassword
+    ports: ["7474:7474", "7687:7687"]
+    volumes: ["brain_neo4j:/data"]
+
+volumes:
+  brain_pg:
+  brain_neo4j:
