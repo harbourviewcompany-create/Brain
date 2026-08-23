@@ -26,7 +26,6 @@ class ContinuousCognitionWorkflow:
             worked = await workflow.execute_activity(
                 "brain.cognition_tick",
                 start_to_close_timeout=timedelta(minutes=2),
-                retry_policy=None,
             )
             if worked:
                 idle_ticks = 0
@@ -37,7 +36,6 @@ class ContinuousCognitionWorkflow:
                 await workflow.execute_activity(
                     "brain.prediction_maintenance",
                     start_to_close_timeout=timedelta(minutes=2),
-                    retry_policy=None,
                 )
                 idle_ticks = 0
-        workflow.continue_as_new(idle_seconds, maintenance_every, max_iterations)
+        workflow.continue_as_new(args=[idle_seconds, maintenance_every, max_iterations])
