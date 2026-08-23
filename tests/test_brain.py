@@ -1,8 +1,7 @@
 from brain.attention import AttentionMarket, AttentionSignal
-from brain.beliefs import BeliefEngine
-from brain.domain import Belief, Edge, Evidence, Node, Outcome
-from brain.rewiring import RewiringEngine
+from brain.domain import Edge, Evidence, Node, Outcome
 from brain.reward import RewardSystem
+from brain.rewiring import RewiringEngine
 from brain.runtime import BrainRuntime
 
 

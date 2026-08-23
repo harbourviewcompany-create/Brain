@@ -25,7 +25,6 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_MANIFEST_PATH = Path("docs/archive/archive_manifest.json")
 
 

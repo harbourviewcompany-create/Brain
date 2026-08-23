@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from brain.adapters.postgres import PostgresEventStore
@@ -7,7 +7,7 @@ from brain.adapters.postgres import PostgresEventStore
 def test_row_to_event_round_trip_shape():
     event_id = uuid4()
     aggregate_id = uuid4()
-    occurred_at = datetime.now(timezone.utc)
+    occurred_at = datetime.now(UTC)
     row = {
         "id": event_id,
         "event_type": "belief.created",
