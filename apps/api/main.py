@@ -11,7 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from brain.adapters.developmental_store import InMemoryDevelopmentalStore
 from brain.adapters.learning_store import InMemoryLearningStore
+from brain.developmental.runtime import DevelopmentalRuntime
 from brain.domain import Edge, Evidence, Node, Outcome
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
@@ -23,7 +25,7 @@ from brain.security import ApiKeyAuthenticator, SecurityConfig
 _security = SecurityConfig.from_env()
 _authenticator = ApiKeyAuthenticator(_security)
 
-app = FastAPI(title="Brain Runtime API", version="0.6.0")
+app = FastAPI(title="Brain Runtime API", version="0.7.0")
 
 _origins = _security.allowed_origins()
 app.add_middleware(
@@ -47,6 +49,7 @@ async def production_authentication(request: Request, call_next):
 
 _brain_store: InMemoryBrainStore = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
+_developmental_store = InMemoryDevelopmentalStore()
 runtime = BrainRuntime(store=_brain_store)
 learning = LearningService(
     _brain_store,
@@ -55,15 +58,17 @@ learning = LearningService(
     attributions=_learning_store,
     sources=_learning_store,
 )
+development = DevelopmentalRuntime(_developmental_store)
 money_spine = MoneySpineService()
 
 
 def _configure_from_env() -> None:
-    global _brain_store, runtime, learning
+    global _brain_store, runtime, learning, development
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
     from brain.adapters.brain_store import PostgresBrainStore
+    from brain.adapters.developmental_store import PostgresDevelopmentalStore
     from brain.adapters.learning_store import (
         PostgresAttributionStore,
         PostgresEdgeStore,
@@ -81,6 +86,7 @@ def _configure_from_env() -> None:
         attributions=PostgresAttributionStore(store.pool),
         sources=PostgresSourceStore(store.pool),
     )
+    development = DevelopmentalRuntime(PostgresDevelopmentalStore(dsn, pool=store.pool))
 
 
 _configure_from_env()
@@ -225,13 +231,20 @@ def _database_ready() -> tuple[bool, str]:
 @app.get("/health")
 def health():
     database_ok, database_status = _database_ready()
+    event_count = 0
+    if database_ok:
+        try:
+            event_count = len(runtime.store.read_all(limit=1000))
+        except Exception:
+            database_ok = False
+            database_status = "event_ledger_unavailable"
     payload = {
         "status": "ok" if database_ok else "degraded",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "database": database_status,
         "persistence": "postgres" if os.environ.get("DATABASE_URL") else "in_memory",
         "beliefs": len(runtime.store.beliefs),
-        "events": len(runtime.store.read_all(limit=1000)),
+        "events": event_count,
         "predictions": len(getattr(_learning_store, "predictions", {})),
         "money_lanes": len(money_spine.lanes),
     }
@@ -293,6 +306,11 @@ def list_predictions():
         predictions = []
     items = [_serialize_prediction(prediction) for prediction in predictions]
     return {"items": items, "total": len(items)}
+
+
+@app.get("/development/pressures")
+def list_development_pressures():
+    return {"items": development.store.list("development_pressure")}
 
 
 @app.post("/beliefs")
@@ -400,7 +418,24 @@ def record_outcome(body: RecordOutcomeRequest):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return _serialize_learning(result)
+    pressure = development.ingest_learning_signal(
+        outcome_id=outcome.id,
+        prediction_id=result.attribution.prediction_id,
+        prediction_error=result.attribution.prediction_error,
+        reward_score=result.attribution.reward_score,
+        evidence_refs=[
+            f"outcome:{outcome.id}",
+            f"attribution:{result.attribution.id}",
+        ],
+    )
+    payload = _serialize_learning(result)
+    payload["development_pressure"] = {
+        "id": str(pressure.id),
+        "pressure": pressure.pressure,
+        "learning_priority": pressure.learning_priority,
+        "reasons": pressure.reasons,
+    }
+    return payload
 
 
 @app.get("/money-lanes")
