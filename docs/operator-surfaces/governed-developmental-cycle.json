@@ -1,0 +1,14 @@
+{
+  "surface_id":"governed-developmental-cycle-v1",
+  "issue":91,
+  "panels":[
+    {"id":"cycle_timeline","shows":["cycle_id","checkpoint_state","related_record_ids","sequence","evidence_refs"]},
+    {"id":"capability_assessment","shows":["benchmark","baseline_run","current_run","regression"]},
+    {"id":"improvement_plan","shows":["learning_debt","hypothesis","rollback_plan","test_target","acceptance_criteria","plan_state"]},
+    {"id":"approval_gates","shows":["plan_operator_approval","experiment_operator_approval","missing_approval_holds"]},
+    {"id":"experiment_decision","shows":["before_scores","after_scores","controls","protected_regressions","decision","rollback_record"]},
+    {"id":"restart_integrity","shows":["last_sequence","sequence_contiguous","cycle_checkpoints","unresolved_regressions","failed_or_hold_results"]}
+  ],
+  "authority":{"self_approval":false,"code_mutation":false,"merge":false,"deployment":false,"spending":false,"external_action":false},
+  "decision_outputs":["PROMOTE","REVISE","REJECT","HOLD"]
+}
