@@ -1,7 +1,7 @@
 {
   "schema_id": "brain-mod-008-015-conformance-v2",
   "audit_id": "MOD-008-015-atomic-repair-full-universe-2026-08-23",
-  "audited_commit": "216586f7dd68227ce1710b735c5903682d5da1b9",
+  "audited_commit": "1d92a16aad6693cee6346995bad78fb86552f0b5",
   "baseline_source": "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json",
   "verdict": "GO",
   "go_rule": "All 117 mandatory atomic requirements must PASS on one evidence-bearing implementation commit.",
