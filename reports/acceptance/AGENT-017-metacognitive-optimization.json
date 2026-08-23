@@ -1,0 +1,36 @@
+{
+  "report_id": "AGENT-017-metacognitive-optimization",
+  "verdict": "GO_CANDIDATE_PENDING_PROTECTED_CI",
+  "issue": 77,
+  "audit_issues": [82, 83, 84],
+  "implemented_files": [
+    "brain/developmental/metacognitive_optimization.py",
+    "tests/test_metacognitive_optimization.py",
+    "tests/fixtures/brain/metacognitive_optimization_cycle.json",
+    "docs/spec/BRAIN_METACOGNITIVE_OPTIMIZATION_FLYWHEEL.md",
+    "docs/operator-surfaces/metacognitive-optimization-dashboard.json"
+  ],
+  "implemented_capabilities": [
+    "evidence-backed capability benchmark registry and history",
+    "direction-aware regression detection",
+    "regression-preserving learning debt prioritization",
+    "evidence-backed improvement hypotheses",
+    "proposal-only self-optimization planning",
+    "rollback/test/acceptance/traceability hard gates",
+    "external-benchmark superiority claim boundary",
+    "operator capability map and HOLD surface"
+  ],
+  "hard_gates": {
+    "direct_self_modification_from_benchmark_output": "HOLD",
+    "regression_suppression": "HOLD",
+    "optimization_without_traceability_rollback_test_acceptance": "HOLD",
+    "superiority_claim_from_internal_benchmarks": "HOLD"
+  },
+  "required_validation": [
+    "python scripts/validate_control_layer.py",
+    "python scripts/validate_build_ready_traceability.py",
+    "python tools/validate_agent_control.py",
+    "pytest -q",
+    "ruff check --select E4,E7,E9,F ."
+  ]
+}
