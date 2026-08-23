@@ -32,6 +32,7 @@ REQUIRED_FILES = [
     "docs/spec/schema-registry.json",
     "docs/spec/acceptance-matrix.json",
     "docs/spec/source-to-build-traceability.json",
+    "docs/control/go_hold_issue_reconciliation.json",
     "brain/schemas.py",
     "brain/formulas.py",
     "brain/replay.py",
@@ -66,6 +67,25 @@ def load_json(path: str) -> dict:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def validate_go_hold_issue_reconciliation() -> None:
+    data = load_json("docs/control/go_hold_issue_reconciliation.json")
+    issues = {int(issue["issue_number"]): issue for issue in data.get("issues", [])}
+    failures: list[str] = []
+    for report in data.get("reports", []):
+        if report.get("verdict") != "GO":
+            continue
+        for number in report.get("issue_numbers", []):
+            issue = issues.get(int(number))
+            if issue is None:
+                failures.append(f"GO report references missing issue #{number}")
+                continue
+            if issue.get("issue_state") != "closed" and not issue.get("explicit_open_reason"):
+                failures.append(f"GO report references open issue #{number} without explicit reason")
+            if not issue.get("evidence_refs") or not report.get("evidence_refs"):
+                failures.append(f"GO report or issue #{number} lacks evidence refs")
+    require(not failures, f"GO/HOLD issue reconciliation failed: {failures}")
 
 
 def main() -> None:
@@ -138,6 +158,8 @@ def main() -> None:
         report = load_json(report_path)
         require(report.get("verdict") == "GO", f"Report is not GO: {report_path}")
         require(report.get("evidence"), f"Report missing evidence: {report_path}")
+
+    validate_go_hold_issue_reconciliation()
 
     print("Brain agent-control validation: GO")
 
