@@ -1,0 +1,14 @@
+{
+  "fixture_id": "economic_source_rights_hold",
+  "scenario": "Prohibited source cannot activate",
+  "scenario_type": "source_rights",
+  "source_key": "restricted-example",
+  "rights_class": "prohibited",
+  "jurisdiction": "CA",
+  "permitted_collection": true,
+  "permitted_storage": true,
+  "permitted_commercial_use": true,
+  "plane": "marketplaces",
+  "notes": ["Explicitly prohibited by policy"],
+  "expected_hold": true
+}
