@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Ingest the Brain current-thread archive ZIP into repository paths.
 
 This script verifies the ZIP package and every extracted asset against
@@ -24,7 +23,6 @@ import sys
 import zipfile
 from pathlib import Path
 from typing import Any
-
 
 DEFAULT_MANIFEST_PATH = Path("docs/archive/archive_manifest.json")
 
@@ -55,13 +53,9 @@ def verify_package(zip_path: Path, manifest: dict[str, Any]) -> None:
     actual_hash = sha256_file(zip_path)
 
     if actual_size != expected["bytes"]:
-        raise ValueError(
-            f"ZIP size mismatch: expected {expected['bytes']}, got {actual_size}"
-        )
+        raise ValueError(f"ZIP size mismatch: expected {expected['bytes']}, got {actual_size}")
     if actual_hash != expected["sha256"]:
-        raise ValueError(
-            f"ZIP SHA-256 mismatch: expected {expected['sha256']}, got {actual_hash}"
-        )
+        raise ValueError(f"ZIP SHA-256 mismatch: expected {expected['sha256']}, got {actual_hash}")
 
 
 def ingest(zip_path: Path, repo_root: Path, write_package_copy: bool) -> None:
@@ -106,8 +100,17 @@ def ingest(zip_path: Path, repo_root: Path, write_package_copy: bool) -> None:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("zip_path", type=Path, help="Path to Brain_Compilation_Full_Current_Thread_Package.zip")
-    parser.add_argument("--repo-root", type=Path, default=Path.cwd(), help="Repository root; defaults to current directory")
+    parser.add_argument(
+        "zip_path",
+        type=Path,
+        help="Path to Brain_Compilation_Full_Current_Thread_Package.zip",
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root; defaults to current directory",
+    )
     parser.add_argument(
         "--skip-package-copy",
         action="store_true",
