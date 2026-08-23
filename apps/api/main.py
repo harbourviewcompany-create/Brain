@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import hmac
 import os
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from brain.adapters.learning_store import InMemoryLearningStore
@@ -27,6 +29,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Minimal API-key auth ---------------------------------------------------
+# Every route (including ones registered later by other modules that import
+# `app`, e.g. tools/live_cockpit_routes.py) is covered by this middleware
+# because it wraps the whole ASGI request pipeline, not individual routes.
+#
+# Fail-closed by design: if BRAIN_API_KEY is unset, every non-exempt request
+# is rejected with 503 rather than silently falling back to "open to
+# everyone". An unconfigured key must never be treated as "no auth required".
+_API_KEY_ENV_VAR = "BRAIN_API_KEY"
+_AUTH_EXEMPT_PATHS = {"/health"}
+
+
+@app.middleware("http")
+async def _require_api_key(request: Request, call_next):
+    if request.url.path in _AUTH_EXEMPT_PATHS:
+        return await call_next(request)
+
+    configured_key = os.environ.get(_API_KEY_ENV_VAR)
+    if not configured_key:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"{_API_KEY_ENV_VAR} is not configured on this deployment; "
+                    "refusing all requests until it is set"
+                )
+            },
+        )
+
+    presented_key = request.headers.get("x-api-key", "")
+    if not hmac.compare_digest(presented_key, configured_key):
+        return JSONResponse(status_code=401, content={"detail": "invalid_or_missing_api_key"})
+
+    return await call_next(request)
+
 
 _memory_store = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
