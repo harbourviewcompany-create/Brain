@@ -4,25 +4,41 @@ import html
 import os
 from typing import Any
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 
+from brain.adapters.developmental_store import InMemoryDevelopmentalStore
+from brain.developmental.runtime import DevelopmentalRuntime
 from brain.economic_runtime import EconomicRuntime, InMemoryEconomicStore
+from brain.security import ApiKeyAuthenticator, SecurityConfig
 
-app = FastAPI(title="Brain Economic Operator", version="0.1.0")
+_security = SecurityConfig.from_env()
+_authenticator = ApiKeyAuthenticator(_security)
+app = FastAPI(title="Brain Operator", version="0.2.0")
 economic = EconomicRuntime(InMemoryEconomicStore())
+development = DevelopmentalRuntime(InMemoryDevelopmentalStore())
+
+
+@app.middleware("http")
+async def production_authentication(request: Request, call_next):
+    if request.url.path != "/health" and not _authenticator.authorized(
+        authorization=request.headers.get("authorization"),
+        x_api_key=request.headers.get("x-brain-api-key"),
+    ):
+        return JSONResponse(status_code=401, content={"detail": "brain_authentication_required"})
+    return await call_next(request)
 
 
 def _configure_from_env() -> None:
-    global economic
+    global economic, development
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
-    try:
-        from brain.adapters.economic_store import PostgresEconomicStore
-    except ImportError:
-        return
+    from brain.adapters.developmental_store import PostgresDevelopmentalStore
+    from brain.adapters.economic_store import PostgresEconomicStore
+
     economic = EconomicRuntime(PostgresEconomicStore(dsn))
+    development = DevelopmentalRuntime(PostgresDevelopmentalStore(dsn))
 
 
 _configure_from_env()
@@ -30,12 +46,39 @@ _configure_from_env()
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "surface": "economic-operator"}
+    return {"status": "ok", "surface": "brain-operator"}
 
 
 @app.get("/operator")
 def operator_snapshot() -> dict[str, Any]:
-    return economic.operator_snapshot()
+    snapshot = economic.operator_snapshot()
+    snapshot["development"] = developmental_snapshot()
+    return snapshot
+
+
+@app.get("/operator/development")
+def developmental_snapshot() -> dict[str, Any]:
+    kinds = [
+        "prediction_error",
+        "development_pressure",
+        "workspace_coalition",
+        "workspace_suppression",
+        "workspace_broadcast",
+        "consolidation_run",
+        "dream_rewire_proposal",
+        "immune_alert",
+        "quarantine",
+        "memory_compression",
+    ]
+    return {
+        "counts": {kind: len(development.store.list(kind)) for kind in kinds},
+        "recent_pressures": development.store.list("development_pressure")[-20:],
+        "recent_immune_alerts": development.store.list("immune_alert")[-20:],
+        "recent_workspace_broadcasts": development.store.list("workspace_broadcast")[-20:],
+        "recent_quarantines": development.store.list("quarantine")[-20:],
+        "scores": list(getattr(development.store, "scores", []))[-20:],
+        "transitions": list(getattr(development.store, "transitions", []))[-20:],
+    }
 
 
 @app.get("/operator/pressure")
@@ -134,6 +177,7 @@ def sources() -> list[dict[str, Any]]:
 @app.get("/operator/ui", response_class=HTMLResponse)
 def operator_ui() -> str:
     snapshot = economic.operator_snapshot()
+    dev = developmental_snapshot()
     rows = [
         ("ACT NOW", len(snapshot["act_now"])),
         ("VERIFY FIRST", len(snapshot["verify_first"])),
@@ -143,14 +187,17 @@ def operator_ui() -> str:
         ("QUALIFIED MONEY PATHS", snapshot["qualified_money_paths"]),
         ("ACTIVE SOURCES", snapshot["active_sources"]),
         ("TRANSACTIONS", len(snapshot["transactions"])),
-        ("COMPOUNDING ASSETS", len(snapshot["compounding_assets"])),
+        ("DEVELOPMENT PRESSURES", dev["counts"]["development_pressure"]),
+        ("IMMUNE ALERTS", dev["counts"]["immune_alert"]),
+        ("WORKSPACE BROADCASTS", dev["counts"]["workspace_broadcast"]),
+        ("QUARANTINES", dev["counts"]["quarantine"]),
     ]
     cards = "".join(
         f"<article><strong>{html.escape(label)}</strong><span>{value}</span></article>"
         for label, value in rows
     )
     return f"""<!doctype html>
-<html><head><meta charset='utf-8'><title>Brain Economic Operator</title>
+<html><head><meta charset='utf-8'><title>Brain Operator</title>
 <style>
 body{{font-family:system-ui;margin:0;background:#0b0f14;color:#edf2f7}}
 main{{max-width:1100px;margin:40px auto;padding:0 20px}}
@@ -159,10 +206,11 @@ section{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));g
 article{{background:#141b24;border:1px solid #263241;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}}
 article strong{{font-size:12px;letter-spacing:.08em;color:#9fb0c3}}article span{{font-size:30px}}
 nav{{margin-top:24px;display:flex;gap:16px;flex-wrap:wrap}}a{{color:#9cc9ff}}
-</style></head><body><main><h1>Brain Economic Operator</h1>
-<p>Attention, pressure, money paths, transactions, source rights/ROI and compounding state.</p>
+</style></head><body><main><h1>Brain Operator</h1>
+<p>Economic cognition plus developmental pressure, global workspace, immune defense and consolidation state.</p>
 <section>{cards}</section><nav>
-<a href='/operator'>JSON snapshot</a><a href='/operator/pressure'>Pressure map</a>
-<a href='/operator/money-paths'>Money paths</a><a href='/operator/counterparties'>Counterparties</a>
-<a href='/operator/transactions'>Transactions</a><a href='/operator/sources'>Sources</a>
+<a href='/operator'>JSON snapshot</a><a href='/operator/development'>Development</a>
+<a href='/operator/pressure'>Pressure map</a><a href='/operator/money-paths'>Money paths</a>
+<a href='/operator/counterparties'>Counterparties</a><a href='/operator/transactions'>Transactions</a>
+<a href='/operator/sources'>Sources</a>
 </nav></main></body></html>"""
