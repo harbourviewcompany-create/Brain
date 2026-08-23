@@ -9,12 +9,10 @@ from .economic_conformance import (
     AttributionPromotionService,
     BuildCandidate,
     CausalAttributionChain,
-    CollectionMethod,
     CompoundingEmergenceService,
     ConformanceVerdict,
     CounterpartyInteraction,
     CounterpartyLiquidityService,
-    LifecycleState,
     LiquidityPreference,
     MoneyPathComparison,
     MoneyPathComparisonService,
@@ -25,7 +23,6 @@ from .economic_conformance import (
     ProfitNormalizationService,
     SourceActivationPolicy,
     SourcePolicyService,
-    SourceRightsClass,
     TransactionClosure,
     TransactionLifecycleService,
 )
@@ -303,7 +300,6 @@ class PortfolioAllocationService:
         attention_limit: int,
     ) -> OpportunityPortfolioRecord:
         ranked = list(lifecycles)
-        active = ranked[: max(attention_limit, 0)]
         suppressed = ranked[max(attention_limit, 0) :]
         record = OpportunityPortfolioRecord(
             opportunity_ids=[item.opportunity_id for item in ranked],
