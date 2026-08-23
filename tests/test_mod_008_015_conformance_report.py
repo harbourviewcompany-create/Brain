@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 REPORT = Path("reports/conformance/MOD-008-015-conformance.json")
+GAPS = Path("reports/conformance/MOD-008-015-gap-register.json")
 
 
 def test_mod_008_015_conformance_report_is_internally_consistent() -> None:
@@ -46,3 +47,21 @@ def test_mod_008_015_module_counts_match_atomic_rows() -> None:
         assert actual["FAIL"] == expected["FAIL"]
         assert expected["verdict"] == "HOLD"
         assert actual["PARTIAL"] + actual["FAIL"] > 0
+
+
+def test_gap_register_exactly_matches_all_non_pass_atomic_rows() -> None:
+    report = json.loads(REPORT.read_text(encoding="utf-8"))
+    gaps = json.loads(GAPS.read_text(encoding="utf-8"))
+    expected = {
+        row["requirement_id"]
+        for row in report["requirements"]
+        if row["overall_status"] != "PASS"
+    }
+    actual: set[str] = set()
+    for module in gaps["gaps"]:
+        actual.update(module["partial"])
+        actual.update(module["fail"])
+    assert gaps["audited_commit"] == report["audited_commit"]
+    assert gaps["verdict"] == "HOLD"
+    assert len(actual) == gaps["non_pass_count"] == 79
+    assert actual == expected
