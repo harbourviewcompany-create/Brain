@@ -22,3 +22,97 @@ jobs:
         run: pytest -q
       - name: Lint
         run: ruff check --select E4,E7,E9,F .
+
+  container-integration:
+    name: Production container persistence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create isolated Docker network
+        run: docker network create brain-ci
+
+      - name: Start PostgreSQL with pgvector
+        run: |
+          docker run -d --name brain-postgres --network brain-ci \
+            -e POSTGRES_USER=brain \
+            -e POSTGRES_PASSWORD=brain \
+            -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 30); do
+            if docker exec brain-postgres pg_isready -U brain -d brain; then exit 0; fi
+            sleep 1
+          done
+          docker logs brain-postgres
+          exit 1
+
+      - name: Apply all database migrations
+        run: |
+          for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            echo "Applying ${migration}"
+            docker exec -i brain-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain < "${migration}"
+          done
+
+      - name: Build API and worker images
+        run: |
+          docker build -t brain-api-ci -f Dockerfile .
+          docker build -t brain-worker-ci -f Dockerfile.worker .
+
+      - name: Start production API
+        run: |
+          docker run -d --name brain-api --network brain-ci -p 8000:8000 \
+            -e BRAIN_API_KEY=ci-test-key \
+            -e BRAIN_CORS_ORIGINS=http://localhost:3000 \
+            -e DATABASE_URL=postgresql://brain:brain@brain-postgres:5432/brain \
+            brain-api-ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/ready; then exit 0; fi
+            sleep 1
+          done
+          docker logs brain-api
+          exit 1
+
+      - name: Verify authentication and durable belief round trip
+        run: |
+          test "$(curl -sS -o /tmp/unauthorized -w '%{http_code}' http://127.0.0.1:8000/beliefs)" = "401"
+          create_response=$(curl -fsS -X POST http://127.0.0.1:8000/beliefs \
+            -H 'Content-Type: application/json' \
+            -H 'X-Brain-Api-Key: ci-test-key' \
+            -d '{"statement":"container persistence evidence","confidence":0.8}')
+          belief_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"${create_response}")
+          docker rm -f brain-api
+          docker run -d --name brain-api --network brain-ci -p 8000:8000 \
+            -e BRAIN_API_KEY=ci-test-key \
+            -e BRAIN_CORS_ORIGINS=http://localhost:3000 \
+            -e DATABASE_URL=postgresql://brain:brain@brain-postgres:5432/brain \
+            brain-api-ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/ready; then break; fi
+            sleep 1
+          done
+          curl -fsS "http://127.0.0.1:8000/beliefs/${belief_id}" \
+            -H 'X-Brain-Api-Key: ci-test-key' | grep -q 'container persistence evidence'
+
+      - name: Verify readiness fails when database disappears
+        run: |
+          docker stop brain-postgres
+          for i in $(seq 1 20); do
+            code=$(curl -sS -o /tmp/readiness -w '%{http_code}' http://127.0.0.1:8000/ready || true)
+            if [ "${code}" = "503" ]; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/readiness || true
+          docker logs brain-api
+          exit 1
+
+      - name: Container logs on failure
+        if: failure()
+        run: |
+          docker logs brain-api || true
+          docker logs brain-postgres || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f brain-api brain-postgres >/dev/null 2>&1 || true
+          docker network rm brain-ci >/dev/null 2>&1 || true
