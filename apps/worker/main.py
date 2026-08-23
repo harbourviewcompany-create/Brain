@@ -3,9 +3,8 @@ from __future__ import annotations
 import asyncio
 import os
 import time
-from datetime import timedelta
 
-from temporalio import activity, workflow
+from temporalio import activity
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker
@@ -20,38 +19,8 @@ from brain.adapters.learning_store import (
 from brain.adapters.postgres import PostgresEventStore, ProjectionCheckpointStore
 from brain.cycle import CognitiveCycle
 from brain.learning import LearningService
+from brain.orchestration import ContinuousCognitionWorkflow
 from brain.runner import ContinuousCognitionRunner
-
-
-@workflow.defn
-class ContinuousCognitionWorkflow:
-    """Durable cognition heartbeat with replay-safe timers and history rollover."""
-
-    @workflow.run
-    async def run(
-        self,
-        idle_seconds: float = 1.0,
-        maintenance_every: int = 60,
-        max_iterations: int = 1000,
-    ) -> None:
-        idle_ticks = 0
-        for _ in range(max_iterations):
-            worked = await workflow.execute_activity(
-                "brain.cognition_tick",
-                start_to_close_timeout=timedelta(minutes=2),
-            )
-            if worked:
-                idle_ticks = 0
-            else:
-                idle_ticks += 1
-                await workflow.sleep(idle_seconds)
-            if idle_ticks >= maintenance_every:
-                await workflow.execute_activity(
-                    "brain.prediction_maintenance",
-                    start_to_close_timeout=timedelta(minutes=2),
-                )
-                idle_ticks = 0
-        workflow.continue_as_new(args=[idle_seconds, maintenance_every, max_iterations])
 
 
 def build_runner() -> ContinuousCognitionRunner:
@@ -146,6 +115,7 @@ async def run_temporal_worker() -> None:
                     float(os.environ.get("BRAIN_IDLE_SLEEP_SECONDS", "1.0")),
                     int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
                     int(os.environ.get("BRAIN_WORKFLOW_MAX_ITERATIONS", "1000")),
+                    True,
                 ],
                 id=workflow_id,
                 task_queue=task_queue,
