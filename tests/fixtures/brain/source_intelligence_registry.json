@@ -1,0 +1,103 @@
+{
+  "fixture_id": "source_intelligence_registry",
+  "scenario": "A source intelligence registry ranks source classes by commercial signal value, extraction difficulty, freshness, reliability, legal access status, and downstream use case.",
+  "expected": {
+    "top_priority_score": 23,
+    "top_disposition": "GO_AUTOMATE_OR_QUEUE",
+    "blocked_access_statuses": ["terms_review_required", "pii_sensitive", "prohibited"],
+    "required_provenance": [
+      "source_id",
+      "source_url_or_path",
+      "observed_at",
+      "retrieved_at",
+      "extract_hash_or_snapshot_id",
+      "legal_access_status"
+    ]
+  },
+  "sources": [
+    {
+      "source_name": "Court and insolvency record class",
+      "source_category": "court_insolvency",
+      "url_or_access_path": "jurisdiction-specific official court, bankruptcy, insolvency, or administrator portal",
+      "jurisdiction_market_coverage": ["global_by_jurisdiction"],
+      "data_contains": ["case filings", "insolvency notices", "administrator appointments", "creditor actions", "court events"],
+      "signal_types": ["distress", "litigation", "asset_sale", "seller_intent"],
+      "commercial_value": "early distress, asset-sale, restructuring, advisory, buyer-discovery, and transaction-support signals",
+      "signal_freshness": "high when court portal updates daily or weekly",
+      "update_frequency": "daily to weekly",
+      "access_methods": ["api", "html_scrape", "pdf_extraction", "manual_review"],
+      "legal_access_status": "public_permitted",
+      "noise_level": "medium",
+      "reliability_level": "official_primary",
+      "downstream_use_cases": ["distressed-asset detection", "buyer/seller intro", "advisory mandate sourcing", "risk monitoring"],
+      "example_intelligence_questions": [
+        "Which companies show new legal or insolvency pressure?",
+        "Which assets or counterparties may need urgent liquidity?",
+        "Which buyers, lenders, advisors, or service providers should be mapped?"
+      ],
+      "best_ingestion_method": "pdf_extraction",
+      "compounding_sources_to_pair": ["marketplace_listing", "corporate_registry", "news_media", "job_hiring"],
+      "score": {"signal_value": 5, "extraction_difficulty": 2, "freshness": 5, "reliability": 5},
+      "priority_score": 23,
+      "lifecycle_status": "queued",
+      "review_cadence_days": 30,
+      "notes_risks": ["Court terminology and document availability differ by jurisdiction", "Regulated or sensitive action requires approval and fee-control review"]
+    },
+    {
+      "source_name": "Hiring and role-change signal class",
+      "source_category": "job_hiring",
+      "url_or_access_path": "company career pages, job boards, ATS feeds, and legally accessible role-change monitors",
+      "jurisdiction_market_coverage": ["global", "local_market"],
+      "data_contains": ["roles", "locations", "seniority", "business functions", "posting dates", "closed roles"],
+      "signal_types": ["hiring", "expansion", "market_entry", "buyer_intent"],
+      "commercial_value": "detect expansion, new functions, geographic buildout, product launch preparation, and purchasing capacity signals",
+      "signal_freshness": "daily to weekly depending on source",
+      "update_frequency": "daily for tracked companies; weekly for discovery scans",
+      "access_methods": ["api", "html_scrape", "search_alert", "third_party_enrichment"],
+      "legal_access_status": "public_permitted",
+      "noise_level": "high",
+      "reliability_level": "mixed",
+      "downstream_use_cases": ["market-entry detection", "sales trigger detection", "counterparty mapping", "watchlist enrichment"],
+      "example_intelligence_questions": [
+        "Which companies are hiring for expansion roles?",
+        "Which new geography, product, or channel is implied by role mix?",
+        "Which signals require corroboration before outreach?"
+      ],
+      "best_ingestion_method": "search_alert",
+      "compounding_sources_to_pair": ["licensing_database", "municipal_record", "company_controlled", "event_conference"],
+      "score": {"signal_value": 4, "extraction_difficulty": 3, "freshness": 5, "reliability": 3},
+      "priority_score": 17,
+      "lifecycle_status": "queued",
+      "review_cadence_days": 45,
+      "notes_risks": ["Hiring is noisy and must not be treated as growth without corroboration", "Syndicated posts can duplicate the same signal"]
+    },
+    {
+      "source_name": "Regulatory and enforcement portal class",
+      "source_category": "regulatory_portal",
+      "url_or_access_path": "official regulator publications, enforcement pages, rulemaking portals, recall feeds, and consultation notices",
+      "jurisdiction_market_coverage": ["global_by_regulator", "sector_specific"],
+      "data_contains": ["new rules", "consultations", "enforcement actions", "licenses", "recalls", "effective dates"],
+      "signal_types": ["regulatory_change", "enforcement", "license_movement", "supply_demand_imbalance"],
+      "commercial_value": "detect regulated market openings, compliance pressure, supply gaps, forced buyer/seller movement, and advisory opportunities",
+      "signal_freshness": "weekly to monthly, with urgent updates for enforcement and recalls",
+      "update_frequency": "daily to monthly depending on regulator",
+      "access_methods": ["rss_feed", "api", "pdf_extraction", "manual_review"],
+      "legal_access_status": "public_permitted",
+      "noise_level": "medium",
+      "reliability_level": "official_primary",
+      "downstream_use_cases": ["regulatory-change alerting", "supply-gap detection", "compliance advisory", "license-movement monitoring"],
+      "example_intelligence_questions": [
+        "Which rule changes create new demand or supply constraints?",
+        "Which enforcement actions imply counterparty risk?",
+        "Which market participants need help adapting?"
+      ],
+      "best_ingestion_method": "rss_feed",
+      "compounding_sources_to_pair": ["import_export_trade", "procurement_portal", "company_controlled", "court_insolvency"],
+      "score": {"signal_value": 5, "extraction_difficulty": 3, "freshness": 4, "reliability": 5},
+      "priority_score": 21,
+      "lifecycle_status": "queued",
+      "review_cadence_days": 30,
+      "notes_risks": ["Proposed and adopted rules must remain distinct", "Legal interpretation remains HOLD until reviewed"]
+    }
+  ]
+}
