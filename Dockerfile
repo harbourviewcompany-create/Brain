@@ -8,21 +8,29 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl \
-    && rm -rf /var/lib/apt/lists/*
+# Dependency layer: invalidate only when dependency metadata changes.
+COPY pyproject.toml README.md constraints.txt ./
+RUN mkdir -p brain \
+    && python -m pip install --upgrade pip \
+    && python -m pip install --no-cache-dir -c constraints.txt .
 
-COPY pyproject.toml README.md ./
+# Source layer: keep normal code changes out of the dependency cache key.
 COPY brain ./brain
 COPY apps ./apps
 COPY db ./db
+RUN python -m pip install --no-cache-dir --no-deps --force-reinstall . \
+    && python -m pip check
 
-RUN python -m pip install --upgrade pip && python -m pip install .
+# Run the production API without root privileges.
+RUN groupadd --system brain \
+    && useradd --system --gid brain --home-dir /app brain \
+    && chown -R brain:brain /app
+USER brain
 
 ENV PORT=8000
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS "http://127.0.0.1:${PORT}/ready" || exit 1
+  CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/ready', timeout=4).read()" || exit 1
 
 CMD ["sh", "-c", "uvicorn apps.api.main:app --host 0.0.0.0 --port ${PORT}"]
