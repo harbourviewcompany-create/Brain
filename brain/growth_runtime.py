@@ -7,11 +7,12 @@ from .benchmarks import BenchmarkBaseline, BenchmarkCase, BenchmarkResult, Cogni
 from .memory_systems import EpisodicMemory, MultiSystemMemory, SemanticMemory
 from .model_cortex import ModelCortexRouter, ModelProfile
 from .planning import CounterfactualPlanner, CausalGraph, PlanCandidate
+from .protocol import CognitiveProtocolService
 from .world_model import BitemporalWorldModel, WorldObservation
 
 
 class CognitiveGrowthRuntime:
-    """Durable integration spine for world state, memory, models, plans and benchmarks."""
+    """Durable integration spine for world state, memory, models, plans and cross-cutting cognition."""
 
     def __init__(self, store: InMemoryCognitiveObjectStore | None = None) -> None:
         self.store = store or InMemoryCognitiveObjectStore()
@@ -21,6 +22,7 @@ class CognitiveGrowthRuntime:
         self.causal_graph = CausalGraph()
         self.planner = CounterfactualPlanner(self.causal_graph)
         self.benchmarks = CognitiveBenchmarkLab()
+        self.protocol = CognitiveProtocolService(self.store)
 
     def ingest_world_observation(self, observation: WorldObservation) -> WorldObservation:
         observation = self.world.ingest(observation)
@@ -104,7 +106,7 @@ class CognitiveGrowthRuntime:
         return result, baseline
 
     def snapshot(self) -> dict[str, Any]:
-        return {
+        snapshot = {
             "world_observations": len(self.store.list("world_observation")),
             "episodic_memories": len(self.store.list("episodic_memory")),
             "semantic_memories": len(self.store.list("semantic_memory")),
@@ -113,3 +115,5 @@ class CognitiveGrowthRuntime:
             "benchmark_results": len(self.store.list("benchmark_result")),
             "benchmark_baselines": len(self.store.list("benchmark_baseline")),
         }
+        snapshot.update({f"protocol_{key}": value for key, value in self.protocol.snapshot().items()})
+        return snapshot
