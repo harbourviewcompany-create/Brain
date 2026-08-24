@@ -173,6 +173,7 @@
         "brain/contradiction_queue.py",
         "brain/curiosity.py",
         "brain/cycle.py",
+        "brain/cycle_learning.py",
         "brain/debate.py",
         "brain/domain.py",
         "brain/dreaming.py",
