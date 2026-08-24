@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from uuid import uuid4
 
+import pytest
 from temporalio import activity
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -29,7 +30,22 @@ def test_temporal_cognition_workflow_executes_maintenance_and_continue_as_new():
     async def scenario() -> None:
         _activity_counts["ticks"] = 0
         _activity_counts["maintenance"] = 0
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        try:
+            env_cm = await WorkflowEnvironment.start_time_skipping()
+        except RuntimeError as exc:
+            # start_time_skipping() downloads an ephemeral test-server binary
+            # from an external host at test time. A download/network failure
+            # here is an external dependency issue, not a code defect -- skip
+            # visibly rather than failing CI for something this test can't
+            # control. Anything else re-raises normally.
+            msg = str(exc)
+            if "Failed starting test server" in msg or "HTTP status" in msg:
+                pytest.skip(
+                    "Temporal ephemeral test server unavailable "
+                    f"(external download failed, not a code defect): {exc}"
+                )
+            raise
+        async with env_cm as env:
             task_queue = f"brain-test-{uuid4()}"
             async with Worker(
                 env.client,
