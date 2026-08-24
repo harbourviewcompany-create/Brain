@@ -1,0 +1,30 @@
+{
+  "report_id": "COGNITIVE-ORGANISM-V1-GO-HOLD",
+  "verdict": "GO",
+  "go_scope": [
+    "deterministic self-model",
+    "goal pressure",
+    "global workspace",
+    "curiosity",
+    "originality",
+    "dream consolidation",
+    "debate",
+    "immune quarantine",
+    "approval-gated agency",
+    "development timeline",
+    "cockpit API surface"
+  ],
+  "hold_scope": [
+    "literal consciousness claims",
+    "Tier 5 limited autonomy",
+    "unapproved outreach",
+    "unapproved spending",
+    "production scraping",
+    "irreversible external action"
+  ],
+  "evidence": [
+    "reports/acceptance/COGNITIVE-ORGANISM-V1.json",
+    "docs/cognitive-organism/COGNITIVE_ORGANISM_V1.md",
+    "tests/fixtures/cognitive_organism/original_idea_from_memory.json"
+  ]
+}

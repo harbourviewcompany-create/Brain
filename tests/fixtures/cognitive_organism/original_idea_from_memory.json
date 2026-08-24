@@ -1,0 +1,15 @@
+{
+  "fixture_id": "cognitive_organism_original_idea_from_memory",
+  "scenario": "original idea must be generated from at least three memory or signal refs",
+  "input": {
+    "source_signal_refs": ["signal:distress", "signal:buyer_intent"],
+    "memory_refs": ["memory:permit_pattern"],
+    "fastest_test": "Run a 48-hour validation against 30 buyer targets.",
+    "kill_condition": "Kill if no replies after 30 targeted messages."
+  },
+  "expected": {
+    "distinct_ref_count": 3,
+    "generic_rejected": true,
+    "approval_required": true
+  }
+}

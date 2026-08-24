@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 
 from .domain import Belief
+from .cognitive_organism import DreamConsolidationEngine, DreamCycle, DreamInsight
 
 
 @dataclass(slots=True)
@@ -29,3 +30,12 @@ class DreamEngine:
                 )
             )
         return hypotheses
+
+
+__all__ = [
+    "DreamEngine",
+    "DreamHypothesis",
+    "DreamConsolidationEngine",
+    "DreamCycle",
+    "DreamInsight",
+]

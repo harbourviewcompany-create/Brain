@@ -1,0 +1,16 @@
+{
+  "fixture_id": "cognitive_organism_global_workspace_focus",
+  "scenario": "high salience item enters active focus",
+  "input": {
+    "salience": 0.8,
+    "novelty": 0.8,
+    "urgency": 0.7,
+    "risk": 0.1,
+    "goal_pressure": 0.7
+  },
+  "expected": {
+    "admitted": true,
+    "state": "active_focus",
+    "admission_reason_present": true
+  }
+}

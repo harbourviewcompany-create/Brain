@@ -1,0 +1,14 @@
+{
+  "fixture_id": "cognitive_organism_immune_quarantine",
+  "scenario": "unsupported or risky thoughts are quarantined instead of promoted",
+  "input": {
+    "claims": ["Guaranteed revenue without evidence"],
+    "evidence_refs": [],
+    "risk_score": 0.8
+  },
+  "expected": {
+    "quarantined": true,
+    "reason": "unsupported_claim",
+    "review_required": true
+  }
+}
