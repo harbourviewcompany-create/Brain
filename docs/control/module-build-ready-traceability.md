@@ -24,9 +24,10 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 
 | Module path | Owner object | Schema | Runtime service | State machine | Fixtures / tests | Acceptance evidence | Audit events | GO/HOLD |
 |---|---|---|---|---|---|---|---|---|
-| apps/api/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| apps/api/cognitive_organism_routes.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| apps/api/main.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | apps/operator/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
-| apps/worker/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| apps/worker/main.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/adapters/brain_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/adapters/cognition.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | brain/adapters/cognitive_object_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -34,16 +35,20 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/adapters/economic_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/learning_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/postgres.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/agency.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/attention.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/attribution.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/beliefs.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/benchmarks.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/cognitive_immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/cognitive_organism.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/cognitive_state.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/contradiction.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/contradiction_queue.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
-| brain/curiosity.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/curiosity.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/cycle.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
-| brain/debate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/debate.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/development.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/consolidation.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/evidence_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -59,7 +64,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/developmental/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/theory_registry.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/domain.py | partial | present | partial | missing | partial | missing | partial | HOLD |
-| brain/dreaming.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/dreaming.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/economic.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_atomic_lifecycles.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/economic_atomic_services.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -76,10 +81,13 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/events.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/experiments.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/formulas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
+| brain/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/goals.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/governance.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/growth_runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/homeostasis.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/hydrate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/imagination.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/learning.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/memory_systems.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -90,6 +98,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/neuro/multiscale.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/neuro/regions.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/observability.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/originality_engine.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/planning.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/ports.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/prediction.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -104,6 +113,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/scheduler.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
 | brain/security.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/world_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
@@ -114,13 +124,17 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | tools/validate_agent_control.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | tools/validate_mod_008_015_conformance.py | partial | partial | partial | missing | partial | partial | partial | HOLD |
 
+## Cognitive Organism V1 traceability note
+
+`brain/agency.py`, `brain/cognitive_immune.py`, `brain/cognitive_organism.py`, `brain/development.py`, `brain/global_workspace.py`, `brain/goals.py`, `brain/imagination.py`, `brain/originality_engine.py`, `brain/self_model.py`, and `apps/api/cognitive_organism_routes.py` are preserved from the merged Cognitive Organism V1 authority. They remain HOLD at repository BUILD-READY level. Tier 5 autonomy, literal consciousness claims, unapproved external action and provider-backed autonomous reasoning remain HOLD.
+
 ## Developmental traceability note
 
-The fourteen `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. AGENT-020 integrates AGENT-017/018/019 into an end-to-end governed developmental cycle, while the sandbox remains proposal-only; PROMOTE remains evidence-only and repository-wide BUILD-READY remains HOLD.
+The developmental rows are included because those code paths exist and must be represented by the readiness validator. AGENT-020 integrates AGENT-017/018/019 into an end-to-end governed developmental cycle, while the sandbox remains proposal-only; PROMOTE remains evidence-only and repository-wide BUILD-READY remains HOLD.
 
 ## Persistent cognitive-growth traceability note
 
-The PostgreSQL Brain store, generic cognitive-object store, benchmark/world/memory/model/planning/telemetry/growth/security modules and sandbox are now explicitly represented. Their presence and prior test evidence do not promote them to BUILD-READY until exact-head convergence CI and shared app/runtime integration evidence pass.
+The PostgreSQL Brain store, generic cognitive-object store at migration 013, benchmark/world/memory/model/planning/telemetry/growth/security modules and sandbox are explicitly represented. Their presence and prior test evidence do not promote them to BUILD-READY until exact-head convergence CI and shared app/runtime integration evidence pass.
 
 ## Adapter traceability note
 
@@ -132,7 +146,7 @@ The PostgreSQL Brain store, generic cognitive-object store, benchmark/world/memo
 
 ## Neuroscience traceability note
 
-`brain/neuro/abstractions.py`, `brain/neuro/multiscale.py` and `brain/neuro/regions.py` remain controlled neuroscience abstraction paths and do not imply biological equivalence or whole-system BUILD-READY.
+`brain/neuro/abstractions.py`, `brain/neuro/multiscale.py` and `brain/neuro/regions.py` remain controlled neuroscience abstraction paths and do not imply biological equivalence or whole-system BUILD-READY. Cognitive Organism V1 software proxies do not close unknown biological mechanisms.
 
 ## Source preservation statement
 
