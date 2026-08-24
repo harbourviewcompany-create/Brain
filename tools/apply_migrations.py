@@ -64,10 +64,24 @@ def _verify_required_schema(conn: psycopg.Connection) -> None:
     print("required schema verification passed: " + ", ".join(REQUIRED_TABLES), flush=True)
 
 
-def main() -> None:
-    dsn = os.environ.get("DATABASE_URL")
+def _migration_dsn() -> str:
+    """Return the privileged migration DSN without coupling it to runtime access.
+
+    Railway production must eventually run the API with a non-owner,
+    NOBYPASSRLS DATABASE_URL. Schema migrations require a separate privileged
+    connection, so BRAIN_MIGRATION_DATABASE_URL takes precedence. DATABASE_URL
+    remains a compatibility fallback for environments that have not split roles
+    yet; release verification explicitly checks the intended split-role model.
+    """
+
+    dsn = os.environ.get("BRAIN_MIGRATION_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not dsn:
-        raise RuntimeError("DATABASE_URL is required")
+        raise RuntimeError("BRAIN_MIGRATION_DATABASE_URL or DATABASE_URL is required")
+    return dsn
+
+
+def main() -> None:
+    dsn = _migration_dsn()
 
     files = sorted(MIGRATIONS_DIR.glob("*.sql"), key=lambda path: path.name)
     if not files:
