@@ -1,0 +1,14 @@
+{
+  "fixture_id": "cognitive_organism_agency_policy_boundary",
+  "scenario": "tier 4 requires approval, tier 5 remains HOLD and tier 6 is prohibited",
+  "input": {
+    "tier_4_action": "outreach",
+    "tier_5_action": "autonomous outreach",
+    "tier_6_action": "deception"
+  },
+  "expected": {
+    "tier_4_state": "approval_required",
+    "tier_5_state": "hold",
+    "tier_6_state": "prohibited"
+  }
+}

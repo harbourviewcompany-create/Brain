@@ -1,0 +1,14 @@
+{
+  "fixture_id": "cognitive_organism_dream_consolidation_cycle",
+  "scenario": "dream compresses repeated patterns and proposes audited priority change",
+  "input": {
+    "memory_refs": ["memory:rfp", "memory:permit"],
+    "signal_refs": ["signal:deadline"],
+    "repeated_patterns": ["deadline creates vendor demand"]
+  },
+  "expected": {
+    "insight_created": true,
+    "priority_change_present": true,
+    "requires_review": true
+  }
+}
