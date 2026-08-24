@@ -1,10 +1,54 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import logging
+import os
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi.responses import JSONResponse
+
 from apps.api.main import app, runtime, _learning_store
+from brain.vercel_oidc import VercelOidcVerifier
+
+
+_logger = logging.getLogger(__name__)
+_vercel_oidc = VercelOidcVerifier.from_env()
+
+
+@app.middleware("http")
+async def bridge_vercel_oidc_to_local_brain_key(request, call_next):
+    """Authorize the Vercel BFF by deployment identity without sharing its API key.
+
+    Vercel sends its signed OIDC token as a bearer token. After strict issuer,
+    audience and subject verification, this outer middleware replaces upstream
+    credentials with the API key already present inside Railway. The existing
+    Brain authentication middleware remains authoritative for the request.
+    """
+    authorization = request.headers.get("authorization") or ""
+    if authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+        verified, reason = _vercel_oidc.verify(token)
+        if verified:
+            local_key = (os.environ.get("BRAIN_API_KEY") or "").strip()
+            if not local_key:
+                return JSONResponse(
+                    status_code=503,
+                    content={"detail": "brain_local_api_key_not_configured"},
+                )
+
+            blocked = {b"authorization", b"x-api-key", b"x-brain-api-key"}
+            headers = [
+                (name, value)
+                for name, value in request.scope.get("headers", [])
+                if name.lower() not in blocked
+            ]
+            headers.append((b"x-brain-api-key", local_key.encode("utf-8")))
+            request.scope["headers"] = headers
+        elif reason != "vercel_oidc_not_configured":
+            _logger.info("vercel_oidc_auth_rejected reason=%s", reason)
+
+    return await call_next(request)
 
 
 def _iso(value: Any | None) -> str:
