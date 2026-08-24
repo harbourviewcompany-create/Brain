@@ -76,7 +76,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/hydrate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/learning.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
-| brain/metabolism.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/metabolism.py | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/money_spine.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/neuro/abstractions.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/neuro/multiscale.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
