@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
+from brain.heartbeat import HeartbeatService
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
 from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
@@ -24,7 +25,7 @@ from brain.security import SecurityConfig
 
 _security = SecurityConfig.from_env()
 
-app = FastAPI(title="Brain Runtime API", version="0.8.0")
+app = FastAPI(title="Brain Runtime API", version="0.8.1")
 
 _origins = _security.allowed_origins()
 app.add_middleware(
@@ -90,10 +91,11 @@ learning = LearningService(
     sources=_learning_store,
 )
 money_spine = MoneySpineService()
+heartbeat = HeartbeatService(event_store=_brain_store, learning=learning)
 
 
 def _configure_from_env() -> None:
-    global _brain_store, runtime, learning
+    global _brain_store, runtime, learning, heartbeat
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
@@ -116,6 +118,7 @@ def _configure_from_env() -> None:
         attributions=PostgresAttributionStore(store.pool),
         sources=PostgresSourceStore(store.pool),
     )
+    heartbeat = HeartbeatService(event_store=store.event_store, learning=learning)
 
 
 _configure_from_env()
@@ -210,6 +213,29 @@ class DailyRevenueReportRequest(BaseModel):
     lessons_recorded: int = Field(ge=0)
 
 
+class PerceiveRequest(BaseModel):
+    content: str
+    claim: str
+    source_key: str = "operator"
+    source_reliability: float = Field(default=0.7, ge=0, le=1)
+    supports: bool = True
+    belief_statement: str | None = None
+    belief_confidence: float = Field(default=0.5, ge=0, le=1)
+    novelty: float = Field(default=0.5, ge=0, le=1)
+    urgency: float = Field(default=0.3, ge=0, le=1)
+    commercial_upside: float = Field(default=0.0, ge=0, le=1)
+    contradiction_value: float = Field(default=0.0, ge=0, le=1)
+    uncertainty_reduction: float = Field(default=0.5, ge=0, le=1)
+    noise_probability: float = Field(default=0.2, ge=0, le=1)
+    operator_burden: float = Field(default=0.0, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    process_now: bool = False
+
+
+class TickRequest(BaseModel):
+    max_items: int = Field(default=1, ge=1, le=50)
+
+
 def _serialize_prediction(prediction) -> dict[str, Any]:
     return {
         "id": str(prediction.id),
@@ -265,13 +291,20 @@ def _database_ready() -> tuple[bool, str]:
 @app.get("/health")
 def health():
     database_ok, database_status = _database_ready()
+    hb = heartbeat.status()
     payload = {
         "status": "ok" if database_ok else "degraded",
-        "version": "0.8.0",
+        "version": "0.8.1",
         "database": database_status,
         "persistence": "postgres" if os.environ.get("DATABASE_URL") else "in_memory",
         "beliefs": len(runtime.store.beliefs),
         "money_lanes": len(money_spine.lanes),
+        "heartbeat": {
+            "ticks": hb["ticks"],
+            "total_processed": hb["total_processed"],
+            "inbox": hb["inbox"],
+            "working_memory_size": hb["working_memory_size"],
+        },
     }
     if not database_ok:
         return JSONResponse(status_code=503, content=payload)
@@ -287,6 +320,47 @@ def ready():
             content={"status": "not_ready", "database": database_status},
         )
     return {"status": "ready", "database": database_status}
+
+
+@app.post("/signals")
+def enqueue_signal(body: PerceiveRequest):
+    item = heartbeat.perceive(
+        content=body.content,
+        claim=body.claim,
+        source_key=body.source_key,
+        source_reliability=body.source_reliability,
+        supports=body.supports,
+        belief_statement=body.belief_statement,
+        belief_confidence=body.belief_confidence,
+        novelty=body.novelty,
+        urgency=body.urgency,
+        commercial_upside=body.commercial_upside,
+        contradiction_value=body.contradiction_value,
+        uncertainty_reduction=body.uncertainty_reduction,
+        noise_probability=body.noise_probability,
+        operator_burden=body.operator_burden,
+        metadata=body.metadata,
+    )
+    tick_result = heartbeat.tick(max_items=1) if body.process_now else None
+    return {
+        "id": str(item.id),
+        "source_key": item.source_key,
+        "content": item.content,
+        "claim": item.claim,
+        "status": item.status,
+        "tick": tick_result,
+    }
+
+
+@app.post("/tick")
+def run_heartbeat_tick(body: TickRequest | None = None):
+    max_items = body.max_items if body is not None else 1
+    return heartbeat.tick(max_items=max_items)
+
+
+@app.get("/runner/status")
+def runner_status():
+    return heartbeat.status()
 
 
 @app.get("/beliefs")
