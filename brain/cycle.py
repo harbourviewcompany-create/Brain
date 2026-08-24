@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
@@ -8,7 +8,7 @@ from .attention import AttentionMarket, AttentionSignal
 from .beliefs import BeliefEngine
 from .cognitive_state import HomeostaticState, NeuromodulatorState
 from .contradiction import ContradictionEngine
-from .domain import Belief, Evidence, Observation
+from .domain import Belief, Evidence, Observation, utcnow
 from .events import BrainEvent
 from .homeostasis import HomeostasisEngine
 from .hydrate import hydrate_belief_cache
@@ -629,9 +629,15 @@ class CognitiveCycle:
         if self.capital_ledger is None:
             return
         budget_pressure = self.metabolism.budget_pressure(self.capital_ledger)
-        self.homeostatic_state = HomeostaticState(
-            memory_pressure=max(0.0, min(1.0, self.working_memory.size / max(1, self.working_memory.capacity))),
+        memory_pressure = max(
+            0.0,
+            min(1.0, self.working_memory.size / max(1, self.working_memory.capacity)),
+        )
+        self.homeostatic_state = replace(
+            self.homeostatic_state,
+            memory_pressure=memory_pressure,
             budget_pressure=budget_pressure,
+            updated_at=utcnow(),
         )
         self.modulation = self.homeostasis.regulate(self.homeostatic_state, self.modulation)
         self._emit(
