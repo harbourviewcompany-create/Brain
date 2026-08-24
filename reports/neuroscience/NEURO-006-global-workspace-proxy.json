@@ -1,0 +1,34 @@
+{
+  "report_id": "NEURO-006-global-workspace-proxy",
+  "slice_id": "NEURO-006",
+  "verdict": "GO",
+  "implemented_files": [
+    "docs/neuroscience/GLOBAL_WORKSPACE_PROXY.md",
+    "docs/neuroscience/json/global-workspace-proxy.json",
+    "db/migrations/012_neuro_global_workspace_proxy.sql",
+    "tests/fixtures/neuro/global_workspace_frame.json",
+    "tests/test_global_workspace_proxy.py",
+    "reports/neuroscience/NEURO-006-global-workspace-proxy.json"
+  ],
+  "runtime_anchor": "brain.developmental.global_workspace.GlobalWorkspaceService",
+  "tests": ["tests/test_global_workspace_proxy.py"],
+  "fixtures": ["tests/fixtures/neuro/global_workspace_frame.json"],
+  "acceptance_evidence": [
+    "workspace candidates require evidence",
+    "broadcast requires consumer modules",
+    "winner and suppressed alternatives are preserved",
+    "consciousness_claim remains false"
+  ],
+  "unknowns_preserved": [
+    "does not claim phenomenal consciousness",
+    "does not claim sentience",
+    "does not claim human-brain equivalence"
+  ],
+  "scope_preservation_check": "PASS",
+  "scientific_claim_check": "PASS",
+  "unresolved_items": [
+    "operator Global Workspace Viewer UI not yet implemented",
+    "production migration execution not performed",
+    "full cognitive-cycle integration remains future work"
+  ]
+}
