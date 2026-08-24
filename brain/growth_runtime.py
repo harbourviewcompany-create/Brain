@@ -4,10 +4,10 @@ from typing import Any
 
 from .adapters.cognitive_object_store import InMemoryCognitiveObjectStore
 from .benchmarks import BenchmarkBaseline, BenchmarkCase, BenchmarkResult, CognitiveBenchmarkLab
-from .cognitive_protocol import CognitiveProtocolService
 from .memory_systems import EpisodicMemory, MultiSystemMemory, SemanticMemory
 from .model_cortex import ModelCortexRouter, ModelProfile
 from .planning import CounterfactualPlanner, CausalGraph, PlanCandidate
+from .protocol import CognitiveProtocolService
 from .world_model import BitemporalWorldModel, WorldObservation
 
 
