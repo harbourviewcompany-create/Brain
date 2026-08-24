@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.2",
+  "schema_version": "1.0.3",
   "queue_status": "issue_backed_implemented_with_acceptance_evidence",
   "source_reference": "docs/brain-readable-concept-manual.md",
   "tickets": [
@@ -184,22 +184,23 @@
       "ticket_id": "AGENT-007",
       "issue_number": 130,
       "issue_url": "https://github.com/harbourviewcompany-create/Brain/issues/130",
-      "status": "in_progress",
+      "status": "implemented_pending_ci_and_merge",
       "title": "Wire CapitalLedger metabolism into cognitive homeostasis and scheduling",
       "phase": "V0_proof_harness",
-      "objective": "Register the capital-as-hunger homeostatic loop (CapitalLedger, MetabolismEngine, already implemented in brain/metabolism.py) and wire it into the live CognitiveCycle so ticks and outcomes actually update HomeostaticState.budget_pressure at runtime, and resolve the known single-dimension stress_index dilution finding.",
+      "objective": "Register the capital-as-hunger homeostatic loop and wire it into the live CognitiveCycle so ticks and outcomes update HomeostaticState.budget_pressure at runtime, while resolving single-dimension stress_index dilution.",
       "files_to_create_or_modify": [
         "brain/metabolism.py",
         "tests/test_metabolism.py",
         "brain/cycle.py",
-        "docs/spec/source-to-build-traceability.json",
-        "docs/spec/BRAIN_FORMULA_REGISTRY.md"
+        "brain/cognitive_state.py",
+        "docs/spec/source-to-build-traceability.json"
       ],
       "required_tests": [
         "capital_metabolize_and_starvation",
         "capital_feed_recovery",
         "capital_pressure_reaches_cognitive_cycle_at_runtime",
-        "starvation_dominates_action_selection_without_compounding_pressure"
+        "starvation_dominates_action_selection_without_compounding_pressure",
+        "cycle_outcome_feeds_capital_ledger"
       ],
       "required_fixtures": [
         "capital_starvation_cycle"
@@ -207,13 +208,13 @@
       "acceptance_criteria": [
         "CapitalLedger balance changes are the only thing that can create or clear a capital.starvation event",
         "budget_pressure derived from CapitalLedger reaches HomeostaticState on every CognitiveCycle tick, not just in standalone tests",
-        "the stress_index dilution question is explicitly resolved rather than left as a documented-but-unfixed finding",
+        "the stress_index dilution question is explicitly resolved through asymmetric budget-pressure weighting",
         "an Outcome can credit the ledger through a defined, tested path, not just a manually-called MetabolismEngine.feed()"
       ],
       "blocked_by": [
         "AGENT-002"
       ],
-      "go_hold_condition": "HOLD until CapitalLedger is read by CognitiveCycle at runtime (not just exercised in isolated tests) and the single-dimension stress dilution is either fixed or explicitly ratified as accepted behavior. Note: partially implemented (metabolism.py + tests merged in commits ad8ba1e/d8deeaf) but not yet wired into the running cycle; issue_number/issue_url pending \u2014 GitHub REST API rejected the available token (git push auth succeeds, API auth returns 401), so no issue exists yet."
+      "go_hold_condition": "GO after protected CI passes and PR merges. HOLD for external action, autonomous spend and production capital persistence."
     }
   ]
 }
