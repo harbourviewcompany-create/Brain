@@ -18,7 +18,8 @@
     {"source_id": "SRC-CAPITAL-CORTEX", "path": "docs/spec/CAPITAL_DISCOVERY_CORTEX.md", "label": "APPROVED"},
     {"source_id": "SRC-DEVELOPMENTAL", "path": "docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md", "label": "APPROVED"},
     {"source_id": "SRC-NEUROSCIENCE", "path": "docs/neuroscience", "label": "APPROVED"},
-    {"source_id": "SRC-COGNITIVE-ORGANISM", "path": "docs/cognitive-organism", "label": "APPROVED"}
+    {"source_id": "SRC-COGNITIVE-ORGANISM", "path": "docs/cognitive-organism", "label": "APPROVED"},
+    {"source_id": "SRC-CAPITAL-SOURCE-INTELLIGENCE", "path": "docs/spec/CAPITAL_SOURCE_INTELLIGENCE_REGISTRY.md", "label": "APPROVED"}
   ],
   "requirements": [
     {"requirement_id": "REQ-BRAIN-RUNTIME-MODULES", "source_ids": ["SRC-README", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-FUNCTION-MAP"], "label": "APPROVED"},
@@ -30,7 +31,8 @@
     {"requirement_id": "REQ-ECONOMIC-RUNTIME", "source_ids": ["SRC-CAPITAL-CORTEX"], "label": "APPROVED"},
     {"requirement_id": "REQ-DEVELOPMENTAL-RUNTIME", "source_ids": ["SRC-DEVELOPMENTAL"], "label": "APPROVED"},
     {"requirement_id": "REQ-NEUROSCIENCE-CONTROL-LAYER", "source_ids": ["SRC-NEUROSCIENCE", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"], "label": "APPROVED"},
-    {"requirement_id": "REQ-COGNITIVE-ORGANISM-V1", "source_ids": ["SRC-COGNITIVE-ORGANISM", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"], "label": "APPROVED"}
+    {"requirement_id": "REQ-COGNITIVE-ORGANISM-V1", "source_ids": ["SRC-COGNITIVE-ORGANISM", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"], "label": "APPROVED"},
+    {"requirement_id": "REQ-CAPITAL-SOURCE-INTELLIGENCE", "source_ids": ["SRC-CAPITAL-SOURCE-INTELLIGENCE", "SRC-CAPITAL-CORTEX", "SRC-CONTROL"], "label": "APPROVED"}
   ],
   "code_module_records": [
     {
@@ -79,6 +81,9 @@
     },
     {
       "record_id": "TRACE-NEUROSCIENCE-RUNTIME", "paths": ["brain/neuro/abstractions.py", "brain/neuro/multiscale.py", "brain/neuro/regions.py"], "classification": "APPROVED", "go_hold_status": "REVIEW", "source_ids": ["SRC-NEUROSCIENCE", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"], "requirement_ids": ["REQ-NEUROSCIENCE-CONTROL-LAYER"], "owner_object": "NEURO-001 through NEURO-005 neuroscience control-layer runtime modules", "schema": "NeuroAbstraction, BrainRegionFunction, CognitionScaleLayer, UnknownMechanismRecord, NeuroscienceTheory, TheoryConflict", "runtime_service": "brain.neuro registry and validation services", "state_machine": "neuroscience abstraction -> software mapping -> unknown/theory boundary -> GO/HOLD validation", "fixtures": ["tests/fixtures/neuro"], "tests": ["tests/test_neuro_abstraction_registry.py", "tests/test_brain_region_mapping.py", "tests/test_multiscale_cognition_stack.py", "tests/test_unknown_mechanism_registry.py", "tests/test_theory_conflict_registry.py"], "acceptance_criteria": ["neuroscience abstractions preserve unknowns", "brain-region mappings avoid biological equivalence claims", "multi-scale stack covers L0 through L11", "unknown mechanisms remain HOLD", "theory conflicts remain explicit"], "audit_events": ["NEURO_ABSTRACTION_VALIDATED", "NEURO_REGION_MAP_VALIDATED", "NEURO_MULTISCALE_STACK_VALIDATED", "NEURO_UNKNOWN_BOUNDARY_VALIDATED", "NEURO_THEORY_CONFLICT_VALIDATED"], "source_preservation": "preserved", "unresolved_gaps": ["organism software proxies do not close unknown biological mechanisms", "affect, circadian, theory-of-mind and richer perception/action integrations remain separate controlled slices"]
+    },
+    {
+      "record_id": "TRACE-CAPITAL-SOURCE-INTELLIGENCE", "paths": ["brain/source_intelligence.py"], "classification": "APPROVED", "go_hold_status": "REVIEW", "source_ids": ["SRC-CAPITAL-SOURCE-INTELLIGENCE", "SRC-CAPITAL-CORTEX", "SRC-CONTROL"], "requirement_ids": ["REQ-CAPITAL-SOURCE-INTELLIGENCE", "REQ-ECONOMIC-RUNTIME"], "owner_object": "MOD-016 Capital Source Intelligence Registry runtime", "schema": "SourceIntelligenceRecord, SourceScore, SourceCluster, IngestionPolicy, SourceCategory, SignalType, LegalAccessStatus, SourceLifecycleStatus, OperationalDisposition", "runtime_service": "source intelligence registry and triage primitives", "state_machine": "source discovered -> queued/reviewed -> approved/active/monitored -> degraded/broken -> retired/rejected/prohibited", "fixtures": ["tests/fixtures/brain/source_intelligence_registry.json"], "tests": ["tests/test_source_intelligence_registry.py", "python -m pytest -q", "ruff check ."], "acceptance_criteria": ["source records validate required fields", "priority scores match formula", "legal/access HOLD states block automation", "clusters include false-positive controls"], "audit_events": ["SOURCE_INTELLIGENCE_RECORD_VALIDATED", "SOURCE_PRIORITY_SCORE_DERIVED", "SOURCE_AUTOMATION_HELD"], "source_preservation": "preserved", "unresolved_gaps": ["persistent registry tables pending", "live connectors and source discovery remain HOLD"]
     },
     {
       "record_id": "TRACE-CONTROL-SCRIPTS", "paths": ["scripts/validate_control_layer.py", "scripts/validate_pr_body.py", "scripts/validate_build_ready_traceability.py"], "classification": "APPROVED", "go_hold_status": "GO", "source_ids": ["SRC-CONTROL"], "requirement_ids": ["REQ-CONTROL-ENFORCEMENT"], "owner_object": "Control enforcement scripts", "schema": "policy registry and module BUILD-READY traceability matrix", "runtime_service": "CI validators", "state_machine": "validate input -> fail/pass", "fixtures": ["docs/control/policy-registry.json", "docs/control/module-build-ready-traceability.md"], "tests": ["python scripts/validate_control_layer.py", "python scripts/validate_pr_body.py", "python scripts/validate_build_ready_traceability.py"], "acceptance_criteria": ["validators compile", "validators pass", "unsupported BUILD-READY claims fail closed"], "audit_events": ["CONTROL_POLICY_VALIDATED", "MODULE_BUILD_READY_TRACEABILITY_VALIDATED"], "source_preservation": "preserved", "unresolved_gaps": ["PR API enforcement can be expanded"]
