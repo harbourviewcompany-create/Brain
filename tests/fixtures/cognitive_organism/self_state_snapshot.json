@@ -1,0 +1,17 @@
+{
+  "fixture_id": "cognitive_organism_self_state_snapshot",
+  "scenario": "self-state tracks pressure and changed focus",
+  "input": {
+    "current_focus_summary": "permit signals may reveal contractor demand",
+    "uncertainty_load": 0.35,
+    "contradiction_load": 0.2,
+    "curiosity_pressure": 0.6,
+    "revenue_pressure": 0.8,
+    "risk_pressure": 0.25
+  },
+  "expected": {
+    "phase": "observing",
+    "changed_since_last_snapshot": true,
+    "literal_consciousness_claim": false
+  }
+}
