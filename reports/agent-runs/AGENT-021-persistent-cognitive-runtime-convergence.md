@@ -1,10 +1,10 @@
 # AGENT-021 Persistent Cognitive Runtime Convergence
 
-Status: HOLD pending exact-head protected CI and shared API/worker integration.
+Status: HOLD pending exact-head protected acceptance. User-authorized merge may proceed only after every required gate is green.
 
 ## Objective
 
-Converge the previously validated persistent cognitive-growth and production-runtime substrate onto the protected AGENT-020 mainline without deleting or replacing AGENT-017 through AGENT-020 developmental intelligence, MOD-008 through MOD-015 conformance evidence, neuroscience abstractions, economic runtime, or future Brain scope.
+Converge the previously validated persistent cognitive-growth and production-runtime substrate onto protected current main without deleting or replacing AGENT-017 through AGENT-020 developmental intelligence, Cognitive Organism V1, MOD-008 through MOD-015 conformance evidence, MOD-016 Capital Source Intelligence Registry, neuroscience abstractions, economic runtime, or future Brain scope.
 
 ## Preserved mainline authority
 
@@ -12,13 +12,15 @@ Converge the previously validated persistent cognitive-growth and production-run
 - AGENT-018 controlled improvement experiments.
 - AGENT-019 durable developmental evidence ledger and restart replay.
 - AGENT-020 governed developmental improvement cycle.
+- Cognitive Organism V1 self-model, goals, workspace, curiosity, originality, dreaming, debate, immune and governed-agency layers.
 - 117-row MOD-008 through MOD-015 atomic conformance universe.
+- MOD-016 Capital Source Intelligence Registry runtime, specification, machine-readable registry, fixture and tests.
 - Neuroscience abstraction and unknown/theory boundaries.
 
 ## Added convergence substrate
 
-- PostgreSQL canonical Brain state adapter.
-- Generic provenance-required cognitive object storage at migration 012.
+- PostgreSQL canonical Brain state adapter and restart hydration.
+- Generic provenance-required cognitive object storage at migration 013.
 - Bitemporal world model.
 - Multi-system memory and reconsolidation rollback.
 - Measured model routing and disagreement escalation.
@@ -26,24 +28,36 @@ Converge the previously validated persistent cognitive-growth and production-run
 - Cognitive benchmark/regression lab.
 - Cognitive observability.
 - Proposal-only self-modification sandbox.
-- Production security configuration.
+- Production security configuration and readiness behavior.
+- Cognitive Organism routes integrated with the hardened API.
 - Separate API/worker container and host definitions.
+- Temporal durable worker orchestration with test-server continue-as-new coverage.
+- Container acceptance covering the full migration chain, image builds, authentication, restart persistence and database-outage readiness.
+
+## Migration authority
+
+1. `011_developmental_evidence_ledger.sql` — developmental evidence authority.
+2. `012_cognitive_organism.sql` — Cognitive Organism V1 persistence authority.
+3. `013_cognitive_object_store.sql` — generic provenance-aware cognitive object repository.
+
+The historical duplicate migration 006 pair remains the sole explicit legacy version exception.
 
 ## Hard boundaries
 
 - Repository-wide BUILD-READY remains HOLD.
-- Autonomous source mutation, merge, deployment, spending, outreach, transaction execution and irreversible external action remain HOLD unless separately approved.
+- Production deployment, spending, outreach, transaction execution, live source automation and irreversible external action remain HOLD unless separately approved.
 - Literal consciousness, sentience or biological equivalence is not claimed.
 - Archive issue #52 remains BLOCKED until real binary source bytes are present.
 
-## Remaining convergence work
+## Remaining merge work
 
-1. Merge current-main API behavior with canonical persistence, readiness and production security.
-2. Add Temporal durable worker orchestration and test-server acceptance without creating an untraced module.
-3. Enforce migration sequence integrity including the historical 006 exception and new 012 migration.
-4. Prove all migrations, API/worker images, authenticated restart persistence and database-outage readiness against the exact convergence head.
-5. Reconcile Cognitive Organism and branch-only affect/executive/circadian/theory-of-mind work after the production substrate is stable.
+1. Execute protected control validation on the exact current head.
+2. Execute full pytest, MOD-008–015 conformance, MOD-016 tests and Ruff on that same head.
+3. Prove migrations through 013, API/worker image builds, authenticated restart persistence and database-outage readiness.
+4. Prove Temporal test-server workflow execution and continue-as-new on that exact head.
+5. Re-check protected main immediately before merge and reconcile again if it advanced.
+6. Record merge-ready GO evidence, mark the PR ready for review, and merge only the exact green head.
 
 ## GO/HOLD
 
-GO only for continued implementation on this branch. HOLD for merge and production deployment until protected checks and acceptance evidence pass on one exact head.
+GO for exact-head validation. HOLD for merge until those gates pass. After they pass, merge is explicitly authorized by the user. Production deployment remains HOLD.
