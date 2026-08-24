@@ -14,6 +14,7 @@ This PR does not narrow the Brain scope. It adds tenant ownership scaffolding to
 - `tests/test_tenant_scope_migration.py`
 - `docs/control/PR3_GO_HOLD_REPORT.md`
 - `docs/control/module-build-ready-traceability.md`
+- `docs/control/source-requirement-registry.json`
 
 ## Runtime changes
 
@@ -139,6 +140,10 @@ These are not excluded from the Brain. They are preserved as explicit deferred s
 - projection-checkpoint uniqueness blocker documentation
 - runtime-role/RLS requirement documentation checks
 - deferred registry comments checks
+
+## PR body validation note
+
+The PR body was updated to include the repository-required control sections: Control Preflight, Scope, Source Authority, GO/HOLD Status, Changed Files, Module Completion Requirements, Traceability, Tests / Validation, External Actions, Memory Writes, Acceptance Criteria, Unresolved Gaps, Source Preservation Statement, and Next Required Action.
 
 ## GO/HOLD
 
