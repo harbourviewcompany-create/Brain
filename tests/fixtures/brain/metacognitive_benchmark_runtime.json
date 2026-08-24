@@ -1,0 +1,48 @@
+{
+  "fixture_id": "metacognitive-benchmark-runtime-v0",
+  "status": "APPROVED_FOR_DETERMINISTIC_REPLAY",
+  "issue": 77,
+  "purpose": "Runtime fixture for evidence-backed capability benchmarking, regression detection, learning-debt prioritization, proposal-only self-optimization and superiority-claim boundary enforcement.",
+  "benchmark_runs": [
+    {
+      "benchmark_id": "commercial-reasoning-v0",
+      "score": 0.81,
+      "baseline_score": 0.72,
+      "evidence_refs": ["reports/acceptance/AGENT-017-metacognitive-benchmark-runtime.json"],
+      "test_refs": ["tests/test_metacognitive_benchmark_flywheel.py"]
+    },
+    {
+      "benchmark_id": "governance-boundary-v0",
+      "prior_score": 0.91,
+      "current_score": 0.74,
+      "regression_threshold": 0.05,
+      "expected_regression_visible": true
+    }
+  ],
+  "learning_debt": [
+    {
+      "debt_id": "debt-memory",
+      "capability": "memory-consolidation-v0",
+      "severity": 0.70,
+      "expected_priority_driver": "regression_pressure"
+    },
+    {
+      "debt_id": "debt-calibration",
+      "capability": "benchmark-bound-metacognition",
+      "severity": 0.65,
+      "expected_priority_driver": "acceptance_gap"
+    }
+  ],
+  "self_optimization_plan": {
+    "plan_id": "plan-agent-017-v0",
+    "status": "proposed",
+    "proposal_only": true,
+    "rollback_required": true,
+    "blocked_execution_reason": "self_optimization_plan_is_proposal_only"
+  },
+  "claim_boundaries": {
+    "superiority_claim_without_external_evidence": "blocked",
+    "live_self_modification": "blocked",
+    "external_action_from_benchmark_output": "blocked"
+  }
+}
