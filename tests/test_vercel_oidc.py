@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from brain.vercel_oidc import VercelOidcConfig, VercelOidcVerifier
+from tools.vercel_oidc import VercelOidcConfig, VercelOidcVerifier
 
 
 class _SigningKey:
