@@ -9,7 +9,37 @@ The Brain runtime is split into independently deployable processes:
 3. **Supabase/PostgreSQL** — canonical event ledger, Brain projections, developmental evidence and generic cognitive objects.
 4. **Temporal** — preferred durable orchestration for long-lived cognition; workflow intent is separate from process lifetime.
 5. **Neo4j** — optional graph projection; PostgreSQL remains canonical unless a later approved architecture changes that contract.
-6. **Existing Railway cockpit** — `Dockerfile.railway` remains a separate cockpit path and is not replaced by the Brain API image.
+6. **Legacy Railway cockpit compatibility** — `Dockerfile.railway` serves `tools.live_cockpit_routes:app` only for an explicitly configured cockpit service. It is not the default Brain API deployment.
+
+## Deployment authority
+
+Deployment entrypoints are explicit; there is no Procfile fallback.
+
+| Target | Build authority | Runtime entrypoint | Status |
+|---|---|---|---|
+| Brain API | `Dockerfile` | `apps.api.main:app` | canonical API image |
+| Cognition worker | `Dockerfile.worker` | `python -m apps.worker.main` | canonical worker image |
+| Railway API | `railway.toml` -> `Dockerfile` | inherited from image | canonical Railway API path |
+| Railway worker | `railway.worker.toml` -> `Dockerfile.worker` | inherited from image | canonical Railway worker path |
+| Fly.io | `fly.toml` -> `Dockerfile` | explicit `app` / `worker` processes | supported host definition |
+| Legacy cockpit | `Dockerfile.railway` | `tools.live_cockpit_routes:app` | compatibility-only; never selected implicitly |
+
+The repository intentionally has no `Procfile`. Railway and Fly already declare their Docker/process authority explicitly; retaining an unused Procfile would create a second, ambiguous deployment contract.
+
+## Reproducible image contract
+
+`constraints.txt` pins the exact Python 3.12 dependency graph used by protected CI and production Docker builds. `pyproject.toml` remains the semantic dependency authority; the constraints file is a reproducibility lock and must be regenerated deliberately whenever dependency ranges change.
+
+All production images use two build layers:
+
+1. copy `pyproject.toml`, `README.md` and `constraints.txt`, then install the locked dependency graph;
+2. copy Brain source and reinstall only the local package with `--no-deps`.
+
+This keeps normal source edits from invalidating the expensive dependency layer. Each image runs `python -m pip check` before completion and runs as the unprivileged `brain` user.
+
+`.dockerignore` excludes local environments, packaging outputs, tests, reports, documentation, local data and other non-runtime build context. `.gitignore` and the repository-hardening tests reject tracked root `venv/`, `.venv/`, `env/`, `build/`, `dist/` and `*.egg-info/` outputs. This is a regression guard for the repository-contamination class observed in PR #53.
+
+When dependencies change, regenerate `constraints.txt` in a clean Python 3.12 environment from the updated `pyproject.toml`, review the resolved diff, and run all protected test/container gates before accepting the lock update. Do not generate it from a long-lived developer environment containing unrelated packages.
 
 ## Supabase / PostgreSQL
 
@@ -61,7 +91,7 @@ BRAIN_CORS_ORIGINS=https://<approved-control-plane-domain>
 BRAIN_EXTERNAL_ACTIONS_ENABLED=false
 ```
 
-The image exposes port 8000 by default and probes `/ready`.
+The image exposes port 8000 by default, probes `/ready`, validates installed dependencies, and executes as the non-root `brain` user.
 
 ## Cognition worker
 
@@ -92,21 +122,25 @@ Temporal coordinates replay-safe timers, prediction maintenance and history roll
 
 ## Railway
 
-`railway.toml` targets the API `Dockerfile` and probes `/ready`. `railway.worker.toml` targets `Dockerfile.worker` as a background worker. API and worker should be separate services.
+`railway.toml` targets the canonical API `Dockerfile` and probes `/ready`. `railway.worker.toml` targets `Dockerfile.worker` as a background worker. API and worker should be separate services.
+
+`Dockerfile.railway` is retained only because an existing cockpit deployment may explicitly reference it. It is hardened with the same dependency lock and non-root execution as the canonical images, but it is not selected by `railway.toml`. Removing this compatibility path requires separate verification of live Railway service configuration.
 
 ## Fly.io
 
 `fly.toml` defines an `app` process for HTTP and a `worker` process for cognition. Only `app` is attached to the HTTP service; `/ready` is the health check.
 
-## Deployment acceptance before GO
+## Protected CI deployment acceptance
 
-A production deployment is not GO merely because a container starts. Exact deployed-commit evidence must show:
+The protected `test` workflow installs Python dependencies under `constraints.txt`, builds the API, worker and legacy cockpit images, verifies all three execute as non-root, applies every migration to clean PostgreSQL/pgvector, starts the production API with authentication enabled, verifies durable belief persistence across API restart, and verifies `/ready` fails closed when PostgreSQL disappears.
+
+A production deployment is not GO merely because CI or a container build succeeds. Exact deployed-commit evidence must additionally show:
 
 - migration integrity validation passes and migrations through 016 apply successfully;
 - production authentication is active and unauthenticated protected requests return 401;
 - authenticated belief create/read survives API restart;
 - `/ready` returns 503 during an induced database outage and recovers after restoration;
-- API and worker images build from the exact commit;
+- API and worker images build from the exact commit and execute as non-root;
 - Temporal workflow test-server acceptance passes;
 - live Temporal mode, if deployed, survives worker restart without losing workflow intent;
 - Cognitive Organism checkpoint persistence/cockpit routes remain governed and non-external-actioning;
