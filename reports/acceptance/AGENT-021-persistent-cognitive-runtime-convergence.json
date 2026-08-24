@@ -1,0 +1,42 @@
+{
+  "agent_id": "AGENT-021",
+  "status": "HOLD_PENDING_EXACT_HEAD_ACCEPTANCE",
+  "base": "protected AGENT-020 mainline",
+  "scope": [
+    "canonical PostgreSQL Brain state",
+    "provenance-aware cognitive object persistence",
+    "bitemporal world model",
+    "multi-system memory",
+    "measured model routing",
+    "causal planning",
+    "cognitive benchmarks",
+    "observability",
+    "proposal-only sandbox evaluation",
+    "production security",
+    "separate API and worker deployment",
+    "Temporal durable orchestration"
+  ],
+  "preserved_authority": [
+    "AGENT-017",
+    "AGENT-018",
+    "AGENT-019",
+    "AGENT-020",
+    "MOD-008-015 117-row conformance",
+    "neuroscience unknown and theory boundaries"
+  ],
+  "implemented_at_checkpoint": [
+    "additive cognitive-growth modules ported from previously validated branch",
+    "migration collision resolved by assigning cognitive object store to migration 012",
+    "new runtime paths registered in source requirement registry",
+    "new runtime paths added to BUILD-READY matrix as HOLD",
+    "PostgreSQL event payloads normalized to JSON-safe primitives"
+  ],
+  "pending": [
+    "shared API merge",
+    "Temporal worker merge and acceptance",
+    "migration-integrity CI merge",
+    "production container acceptance on final exact head"
+  ],
+  "external_actions": "none",
+  "source_preservation": "No mainline developmental, economic, neuroscience, control or future scope is deleted or narrowed."
+}
