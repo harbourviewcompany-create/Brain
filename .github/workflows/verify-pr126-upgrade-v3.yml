@@ -1,0 +1,148 @@
+name: Verify PR126 Upgrade Compatibility V3
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_SHA: 2fe87ea20181ca0d4392334a845435cc62c4d60c
+  CANDIDATE_TREE: a0e5516ce839070f152322f2db360f4313d5d98a
+
+jobs:
+  upgrade-compatibility:
+    name: Production 018 to 022 intended-role proof
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2fe87ea20181ca0d4392334a845435cc62c4d60c
+      - name: Prove immutable candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+      - name: Start stable PostgreSQL
+        run: |
+          mkdir -p evidence
+          docker network create brain-pr126-v3
+          docker run -d --name brain-pr126-v3-db --network brain-pr126-v3 \
+            -e POSTGRES_USER=brain -e POSTGRES_PASSWORD=brain -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          stable=0
+          for i in $(seq 1 90); do
+            if docker exec brain-pr126-v3-db psql -At -U brain -d brain -c 'select 1' 2>/dev/null | grep -qx 1; then stable=$((stable+1)); [ "$stable" -ge 3 ] && break; else stable=0; fi
+            sleep 1
+          done
+          test "$stable" -ge 3 || { docker logs brain-pr126-v3-db; exit 1; }
+          docker exec -i brain-pr126-v3-db psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          SQL
+      - name: Apply production baseline 001 through 018
+        run: |
+          for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            base=$(basename "$migration")
+            if [[ "$base" < "019_" ]]; then
+              echo "apply ${base}" | tee -a evidence/baseline.txt
+              docker exec -i brain-pr126-v3-db psql -v ON_ERROR_STOP=1 -U brain -d brain < "$migration" >> evidence/baseline.txt
+            fi
+          done
+      - name: Build exact Railway cockpit image
+        run: docker build -t brain-pr126-v3 -f Dockerfile.railway .
+      - name: Seed and prove pre-upgrade legacy compatibility
+        run: |
+          docker run -d --name brain-pr126-v3-pre --network brain-pr126-v3 -p 18080:8000 \
+            -e BRAIN_API_KEY=ci-pr126-key -e BRAIN_CORS_ORIGINS=https://thebrain-sandy.vercel.app \
+            -e DATABASE_URL=postgresql://brain:brain@brain-pr126-v3-db:5432/brain brain-pr126-v3
+          for i in $(seq 1 45); do curl -fsS http://127.0.0.1:18080/ready >/dev/null 2>&1 && break; [ "$i" = 45 ] && { docker logs brain-pr126-v3-pre; exit 1; }; sleep 1; done
+          test "$(curl -sS -o evidence/pre-unauth-edges.json -w '%{http_code}' http://127.0.0.1:18080/edges)" = 401
+          curl -fsS -X POST http://127.0.0.1:18080/edges -H 'Content-Type: application/json' -H 'X-Brain-Api-Key: ci-pr126-key' \
+            -d '{"edge_id":"33333333-3333-4333-8333-333333333333","source_node_id":"11111111-1111-4111-8111-111111111111","target_node_id":"22222222-2222-4222-8222-222222222222","relation":"pr126_release_probe","weight":0.7,"confidence":0.9}' > evidence/pre-edge-create.json
+          curl -fsS -X POST http://127.0.0.1:18080/signals -H 'Content-Type: application/json' -H 'X-Brain-Api-Key: ci-pr126-key' \
+            -d '{"content":"PR126 release compatibility signal","claim":"PR126 release compatibility claim","source_key":"pr126_release_probe","process_now":false}' > evidence/pre-signal-create.json
+          curl -fsS http://127.0.0.1:18080/edges -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/pre-edges.json
+          curl -fsS http://127.0.0.1:18080/signals -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/pre-signals.json
+          python - <<'PY' | tee evidence/pre-verdict.txt
+          import json
+          e=json.load(open('evidence/pre-edges.json')); s=json.load(open('evidence/pre-signals.json'))
+          assert e['total'] >= 1, e; assert s['total'] >= 1, s
+          print('PRE_EDGE_TOTAL='+str(e['total'])); print('PRE_SIGNAL_TOTAL='+str(s['total']))
+          PY
+          docker rm -f brain-pr126-v3-pre
+      - name: Apply migrations 019 through 022 over legacy data
+        run: |
+          for migration in db/migrations/019_tenant_auth_foundation.sql db/migrations/020_tenant_scope_cognitive_tables.sql db/migrations/021_tenant_scope_extended_cognition.sql db/migrations/022_tenant_runtime_enforcement.sql; do
+            echo "apply $(basename "$migration")" | tee -a evidence/upgrade.txt
+            docker exec -i brain-pr126-v3-db psql -v ON_ERROR_STOP=1 -U brain -d brain < "$migration" >> evidence/upgrade.txt
+          done
+          docker exec brain-pr126-v3-db psql -At -U brain -d brain -c "select 'owner_edges|'||count(*) from public.graph_edges; select 'owner_events|'||count(*) from public.brain_events;" | tee evidence/owner-db-counts.txt
+      - name: Prove unchanged cockpit remains compatible as database owner
+        run: |
+          docker run -d --name brain-pr126-v3-owner --network brain-pr126-v3 -p 18081:8000 \
+            -e BRAIN_API_KEY=ci-pr126-key -e BRAIN_CORS_ORIGINS=https://thebrain-sandy.vercel.app \
+            -e DATABASE_URL=postgresql://brain:brain@brain-pr126-v3-db:5432/brain brain-pr126-v3
+          for i in $(seq 1 45); do curl -fsS http://127.0.0.1:18081/ready >/dev/null 2>&1 && break; [ "$i" = 45 ] && { docker logs brain-pr126-v3-owner; exit 1; }; sleep 1; done
+          test "$(curl -sS -o evidence/owner-unauth-edges.json -w '%{http_code}' http://127.0.0.1:18081/edges)" = 401
+          curl -fsS http://127.0.0.1:18081/edges -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/owner-edges.json
+          curl -fsS http://127.0.0.1:18081/signals -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/owner-signals.json
+          python - <<'PY' | tee evidence/owner-verdict.txt
+          import json
+          e=json.load(open('evidence/owner-edges.json')); s=json.load(open('evidence/owner-signals.json'))
+          assert e['total'] >= 1, e; assert s['total'] >= 1, s
+          print('OWNER_EDGE_TOTAL='+str(e['total'])); print('OWNER_SIGNAL_TOTAL='+str(s['total']))
+          PY
+          docker rm -f brain-pr126-v3-owner
+      - name: Create intended ordinary runtime role and prove RLS posture
+        run: |
+          docker exec -i brain-pr126-v3-db psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role brain_runtime login password 'runtime' nosuperuser nobypassrls;
+          grant connect on database brain to brain_runtime;
+          grant usage on schema public to brain_runtime;
+          grant select, insert, update, delete on all tables in schema public to brain_runtime;
+          grant usage, select on all sequences in schema public to brain_runtime;
+          SQL
+          docker exec brain-pr126-v3-db psql -At -U brain -d brain -c "select rolname||'|'||rolsuper||'|'||rolbypassrls from pg_roles where rolname='brain_runtime'; set role brain_runtime; select 'runtime_edges|'||count(*) from public.graph_edges; select 'runtime_events|'||count(*) from public.brain_events; reset role;" | tee evidence/runtime-db.txt
+          grep -q 'brain_runtime|false|false' evidence/runtime-db.txt
+          grep -q 'runtime_edges|0' evidence/runtime-db.txt
+          grep -q 'runtime_events|0' evidence/runtime-db.txt
+      - name: Prove unchanged cockpit incompatibility under intended ordinary role
+        run: |
+          docker run -d --name brain-pr126-v3-runtime --network brain-pr126-v3 -p 18082:8000 \
+            -e BRAIN_API_KEY=ci-pr126-key -e BRAIN_CORS_ORIGINS=https://thebrain-sandy.vercel.app \
+            -e DATABASE_URL=postgresql://brain_runtime:runtime@brain-pr126-v3-db:5432/brain brain-pr126-v3
+          for i in $(seq 1 45); do curl -fsS http://127.0.0.1:18082/ready >/dev/null 2>&1 && break; [ "$i" = 45 ] && { docker logs brain-pr126-v3-runtime; exit 1; }; sleep 1; done
+          test "$(curl -sS -o evidence/runtime-unauth-edges.json -w '%{http_code}' http://127.0.0.1:18082/edges)" = 401
+          curl -fsS http://127.0.0.1:18082/edges -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/runtime-edges.json
+          curl -fsS http://127.0.0.1:18082/signals -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/runtime-signals.json
+          edge_write_status=$(curl -sS -o evidence/runtime-edge-write.json -w '%{http_code}' -X POST http://127.0.0.1:18082/edges \
+            -H 'Content-Type: application/json' -H 'X-Brain-Api-Key: ci-pr126-key' \
+            -d '{"edge_id":"44444444-4444-4444-8444-444444444444","source_node_id":"55555555-5555-4555-8555-555555555555","target_node_id":"66666666-6666-4666-8666-666666666666","relation":"runtime_write_probe","weight":0.5,"confidence":0.5}' || true)
+          signal_write_status=$(curl -sS -o evidence/runtime-signal-write.json -w '%{http_code}' -X POST http://127.0.0.1:18082/signals \
+            -H 'Content-Type: application/json' -H 'X-Brain-Api-Key: ci-pr126-key' \
+            -d '{"content":"runtime probe","claim":"runtime probe claim","source_key":"pr126_runtime_probe","process_now":false}' || true)
+          python - "$edge_write_status" "$signal_write_status" <<'PY' | tee evidence/final-verdict.txt
+          import json, sys
+          e=json.load(open('evidence/runtime-edges.json')); s=json.load(open('evidence/runtime-signals.json'))
+          ew, sw = int(sys.argv[1]), int(sys.argv[2])
+          assert e['total'] == 0, e
+          assert s['total'] == 0, s
+          assert ew >= 400, ew
+          assert sw >= 400, sw
+          print('PRODUCTION_BLOCKER_CONFIRMED=legacy_rows_hidden_and_legacy_writes_denied_under_non_owner_non_bypass_role')
+          print('RUNTIME_EDGE_TOTAL='+str(e['total']))
+          print('RUNTIME_SIGNAL_TOTAL='+str(s['total']))
+          print('RUNTIME_EDGE_WRITE_STATUS='+str(ew))
+          print('RUNTIME_SIGNAL_WRITE_STATUS='+str(sw))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr126-upgrade-v3-evidence
+          path: evidence/*
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f brain-pr126-v3-pre brain-pr126-v3-owner brain-pr126-v3-runtime brain-pr126-v3-db >/dev/null 2>&1 || true
+          docker network rm brain-pr126-v3 >/dev/null 2>&1 || true
