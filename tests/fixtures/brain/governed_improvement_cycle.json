@@ -1,0 +1,24 @@
+{
+  "fixture_id":"agent-020-governed-improvement-cycle-v1",
+  "deterministic":true,
+  "scenarios":[
+    {"id":"no_regression","baseline":0.70,"current":0.80,"expected":"NO_REGRESSION"},
+    {"id":"regression_to_plan","baseline":0.80,"current":0.55,"expected_states":["REGRESSION_DETECTED","PLAN_PROPOSED"]},
+    {"id":"plan_approval_bypass","operator_approval":"","expected":"HOLD"},
+    {"id":"successful_experiment","controls":{"pytest":true},"protected_deltas":{"planning":0.27,"memory":0.02},"expected":"PROMOTE"},
+    {"id":"protected_regression","controls":{"pytest":true},"protected_deltas":{"planning":0.25,"memory":-0.30},"expected":"HOLD"},
+    {"id":"failed_control","controls":{"pytest":false},"protected_deltas":{"planning":0.35},"expected":"REJECT"},
+    {"id":"experiment_approval_bypass","operator_approval":"","expected":"HOLD"},
+    {"id":"restart_after_reject","expected":["EXPERIMENT_REJECT","regression_preserved","rollback_preserved"]},
+    {"id":"direct_mutation_attempt","expected":"HOLD","reason":"developmental_cycle_cannot_self_approve_mutate_merge_or_deploy"}
+  ],
+  "invariants":[
+    "benchmark and run evidence is persisted before regression reasoning",
+    "regression-driven plans require durable debt hypothesis rollback test and acceptance evidence",
+    "plan experiment approval and candidate experiment approval are separate operator gates",
+    "every material cycle state emits a durable checkpoint",
+    "PROMOTE is an evidence decision only",
+    "HOLD REJECT regression and rollback evidence survive restart",
+    "controller cannot self-approve mutate merge deploy spend or act externally"
+  ]
+}

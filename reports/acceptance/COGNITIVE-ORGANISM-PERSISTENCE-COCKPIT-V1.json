@@ -1,0 +1,34 @@
+{
+  "report_id": "COGNITIVE-ORGANISM-PERSISTENCE-COCKPIT-V1",
+  "status": "GO_AFTER_CI",
+  "scope": "Durable checkpoint adapter, organism API persistence inspection, operator cockpit and audit events.",
+  "implemented_paths": [
+    "brain/adapters/cognition.py",
+    "apps/api/cognitive_organism_routes.py",
+    "apps/operator/main.py",
+    "db/migrations/016_cognitive_organism_persistence.sql",
+    "docs/cognitive-organism/PERSISTENCE_AND_COCKPIT_V1.md",
+    "tests/test_cognitive_organism_persistence.py",
+    "tests/test_cognitive_organism_api_persistence.py",
+    "tests/test_operator_organism_cockpit.py"
+  ],
+  "migration_renumbering_note": "Renumbered from protected-main migration 013 to 016 during AGENT-021 convergence because NEURO-006 already owns migration 013. The checkpoint schema semantics are unchanged and depend only on prior Cognitive Organism tables.",
+  "acceptance_criteria": [
+    "organism checkpoint can be saved and loaded",
+    "audit events are append-only from the adapter interface",
+    "API exposes persistence status, checkpoint, rehydration inspection and audit events",
+    "operator cockpit exposes organism self-state, focus, curiosity and action boundaries",
+    "existing response shapes and approval gates remain stable",
+    "no external action is introduced"
+  ],
+  "hold_boundaries": [
+    "literal consciousness claims",
+    "Tier 5 autonomy",
+    "autonomous outreach",
+    "live scraping",
+    "provider-backed autonomous reasoning",
+    "spending",
+    "irreversible external action",
+    "production migration execution"
+  ]
+}

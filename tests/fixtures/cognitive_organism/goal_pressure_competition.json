@@ -1,0 +1,12 @@
+{
+  "fixture_id": "cognitive_organism_goal_pressure_competition",
+  "scenario": "protect can suppress exploit when risk pressure is higher",
+  "input": {
+    "exploit_current": 0.4,
+    "protect_current": 0.55
+  },
+  "expected": {
+    "protect_overrides_exploit": true,
+    "dominant_goal_present": true
+  }
+}

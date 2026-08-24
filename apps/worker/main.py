@@ -1,22 +1,63 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import time
+from datetime import timedelta
 
-from brain.adapters.cognition import CognitiveCycleRunStore, PostgresSensoryInbox
-from brain.adapters.learning_store import (
-    PostgresAttributionStore,
-    PostgresEdgeStore,
-    PostgresPredictionStore,
-    PostgresSourceStore,
-)
-from brain.adapters.postgres import PostgresEventStore, ProjectionCheckpointStore
-from brain.cycle import CognitiveCycle
-from brain.learning import LearningService
-from brain.runner import ContinuousCognitionRunner
+from temporalio import activity, workflow
+from temporalio.client import Client
+from temporalio.exceptions import WorkflowAlreadyStartedError
+from temporalio.worker import Worker
 
 
-def build_runner() -> ContinuousCognitionRunner:
+@workflow.defn
+class ContinuousCognitionWorkflow:
+    """Durable cognition heartbeat with replay-safe timers and bounded history."""
+
+    @workflow.run
+    async def run(
+        self,
+        idle_seconds: float = 1.0,
+        maintenance_every: int = 60,
+        max_iterations: int = 1000,
+        remaining_runs: int = -1,
+    ) -> dict[str, int]:
+        idle_ticks = 0
+        maintenance_runs = 0
+        for _ in range(max_iterations):
+            worked = await workflow.execute_activity(
+                "brain.cognition_tick",
+                start_to_close_timeout=timedelta(minutes=2),
+            )
+            if worked:
+                idle_ticks = 0
+            else:
+                idle_ticks += 1
+                await workflow.sleep(idle_seconds)
+            if idle_ticks >= maintenance_every:
+                await workflow.execute_activity(
+                    "brain.prediction_maintenance",
+                    start_to_close_timeout=timedelta(minutes=2),
+                )
+                maintenance_runs += 1
+                idle_ticks = 0
+
+        if remaining_runs == 1:
+            return {"iterations": max_iterations, "maintenance_runs": maintenance_runs}
+        next_runs = remaining_runs - 1 if remaining_runs > 1 else -1
+        workflow.continue_as_new(
+            args=[idle_seconds, maintenance_every, max_iterations, next_runs]
+        )
+        raise RuntimeError("continue_as_new_returned_unexpectedly")
+
+
+def build_runner():
+    from brain.adapters.cognition import CognitiveCycleRunStore, PostgresSensoryInbox
+    from brain.adapters.postgres import PostgresEventStore, ProjectionCheckpointStore
+    from brain.cycle import CognitiveCycle
+    from brain.runner import ContinuousCognitionRunner
+
     dsn = os.environ["DATABASE_URL"]
     event_store = PostgresEventStore(dsn)
     checkpoint_store = ProjectionCheckpointStore(event_store.pool)
@@ -24,14 +65,23 @@ def build_runner() -> ContinuousCognitionRunner:
     try:
         loaded = cycle.hydrate_beliefs(from_checkpoint=True)
         print(f"hydrated {loaded} beliefs from projection checkpoint")
-    except Exception as exc:  # noqa: BLE001 - pragma: no cover - startup hydration is best-effort; worker must still boot on failure
+    except Exception as exc:  # noqa: BLE001 - startup hydration is recoverable
         print(f"belief hydration skipped: {exc}")
     inbox = PostgresSensoryInbox(event_store.pool)
     runs = CognitiveCycleRunStore(event_store.pool)
     return ContinuousCognitionRunner(cycle, inbox, runs)
 
 
-def build_learning() -> LearningService:
+def build_learning():
+    from brain.adapters.learning_store import (
+        PostgresAttributionStore,
+        PostgresEdgeStore,
+        PostgresPredictionStore,
+        PostgresSourceStore,
+    )
+    from brain.adapters.postgres import PostgresEventStore
+    from brain.learning import LearningService
+
     dsn = os.environ["DATABASE_URL"]
     event_store = PostgresEventStore(dsn)
     return LearningService(
@@ -65,9 +115,70 @@ def run_forever_with_maintenance(
         time.sleep(idle_sleep_seconds)
 
 
+_runner = None
+_learning = None
+
+
+def _runner_singleton():
+    global _runner
+    if _runner is None:
+        _runner = build_runner()
+    return _runner
+
+
+def _learning_singleton():
+    global _learning
+    if _learning is None:
+        _learning = build_learning()
+    return _learning
+
+
+@activity.defn(name="brain.cognition_tick")
+async def cognition_tick_activity() -> bool:
+    return await asyncio.to_thread(_runner_singleton().run_once)
+
+
+@activity.defn(name="brain.prediction_maintenance")
+async def prediction_maintenance_activity() -> int:
+    expired = await asyncio.to_thread(_learning_singleton().expire_due_predictions)
+    return len(expired)
+
+
+async def run_temporal_worker() -> None:
+    address = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
+    namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
+    task_queue = os.environ.get("BRAIN_TEMPORAL_TASK_QUEUE", "brain-cognition")
+    workflow_id = os.environ.get("BRAIN_TEMPORAL_WORKFLOW_ID", "brain-continuous-cognition")
+    client = await Client.connect(address, namespace=namespace)
+    if os.environ.get("BRAIN_TEMPORAL_AUTOSTART", "true").lower() == "true":
+        try:
+            await client.start_workflow(
+                ContinuousCognitionWorkflow.run,
+                args=[
+                    float(os.environ.get("BRAIN_IDLE_SLEEP_SECONDS", "1.0")),
+                    int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
+                    int(os.environ.get("BRAIN_WORKFLOW_MAX_ITERATIONS", "1000")),
+                    -1,
+                ],
+                id=workflow_id,
+                task_queue=task_queue,
+            )
+        except WorkflowAlreadyStartedError:
+            pass
+    worker = Worker(
+        client,
+        task_queue=task_queue,
+        workflows=[ContinuousCognitionWorkflow],
+        activities=[cognition_tick_activity, prediction_maintenance_activity],
+    )
+    await worker.run()
+
+
 def main() -> None:
     mode = os.environ.get("BRAIN_WORKER_MODE", "cognition")
-    if mode == "maintenance":
+    if mode == "temporal" or os.environ.get("TEMPORAL_ADDRESS"):
+        asyncio.run(run_temporal_worker())
+    elif mode == "maintenance":
         run_forever_with_maintenance()
     else:
         build_runner().run_forever()

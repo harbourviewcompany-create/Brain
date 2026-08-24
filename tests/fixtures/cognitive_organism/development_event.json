@@ -1,0 +1,13 @@
+{
+  "fixture_id": "cognitive_organism_development_event",
+  "scenario": "before and after self-state snapshots create a traceable development event",
+  "input": {
+    "before_focus": "watching generic signals",
+    "after_focus": "testing permit-triggered buyer lane",
+    "cause_refs": ["dream:priority_change"]
+  },
+  "expected": {
+    "development_event_created": true,
+    "future_priority_changed": true
+  }
+}

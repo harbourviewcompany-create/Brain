@@ -1,0 +1,38 @@
+{
+  "surface_id": "metacognitive-optimization-dashboard-v1",
+  "issue": 77,
+  "panels": [
+    {
+      "id": "capability_map",
+      "shows": ["capability", "benchmark", "latest_score", "baseline_score", "evidence_class", "test_target", "history"]
+    },
+    {
+      "id": "regression_alerts",
+      "shows": ["benchmark", "delta", "severity", "baseline_run", "current_run", "evidence", "acknowledged", "resolved"]
+    },
+    {
+      "id": "learning_debt",
+      "shows": ["capability", "gap", "severity", "strategic_value", "priority", "source_regressions", "evidence", "resolved"]
+    },
+    {
+      "id": "improvement_proposals",
+      "shows": ["objective", "mechanism", "expected_gain", "confidence", "rollback_plan", "test_target", "acceptance_criteria", "traceability", "state", "executable"]
+    },
+    {
+      "id": "claim_boundaries",
+      "shows": ["superiority_claim_allowed", "external_benchmark_evidence", "self_modification_mode", "blocked_claims"]
+    }
+  ],
+  "write_policy": {
+    "benchmark_output_can_self_modify": false,
+    "operator_approval_required_for_experiment": true,
+    "experiment_approval_makes_plan_directly_executable": false,
+    "regression_deletion_allowed": false
+  },
+  "hold_boundaries": [
+    "live autonomous self-modification",
+    "unsupported superior-intelligence claims",
+    "regression suppression",
+    "optimization without rollback/test/acceptance evidence"
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0.0",
+  "module_id": "MOD-017",
+  "module_name": "Persistent Source Registry and Signal Intake Runtime",
+  "status": "staged_runtime_boundary_BUILD_READY_HOLD",
+  "objective": "Persist and replay controlled source registry activity, ingestion runs, observations, signal inbox items, health checks and audit events without activating live connectors.",
+  "runtime_objects": [
+    "IngestionRun",
+    "SourceObservation",
+    "SignalInboxItem",
+    "SourceHealthCheck",
+    "SourceRegistryEvent",
+    "SourceRegistrySnapshot",
+    "PersistentSourceRegistryRuntime"
+  ],
+  "database_tables": [
+    "source_registry_sources",
+    "source_registry_ingestion_runs",
+    "source_registry_observations",
+    "source_registry_signal_inbox",
+    "source_registry_health_checks",
+    "source_registry_events"
+  ],
+  "migration": "db/migrations/015_source_registry_runtime.sql",
+  "migration_renumbering_note": "Renumbered from protected-main 008 during AGENT-021 convergence because 008_neuroscience_abstraction_layer.sql already owns migration 008; schema semantics are unchanged.",
+  "go_rules": [
+    "registered source required",
+    "legal/access HOLD states block ingestion",
+    "manual-only sources cannot use automated access methods",
+    "observations require evidence refs and snapshot/hash provenance",
+    "observations are deduplicated by source_id plus extract_hash_or_snapshot_id",
+    "signals preserve evidence refs, confidence and downstream use cases",
+    "snapshots replay sources, runs, observations, signals, health checks and events"
+  ],
+  "hold_rules": [
+    "no live scraping",
+    "no API connector execution",
+    "no browser automation",
+    "no paid-license ingestion without controls",
+    "no external commercial action",
+    "no CRM or marketplace writeback",
+    "no BUILD-READY claim for production persistence"
+  ],
+  "tests": [
+    "tests/test_source_registry_runtime.py"
+  ],
+  "fixtures": [
+    "tests/fixtures/brain/source_registry_runtime.json"
+  ],
+  "audit_events": [
+    "SOURCE_REGISTERED",
+    "SOURCE_LIFECYCLE_UPDATED",
+    "INGESTION_RUN_STARTED",
+    "SOURCE_OBSERVATION_RECORDED",
+    "SOURCE_OBSERVATION_DEDUPED",
+    "INGESTION_RUN_COMPLETED",
+    "SIGNAL_INBOX_ITEM_CREATED",
+    "SIGNAL_REVIEW_RECORDED",
+    "SOURCE_HEALTH_CHECK_RECORDED"
+  ],
+  "deferred_not_deleted": [
+    "Postgres adapter implementation",
+    "Supabase RLS policies",
+    "operator source health dashboard",
+    "evidence viewer UI",
+    "opportunity board integration",
+    "source ROI attribution",
+    "automated source discovery proposal service",
+    "jurisdiction-specific access/legal registry",
+    "live connector approval workflow"
+  ]
+}

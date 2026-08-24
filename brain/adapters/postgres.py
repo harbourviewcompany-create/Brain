@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
@@ -17,8 +19,28 @@ except ImportError:  # Allows domain/unit tests before infrastructure extras are
 from ..events import BrainEvent
 
 
-def _json(value: dict[str, Any]) -> Any:
-    return Jsonb(value) if Jsonb is not None else value
+def _jsonable(value: Any) -> Any:
+    """Convert cognitive payloads to deterministic JSON-safe primitives."""
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return _jsonable(value.value)
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, set):
+        return [_jsonable(item) for item in sorted(value, key=str)]
+    return value
+
+
+def _json(value: Any) -> Any:
+    normalized = _jsonable(value)
+    return Jsonb(normalized) if Jsonb is not None else normalized
 
 
 class PostgresEventStore:
@@ -35,32 +57,6 @@ class PostgresEventStore:
             )
         self._owns_pool = pool is None
         self.pool = pool or ConnectionPool(conninfo=dsn, min_size=1, max_size=10, open=True)
-
-    def health_check(self, *, timeout: float = 3.0) -> dict[str, Any]:
-        """Cheap connectivity + approximate size check.
-
-        Safe to call frequently (e.g. from a container HEALTHCHECK / platform
-        health probe every 30s). Uses `pg_class.reltuples` (planner statistics)
-        rather than `count(*)` or `read_all()`, so this stays O(1) regardless of
-        how large `brain_events` grows -- unlike read_all(), it never scans or
-        deserializes the event table itself.
-
-        `timeout` bounds how long we wait for a pool connection. Without it,
-        `pool.connection()` falls back to the pool's own default (30s), so a
-        genuine DB outage would hang every health check for 30s -- well past
-        Fly's 5s HEALTHCHECK timeout and Railway's probe window. Failing fast
-        here means an outage shows up as "unreachable" almost immediately
-        instead of as a slow, hanging health check.
-        """
-        with self.pool.connection(timeout=timeout) as conn, conn.cursor() as cur:
-            cur.execute("select reltuples::bigint from pg_class where relname = 'brain_events'")
-            row = cur.fetchone()
-            raw = int(row[0]) if row and row[0] is not None else 0
-            # Postgres reports reltuples = -1 for a table that has never been
-            # ANALYZEd (e.g. right after a fresh deploy, before autovacuum's
-            # first pass). Clamp rather than surface a negative count.
-            approx_count = max(raw, 0)
-        return {"connected": True, "approx_events": approx_count}
 
     def close(self) -> None:
         if self._owns_pool:
@@ -105,16 +101,16 @@ class PostgresEventStore:
                     """,
                     [
                         (
-                            e.id,
-                            e.event_type,
-                            e.aggregate_type,
-                            e.aggregate_id,
-                            e.causation_id,
-                            e.correlation_id,
-                            _json(e.payload),
-                            e.occurred_at,
+                            event.id,
+                            event.event_type,
+                            event.aggregate_type,
+                            event.aggregate_id,
+                            event.causation_id,
+                            event.correlation_id,
+                            _json(event.payload),
+                            event.occurred_at,
                         )
-                        for e in events
+                        for event in events
                     ],
                 )
             conn.commit()

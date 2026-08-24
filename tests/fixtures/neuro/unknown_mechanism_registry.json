@@ -1,0 +1,10 @@
+{
+  "fixture_id": "unknown_mechanism_registry",
+  "scenario": "unknown, disputed and speculative neuroscience mechanisms remain first-class HOLD records",
+  "expected": {
+    "minimum_unknown_count": 3,
+    "all_records_hold": true,
+    "required_unknown_ids": ["NEURO-UNK-001", "NEURO-UNK-002", "NEURO-UNK-003"],
+    "required_forbidden_claims": ["conscious", "emotion", "personhood"]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "fixture_id": "agent-019-developmental-evidence-restart-v1",
+  "deterministic": true,
+  "scenarios": [
+    {"id":"typed_codec_roundtrip","records":["CapabilityBenchmark","BenchmarkRun","RegressionSignal","SelfOptimizationPlan","ExperimentResult"],"expected":"IDENTITY_PRESERVED"},
+    {"id":"snapshot_upsert_event_append","writes":2,"snapshot_count":1,"event_count":2,"expected":"PASS"},
+    {"id":"restart_replay","events":[1,2,3],"expected_last_sequence":3,"expected":"HYDRATED"},
+    {"id":"sequence_gap","events":[1,3],"expected":"HOLD"},
+    {"id":"failed_experiment_preservation","decision":"reject","expected_after_restart":"reject"},
+    {"id":"regression_preservation","resolved":false,"expected_after_restart":false},
+    {"id":"unknown_record_type","type":"InventedRecord","expected":"HOLD"}
+  ],
+  "invariants": [
+    "latest snapshots may upsert by kind and id",
+    "evidence events append and retain ordered sequence",
+    "restart replay reconstructs latest typed state from ordered history",
+    "failed and HOLD evidence survives restart",
+    "unknown types and sequence gaps fail closed",
+    "persistence grants no mutation merge deployment or external-action authority"
+  ]
+}

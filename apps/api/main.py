@@ -1,70 +1,124 @@
 from __future__ import annotations
 
+import hmac
 import os
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
+from brain.heartbeat import HeartbeatService
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
 from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
+from brain.security import SecurityConfig
 
-app = FastAPI(title="Brain Runtime API", version="0.5.0")
+_security = SecurityConfig.from_env()
 
+app = FastAPI(title="Brain Runtime API", version="0.8.1")
+
+_origins = _security.allowed_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_origins,
+    allow_credentials=_origins != ["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Api-Key",
+        "X-Brain-Api-Key",
+        "X-Request-Id",
+    ],
 )
 
-_memory_store = InMemoryBrainStore()
+_API_KEY_ENV_VAR = "BRAIN_API_KEY"
+_PUBLIC_PATHS = frozenset({"/health", "/ready"})
+
+
+@app.middleware("http")
+async def brain_authentication(request: Request, call_next):
+    if request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    configured_key = os.environ.get(_API_KEY_ENV_VAR)
+    if not configured_key:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"{_API_KEY_ENV_VAR} is not configured on this deployment; "
+                    "refusing all requests until it is set"
+                )
+            },
+        )
+
+    authorization = request.headers.get("authorization")
+    candidate = (
+        request.headers.get("x-brain-api-key")
+        or request.headers.get("x-api-key")
+        or ""
+    )
+    if authorization and authorization.lower().startswith("bearer "):
+        candidate = authorization[7:].strip()
+
+    if not candidate or not hmac.compare_digest(candidate, configured_key):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "invalid_or_missing_api_key"},
+        )
+    return await call_next(request)
+
+
+_brain_store: InMemoryBrainStore = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
-runtime = BrainRuntime(store=_memory_store)
+runtime = BrainRuntime(store=_brain_store)
 learning = LearningService(
-    _memory_store,
+    _brain_store,
     predictions=_learning_store,
     edges=_learning_store,
     attributions=_learning_store,
     sources=_learning_store,
 )
 money_spine = MoneySpineService()
+heartbeat = HeartbeatService(event_store=_brain_store, learning=learning)
 
 
 def _configure_from_env() -> None:
-    global learning
+    global _brain_store, runtime, learning, heartbeat
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
-    try:
-        from brain.adapters.learning_store import (
-            PostgresAttributionStore,
-            PostgresEdgeStore,
-            PostgresPredictionStore,
-            PostgresSourceStore,
-        )
-        from brain.adapters.postgres import PostgresEventStore
-    except ImportError:
-        return
 
-    event_store = PostgresEventStore(dsn)
-    learning = LearningService(
-        event_store,
-        predictions=PostgresPredictionStore(event_store.pool),
-        edges=PostgresEdgeStore(event_store.pool),
-        attributions=PostgresAttributionStore(event_store.pool),
-        sources=PostgresSourceStore(event_store.pool),
+    from brain.adapters.brain_store import PostgresBrainStore
+    from brain.adapters.learning_store import (
+        PostgresAttributionStore,
+        PostgresEdgeStore,
+        PostgresPredictionStore,
+        PostgresSourceStore,
     )
+
+    store = PostgresBrainStore(dsn)
+    _brain_store = store
+    runtime = BrainRuntime(store=store)
+    learning = LearningService(
+        store.event_store,
+        predictions=PostgresPredictionStore(store.pool),
+        edges=PostgresEdgeStore(store.pool),
+        attributions=PostgresAttributionStore(store.pool),
+        sources=PostgresSourceStore(store.pool),
+    )
+    heartbeat = HeartbeatService(event_store=store.event_store, learning=learning)
 
 
 _configure_from_env()
@@ -159,21 +213,44 @@ class DailyRevenueReportRequest(BaseModel):
     lessons_recorded: int = Field(ge=0)
 
 
-def _serialize_prediction(p) -> dict[str, Any]:
+class PerceiveRequest(BaseModel):
+    content: str
+    claim: str
+    source_key: str = "operator"
+    source_reliability: float = Field(default=0.7, ge=0, le=1)
+    supports: bool = True
+    belief_statement: str | None = None
+    belief_confidence: float = Field(default=0.5, ge=0, le=1)
+    novelty: float = Field(default=0.5, ge=0, le=1)
+    urgency: float = Field(default=0.3, ge=0, le=1)
+    commercial_upside: float = Field(default=0.0, ge=0, le=1)
+    contradiction_value: float = Field(default=0.0, ge=0, le=1)
+    uncertainty_reduction: float = Field(default=0.5, ge=0, le=1)
+    noise_probability: float = Field(default=0.2, ge=0, le=1)
+    operator_burden: float = Field(default=0.0, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    process_now: bool = False
+
+
+class TickRequest(BaseModel):
+    max_items: int = Field(default=1, ge=1, le=50)
+
+
+def _serialize_prediction(prediction) -> dict[str, Any]:
     return {
-        "id": str(p.id),
-        "statement": p.statement,
-        "expected_value": p.expected_value,
-        "confidence": p.confidence,
-        "horizon_seconds": int(p.horizon.total_seconds()),
-        "belief_id": str(p.belief_id) if p.belief_id else None,
-        "action_id": str(p.action_id) if p.action_id else None,
-        "edge_ids": [str(e) for e in p.edge_ids],
-        "source_keys": list(p.source_keys),
-        "status": str(p.status),
-        "resolve_by": p.resolve_by.isoformat() if p.resolve_by else None,
-        "resolved_at": p.resolved_at.isoformat() if p.resolved_at else None,
-        "metadata": dict(p.metadata),
+        "id": str(prediction.id),
+        "statement": prediction.statement,
+        "expected_value": prediction.expected_value,
+        "confidence": prediction.confidence,
+        "horizon_seconds": int(prediction.horizon.total_seconds()),
+        "belief_id": str(prediction.belief_id) if prediction.belief_id else None,
+        "action_id": str(prediction.action_id) if prediction.action_id else None,
+        "edge_ids": [str(edge_id) for edge_id in prediction.edge_ids],
+        "source_keys": list(prediction.source_keys),
+        "status": str(prediction.status),
+        "resolve_by": prediction.resolve_by.isoformat() if prediction.resolve_by else None,
+        "resolved_at": prediction.resolved_at.isoformat() if prediction.resolved_at else None,
+        "metadata": dict(prediction.metadata),
     }
 
 
@@ -189,49 +266,123 @@ def _serialize_learning(result) -> dict[str, Any]:
         "source_deltas": attr.source_deltas,
         "rationale": attr.rationale,
         "updated_edges": [
-            {"id": str(e.id), "weight": e.weight, "confidence": e.confidence, "relation": e.relation}
-            for e in result.updated_edges
+            {
+                "id": str(edge.id),
+                "weight": edge.weight,
+                "confidence": edge.confidence,
+                "relation": edge.relation,
+            }
+            for edge in result.updated_edges
         ],
-        "pruned_edge_ids": [str(e) for e in result.pruned_edge_ids],
-        "rewire_operations": [str(r.operation) for r in result.rewire_events],
+        "pruned_edge_ids": [str(edge_id) for edge_id in result.pruned_edge_ids],
+        "rewire_operations": [str(rewire.operation) for rewire in result.rewire_events],
     }
+
+
+def _database_ready() -> tuple[bool, str]:
+    if not os.environ.get("DATABASE_URL"):
+        return True, "not_configured"
+    checker = getattr(_brain_store, "database_healthy", None)
+    if checker is None:
+        return False, "configured_without_durable_store"
+    return (True, "connected") if checker() else (False, "unavailable")
 
 
 @app.get("/health")
 def health():
-    event_count = len(getattr(_memory_store, "events", []) or [])
-    db_status = "in-memory"
-    try:
-        if hasattr(learning.event_store, "health_check"):
-            info = learning.event_store.health_check()
-            event_count = info.get("approx_events", event_count)
-            db_status = "connected" if info.get("connected") else "unreachable"
-    except Exception:
-        db_status = "unreachable"
-    return {
-        "status": "ok",
-        "version": "0.5.0",
-        "db": db_status,
+    database_ok, database_status = _database_ready()
+    hb = heartbeat.status()
+    payload = {
+        "status": "ok" if database_ok else "degraded",
+        "version": "0.8.1",
+        "database": database_status,
+        "persistence": "postgres" if os.environ.get("DATABASE_URL") else "in_memory",
         "beliefs": len(runtime.store.beliefs),
-        "events": event_count,
-        "predictions": len(getattr(_learning_store, "predictions", {})),
         "money_lanes": len(money_spine.lanes),
+        "heartbeat": {
+            "ticks": hb["ticks"],
+            "total_processed": hb["total_processed"],
+            "inbox": hb["inbox"],
+            "working_memory_size": hb["working_memory_size"],
+        },
     }
+    if not database_ok:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
+
+
+@app.get("/ready")
+def ready():
+    database_ok, database_status = _database_ready()
+    if not database_ok:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not_ready", "database": database_status},
+        )
+    return {"status": "ready", "database": database_status}
+
+
+@app.post("/signals")
+def enqueue_signal(body: PerceiveRequest):
+    item = heartbeat.perceive(
+        content=body.content,
+        claim=body.claim,
+        source_key=body.source_key,
+        source_reliability=body.source_reliability,
+        supports=body.supports,
+        belief_statement=body.belief_statement,
+        belief_confidence=body.belief_confidence,
+        novelty=body.novelty,
+        urgency=body.urgency,
+        commercial_upside=body.commercial_upside,
+        contradiction_value=body.contradiction_value,
+        uncertainty_reduction=body.uncertainty_reduction,
+        noise_probability=body.noise_probability,
+        operator_burden=body.operator_burden,
+        metadata=body.metadata,
+    )
+    tick_result = heartbeat.tick(max_items=1) if body.process_now else None
+    return {
+        "id": str(item.id),
+        "source_key": item.source_key,
+        "content": item.content,
+        "claim": item.claim,
+        "status": item.status,
+        "tick": tick_result,
+    }
+
+
+@app.post("/tick")
+def run_heartbeat_tick(body: TickRequest | None = None):
+    max_items = body.max_items if body is not None else 1
+    return heartbeat.tick(max_items=max_items)
+
+
+@app.get("/runner/status")
+def runner_status():
+    return heartbeat.status()
 
 
 @app.get("/beliefs")
 def list_beliefs():
-    items = []
-    for b in runtime.store.beliefs.values():
-        items.append({
-            "id": str(b.id),
-            "statement": b.statement,
-            "confidence": b.confidence,
-            "state": str(b.state),
-            "version": getattr(b, "version", 1),
-            "created_at": b.created_at.isoformat() if getattr(b, "created_at", None) else None,
-        })
-    return {"items": items, "total": len(items)}
+    items = [
+        {
+            "id": str(belief.id),
+            "statement": belief.statement,
+            "confidence": belief.confidence,
+            "state": str(belief.state),
+            "version": getattr(belief, "version", 1),
+            "updated_at": belief.updated_at.isoformat()
+            if getattr(belief, "updated_at", None)
+            else None,
+        }
+        for belief in runtime.store.beliefs.values()
+    ]
+    return {
+        "items": items,
+        "total": len(items),
+        "source": "postgres" if os.environ.get("DATABASE_URL") else "memory",
+    }
 
 
 @app.get("/beliefs/{belief_id}")
@@ -251,8 +402,13 @@ def get_belief(belief_id: str):
 @app.get("/predictions")
 def list_predictions():
     store = learning.predictions if learning.predictions is not None else _learning_store
-    preds = getattr(store, "predictions", {}) or {}
-    items = [_serialize_prediction(p) for p in preds.values()]
+    if hasattr(store, "predictions"):
+        predictions = list(store.predictions.values())
+    elif hasattr(store, "list_open"):
+        predictions = store.list_open()
+    else:
+        predictions = []
+    items = [_serialize_prediction(prediction) for prediction in predictions]
     return {"items": items, "total": len(items)}
 
 
@@ -319,7 +475,7 @@ def create_prediction(body: CreatePredictionRequest):
         horizon=timedelta(seconds=body.horizon_seconds),
         belief_id=UUID(body.belief_id) if body.belief_id else None,
         action_id=UUID(body.action_id) if body.action_id else None,
-        edge_ids=[UUID(e) for e in body.edge_ids],
+        edge_ids=[UUID(edge_id) for edge_id in body.edge_ids],
         source_keys=list(body.source_keys),
         metadata=dict(body.metadata),
     )
@@ -331,10 +487,10 @@ def create_prediction(body: CreatePredictionRequest):
 def get_prediction(prediction_id: str):
     if learning.predictions is None:
         raise HTTPException(status_code=501, detail="predictions_store_unavailable")
-    pred = learning.predictions.get(UUID(prediction_id))
-    if pred is None:
+    prediction = learning.predictions.get(UUID(prediction_id))
+    if prediction is None:
         raise HTTPException(status_code=404, detail="prediction_not_found")
-    return _serialize_prediction(pred)
+    return _serialize_prediction(prediction)
 
 
 @app.post("/outcomes")
@@ -347,13 +503,13 @@ def record_outcome(body: RecordOutcomeRequest):
         trust_impact=body.trust_impact,
         legal_risk=body.legal_risk,
         prediction_id=UUID(body.prediction_id) if body.prediction_id else None,
-        edge_ids=[UUID(e) for e in body.edge_ids],
+        edge_ids=[UUID(edge_id) for edge_id in body.edge_ids],
         source_keys=list(body.source_keys),
     )
     try:
         result = learning.record_outcome(
             outcome,
-            edge_ids=[UUID(e) for e in body.edge_ids] or None,
+            edge_ids=[UUID(edge_id) for edge_id in body.edge_ids] or None,
             prediction_id=UUID(body.prediction_id) if body.prediction_id else None,
             source_keys=list(body.source_keys) or None,
         )
@@ -413,8 +569,7 @@ def evaluate_revenue_experiment(body: ExperimentResultRequest):
 @app.post("/daily-revenue-report")
 def daily_revenue_report(body: DailyRevenueReportRequest):
     report = DailyRevenueReport(**body.model_dump())
-    return {
-        "passed": report.passed,
-        "gaps": report.gaps,
-        "report": asdict(report),
-    }
+    return {"passed": report.passed, "gaps": report.gaps, "report": asdict(report)}
+
+
+register_cognitive_organism_routes(app)

@@ -1,0 +1,1 @@
+AGENT-021 convergence checkpoint: additive substrate and traceability landed on branch; shared API/worker/CI integration still HOLD.

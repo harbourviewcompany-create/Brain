@@ -1,0 +1,28 @@
+{
+  "report_id": "NEURO-005-theory-conflict-registry",
+  "module_id": "MOD-NEURO-005",
+  "verdict": "GO",
+  "scope": "Theory conflict registry foundation",
+  "evidence": [
+    "docs/neuroscience/THEORY_CONFLICT_REGISTRY.md",
+    "docs/neuroscience/json/theory-conflict-registry.json",
+    "tests/fixtures/neuro/theory_conflict_registry.json",
+    "tests/test_theory_conflict_registry.py",
+    "db/migrations/010_neuro_unknown_theory_registry.sql"
+  ],
+  "acceptance": [
+    "competing theories have explicit conflict records",
+    "unsafe theory implementation posture is blocked",
+    "theories require claim boundaries and evidence",
+    "theory conflicts must not be silently resolved"
+  ],
+  "non_claims": [
+    "does not select one neuroscience theory as globally true",
+    "does not treat any theory as proof of consciousness",
+    "does not erase contradictory evidence"
+  ],
+  "unresolved_gaps": [
+    "theory confidence scoring is not yet implemented",
+    "operator dashboard implementation remains future work"
+  ]
+}

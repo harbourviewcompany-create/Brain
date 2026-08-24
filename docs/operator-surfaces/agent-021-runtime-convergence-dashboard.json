@@ -1,0 +1,18 @@
+{
+  "surface_id": "AGENT-021-RUNTIME-CONVERGENCE",
+  "status": "HOLD",
+  "panels": [
+    "mainline_authority",
+    "traceability",
+    "migration_sequence",
+    "database_readiness",
+    "restart_persistence",
+    "container_acceptance",
+    "temporal_acceptance",
+    "benchmark_regression",
+    "external_action_boundary"
+  ],
+  "write_authority": "none",
+  "merge_authority": "none",
+  "deployment_authority": "none"
+}

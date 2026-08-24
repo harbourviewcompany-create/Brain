@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    BRAIN_ENV=production \
+    BRAIN_EXTERNAL_ACTIONS_ENABLED=false \
+    BRAIN_WORKER_MODE=temporal
+
+WORKDIR /app
+
+# Dependency layer: shared lock and cache behavior with the API image.
+COPY pyproject.toml README.md constraints.txt ./
+RUN mkdir -p brain \
+    && python -m pip install --upgrade pip \
+    && python -m pip install --no-cache-dir -c constraints.txt .
+
+COPY brain ./brain
+COPY apps ./apps
+RUN python -m pip install --no-cache-dir --no-deps --force-reinstall . \
+    && python -m pip check
+
+RUN groupadd --system brain \
+    && useradd --system --gid brain --home-dir /app brain \
+    && chown -R brain:brain /app
+USER brain
+
+CMD ["python", "-m", "apps.worker.main"]

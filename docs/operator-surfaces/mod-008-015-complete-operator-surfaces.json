@@ -1,0 +1,59 @@
+{
+  "surface_id": "mod_008_015_complete_operator_surface",
+  "status": "read_only_with_approval_gates",
+  "panels": [
+    {
+      "panel_id": "pressure_map",
+      "purpose": "Show pressure evidence, magnitude, confidence, valid-until, lifecycle state, contradiction and expiry status.",
+      "required_fields": ["pressure_id", "entity_id", "state", "evidence_refs", "valid_until", "formula_run_ref"]
+    },
+    {
+      "panel_id": "money_path_explorer",
+      "purpose": "Compare fastest, highest-value, lowest-capital, lowest-risk, repeatability and compounding money paths.",
+      "required_fields": ["money_path_id", "rank_dimension", "score", "formula_run_ref", "evidence_refs"]
+    },
+    {
+      "panel_id": "liquidity_graph",
+      "purpose": "Render buyer/seller preferences, roles, interactions, response-history weighting and stale-contact warnings.",
+      "required_fields": ["counterparty_id", "roles", "liquidity_preferences", "interactions", "stale_contact"]
+    },
+    {
+      "panel_id": "kill_board",
+      "purpose": "Operate act, verify, watch, kill, archive, automate, delegate and non-monetizable disposition review.",
+      "required_fields": ["opportunity_id", "disposition", "rationale", "evidence_refs", "state"]
+    },
+    {
+      "panel_id": "transaction_pipeline",
+      "purpose": "Track detected, active, closed, lost and abandoned transaction states with fee-control artifacts.",
+      "required_fields": ["transaction_id", "state", "mandate", "fee_agreement", "origination", "closure_evidence"]
+    },
+    {
+      "panel_id": "source_mesh",
+      "purpose": "Show source rights, provenance, collection method, lifecycle, jurisdiction profile, economics and discovered-source lineage.",
+      "required_fields": ["source_key", "rights_class", "collection_method", "provenance_refs", "lifecycle_state"]
+    },
+    {
+      "panel_id": "profit_capital_ledger",
+      "purpose": "Trace gross revenue, net profit, normalized profit, causal attribution, capital deployment and reconciliation.",
+      "required_fields": ["profit_event_id", "chain_id", "deployment_id", "reconciliation_id", "confidence"]
+    },
+    {
+      "panel_id": "compounding_board",
+      "purpose": "Track repeated transactions, strategic assets, offer/product/marketplace/business-model candidates and owned-platform progression.",
+      "required_fields": ["pattern_id", "candidate_type", "payer_evidence", "resource_estimate", "state"]
+    }
+  ],
+  "approval_gates": [
+    "external_action_approval",
+    "capital_deployment_approval",
+    "source_activation_approval",
+    "regulated_transaction_approval"
+  ],
+  "blocked_operations": [
+    "send_outreach_without_approval",
+    "deploy_capital_without_approval",
+    "activate_source_without_rights",
+    "make_legal_enforceability_claim_without_jurisdiction_review"
+  ],
+  "go_hold": "GO for operator evidence surface; HOLD for autonomous consequential actions."
+}

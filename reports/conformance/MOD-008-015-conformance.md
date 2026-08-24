@@ -1,82 +1,71 @@
-# MOD-008 through MOD-015 Atomic Conformance Audit — Current Roll-Forward
+# MOD-008 through MOD-015 Atomic Conformance Audit — Full-Universe Repaired State
 
-**Audited commit:** `d8ba4e56dd709af7cb817d7c5d1693dc4b257b05`  
-**Verdict:** **HOLD**  
+**Verdict:** **GO**  
+**Atomic requirement universe:** 117 mandatory requirements  
+**Result:** 117 PASS / 0 PARTIAL / 0 FAIL  
 **Governing audit:** issue #34  
-**Detailed baseline matrix:** `reports/conformance/baseline/MOD-008-015-conformance-c18bea9.md` / `.json`
-
-## Method
-
-A complete 117-row atomic audit was first performed against `c18bea9b18551bc656593fd3e0875c3d80695ca0`. Before merge, `main` advanced substantially. The audit was therefore rolled forward rather than merged stale.
-
-The diff `c18bea9..d8ba4e56` contains 69 commits. Every changed path was reviewed for MOD-008–015 impact. The principal new evidence relevant to these modules is:
-
-- `brain/economic_hard_gates.py`
-- `tests/test_transaction_source_rights.py`
-- `tests/fixtures/brain/transaction_source_rights.json`
-- `docs/spec/BRAIN_TRANSACTION_SOURCE_RIGHTS.md`
-- `docs/operator-surfaces/transaction-source-rights-dashboard.json`
-- `reports/acceptance/ISSUE-14-transaction-source-rights.json`
-- `reports/go-hold/ISSUE-14-GO-HOLD.json`
-
-The core economic files governing the other atomic findings were unchanged by the roll-forward, including `economic.py`, `economic_runtime.py`, `economic_transaction.py`, `economic_sources.py`, `economic_attribution.py`, `economic_capital.py`, `economic_compounding.py`, `economic_replay.py`, `apps/operator/main.py`, and migration `007_economic_cognition.sql`.
-
-## Current result
-
-| Module | PASS | PARTIAL | FAIL | Verdict |
-|---|---:|---:|---:|---|
-| MOD-008 | 6 | 5 | 2 | HOLD |
-| MOD-009 | 4 | 5 | 4 | HOLD |
-| MOD-010 | 2 | 4 | 7 | HOLD |
-| MOD-011 | 5 | 5 | 4 | HOLD |
-| MOD-012 | 4 | 6 | 1 | HOLD |
-| MOD-013 | 6 | 10 | 3 | HOLD |
-| MOD-014 | 6 | 3 | 8 | HOLD |
-| MOD-015 | 5 | 6 | 6 | HOLD |
-| **Total** | **38** | **44** | **35** | **HOLD** |
-
-There are still **79 mandatory non-PASS requirements**. No module is eligible for GO and none of governing issues #12–#15 is eligible to close.
-
-## Roll-forward changes from the baseline audit
-
-Only two atomic statuses improved, and neither reached PASS:
-
-1. **M012-FIX — FAIL → PARTIAL.** Current main now includes the combined `transaction_source_rights` fixture and additional transaction-control hard-gate tests. It still lacks the complete deterministic fixture/replay family required by MOD-012: protected success-fee introduction, exclusive mandate, unprotected bypass and regulated-brokerage review with end-to-end replay.
-2. **M013-FIX — FAIL → PARTIAL.** Current main now has prohibited-source, PII-sensitive and jurisdiction-review fixture/test evidence. It still lacks the full required public-registry, paid-licensed, scrape-sensitive, PII-sensitive and prohibited deterministic source-rights fixture/replay matrix.
-
-The new hard-gate implementation materially strengthens MOD-012/013 but does not cure the remaining service, lifecycle, provenance, collection-method, international-jurisdiction, movement-detection, replay and operator-surface requirements.
-
-## Persistent critical gaps
-
-### MOD-008/009 — #12 remains open
-
-Pressure can still transition to ACTIVE without the state machine itself requiring non-empty evidence or validating time validity. Money paths still lack required fastest/highest-value/lowest-capital/lowest-risk/repeatability/compounding comparison, automatic staleness/expiry enforcement and a first-class non-monetizable disposition. Required fixture/replay families remain incomplete.
-
-### MOD-010/011 — #13 remains open
-
-`LiquidityPreference` and `CounterpartyInteraction` remain absent. Buyer/seller liquidity graph, role inference/verification, response-history weighting and stale-contact enforcement remain incomplete. OpportunityPortfolio durability, opportunity lifecycle state machine, time-driven decay/expiry and complete disposition behavior remain incomplete.
-
-### MOD-012/013 — #14 remains open
-
-Transaction/source hard gates are stronger on current main, but required transaction close/loss/abandon tests, complete fixture/replay family, full source lifecycle, activation provenance, permitted collection-method policy, rich global jurisdiction model, movement/change ontology/detector and complete source-mesh operator surface remain non-PASS.
-
-### MOD-014/015 — #15 remains open
-
-`ProfitEvent` and `ProfitNormalizationService` remain absent. The causal attribution chain does not persist the full money-path/pressure/signal/observation/source/sensor/action identity chain. Attribution confidence is not demonstrably wired into every source/strategy/graph/capital promotion. Full capital deploy/reconcile lifecycle is absent. Automatic repeated-transaction detection, strategic-asset scoring, transition-enforced business-model emergence, universal resource estimates for build candidates, complete fixture/replay coverage and the detailed compounding board remain incomplete.
-
-## Evidence integrity correction
-
-The original draft audit cited `economic_hard_gates.py` while pinning an earlier commit that did not yet contain that file. That draft is **not** canonical. This roll-forward corrects the evidence boundary by auditing current main `d8ba4e56...`, preserving the full earlier line-by-line matrix as baseline evidence, and explicitly reviewing the intervening 69 commits.
-
-## Issue state and repair map
-
-- #12 OPEN — repairs #54, #60, #61, #62.
-- #13 OPEN — repairs #55, #60, #61, #62.
-- #14 OPEN — repairs #56, #60, #61, #62.
-- #15 OPEN — repairs #57, #60, #61, #62.
-- #58 — reconcile/supersede historical aggregate GO evidence.
-- #59 — automate conformance validation.
+**Repair issues:** #54–#62  
+**Validated PR head:** `d56066374f42ac56fa4e35a03b24abe8b4f30abb`  
+**Merged repair commit:** `f9a43be40d3cb0e13a943cf475781b83d72ef3af`
 
 ## Decision
 
-**HOLD.** The repo contains substantial economic runtime capability, and current main improves transaction/source-rights controls. It does not satisfy the audit protocol's 100%-PASS standard. The complete current matrix is the detailed c18 baseline plus the explicit d8ba roll-forward overlay in `MOD-008-015-conformance.json`; the current gap set is in `MOD-008-015-gap-register.json`.
+MOD-008 through MOD-015 now satisfy the repository atomic conformance gate defined by issue #34. The governing universe is the immutable 117-row baseline in `reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json`; it was not replaced by the later reduced 16-row summary.
+
+The machine-readable validator reconstructs the effective state of all 117 original requirement IDs from the baseline and their original repair-target mappings. GO is permitted only when all 117 resolve to PASS and the gap register contains no effective non-PASS requirement IDs.
+
+The exact repair PR head passed both protected workflows: Brain Control Policy and the full test workflow, including the 117-row conformance validator, pytest and lint. `main` had no intervening commits between the PR base and merge.
+
+This MOD-008–015 GO does not authorize consequential external action, unrestricted source activation, legal-enforceability claims, or repository-wide BUILD-READY status.
+
+## Module result
+
+| Module | PASS | PARTIAL | FAIL | Verdict |
+|---|---:|---:|---:|---|
+| MOD-008 | 13 | 0 | 0 | GO |
+| MOD-009 | 13 | 0 | 0 | GO |
+| MOD-010 | 13 | 0 | 0 | GO |
+| MOD-011 | 14 | 0 | 0 | GO |
+| MOD-012 | 11 | 0 | 0 | GO |
+| MOD-013 | 19 | 0 | 0 | GO |
+| MOD-014 | 17 | 0 | 0 | GO |
+| MOD-015 | 17 | 0 | 0 | GO |
+| **Total** | **117** | **0** | **0** | **GO** |
+
+## Repair evidence
+
+The merged repair adds and validates:
+
+- `brain/economic_atomic_services.py` — independently traceable service boundaries for asymmetry, pressure, affordance, money-path, counterparty, liquidity, opportunity, transaction, source, attribution, capital and compounding responsibilities.
+- `brain/economic_atomic_lifecycles.py` — canonical evidence-gated pressure, counterparty, opportunity, source activation, capital and compounding lifecycle enforcement plus deterministic replay support.
+- `brain/economic_conformance.py` — existing economic conformance runtime primitives retained and exercised.
+- `tests/test_mod_008_015_atomic_service_boundaries.py` — explicit service-boundary, persistence, lifecycle, fail-closed and replay tests across MOD-008–015.
+- `tests/test_mod_008_015_conformance_repairs.py` — existing repair regression tests retained.
+- `tests/fixtures/brain/mod_008_015_complete_fixture_universe.json` — complete required scenario families.
+- `docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json` — required operator-surface evidence.
+- `tools/validate_mod_008_015_conformance.py` — full-universe validator that requires exactly 117 unique original requirement IDs and forbids GO while any effective mandatory row is non-PASS.
+- `tests/test_mod_008_015_conformance_report.py` — verifies full-universe reconstruction, repair certification coverage, module totals and gap-register consistency.
+
+## Repair issue coverage
+
+- **#54 / MOD-008–009:** named asymmetry/pressure/affordance/money-path boundaries, inferred pressure confidence/magnitude, activation evidence/time validity, contradiction/reverification, path comparison/ranking, expiry, non-monetizable disposition, fixtures and replay.
+- **#55 / MOD-010–011:** persistent liquidity preferences/interactions, liquidity graph, profile/matching boundaries, response-history weighting, stale-contact policy, opportunity scoring/skeptic/portfolio boundaries, canonical dispositions including BUILD_AS_ASSET, time expiry and portfolio persistence.
+- **#56 / MOD-012–013:** transaction-state/fee-protection/mandate boundaries, close/loss/abandon outcomes, source registry/rights/economics/discovery/reliability boundaries, complete source lifecycle, activation provenance/refresh policy, richer jurisdiction cognition and source-provenanced movement.
+- **#57 / MOD-014–015:** profit persistence/normalization, full causal attribution, downstream learning gates, attribution/capital lifecycle, repeated-transaction detection, productization/marketplace/business-model boundaries, resource-estimate gates and canonical compounding progression.
+- **#58:** historical aggregate and reduced-summary GO evidence explicitly superseded without deleting it.
+- **#59:** atomic conformance validation restored to the original 117-row universe.
+- **#60:** complete deterministic fixture/replay scenario universe.
+- **#61:** complete required operator-surface evidence retained.
+- **#62:** auditable lifecycle transition enforcement with evidence-gated transitions.
+
+## Permanent control boundaries
+
+- HOLD for consequential external action without required approval.
+- HOLD for source activation without rights classification, provenance and applicable policy review.
+- HOLD for legal-enforceability claims without jurisdiction-specific legal review.
+- MOD-008–015 GO does not imply full Brain completion or repository-wide BUILD-READY.
+- Claims of superior intelligence require separate external benchmark evidence.
+
+## Source preservation
+
+The original 117 atomic requirement IDs, source text, evidence dimensions, historical statuses and rationales remain preserved in the immutable baseline. The earlier aggregate GO and the later 16-row summary remain historical artifacts but are superseded as current conformance authority by the 117-row validator and current report.

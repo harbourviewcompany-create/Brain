@@ -1,0 +1,65 @@
+{
+  "manifest_id": "agent-017-metacognitive-benchmark-flywheel-v0",
+  "status": "APPROVED_CONTROL_ARCHITECTURE_RUNTIME_HOLD",
+  "issue": 77,
+  "purpose": "Define the evidence-bound self-measurement and self-optimization layer for Brain development.",
+  "canonical_loop": [
+    "capability_question",
+    "benchmark_definition",
+    "benchmark_run",
+    "score_and_evidence",
+    "regression_or_improvement_signal",
+    "learning_debt_priority",
+    "self_optimization_proposal",
+    "review",
+    "implementation_issue",
+    "test_replay_acceptance",
+    "capability_ledger_update",
+    "claim_boundary_report"
+  ],
+  "objects": [
+    "CapabilityBenchmark",
+    "BenchmarkRun",
+    "RegressionSignal",
+    "ImprovementHypothesis",
+    "LearningDebtItem",
+    "SelfOptimizationPlan",
+    "CapabilityClaimBoundary"
+  ],
+  "services": [
+    "BenchmarkService",
+    "RegressionDetectionService",
+    "LearningDebtPrioritizationService",
+    "SelfOptimizationPlanner",
+    "ClaimBoundaryService"
+  ],
+  "hard_gates": [
+    "no_intelligence_superiority_claim_without_external_benchmark_evidence",
+    "no_self_modification_execution_from_benchmark_output_alone",
+    "no_hidden_regression_or_deleted_failure",
+    "no_optimization_plan_without_traceability_rollback_tests_acceptance_and_go_hold",
+    "no_authoritative_benchmark_without_task_metric_evidence_and_failure_mode"
+  ],
+  "operator_surfaces": [
+    "capability_map",
+    "benchmark_run_history",
+    "regression_alerts",
+    "learning_debt_queue",
+    "self_optimization_proposals",
+    "claim_boundary_report"
+  ],
+  "runtime_required_for_go": [
+    "brain/developmental/metacognitive_benchmark.py",
+    "tests/test_developmental_metacognitive_benchmark.py",
+    "tests/fixtures/brain/metacognitive_benchmark_flywheel.json",
+    "docs/operator-surfaces/metacognitive-benchmark-dashboard.json",
+    "reports/acceptance/AGENT-017-metacognitive-benchmark.json",
+    "reports/go-hold/AGENT-017-METACOGNITIVE-BENCHMARK-GO-HOLD.json"
+  ],
+  "claim_boundaries": {
+    "architecture": "GO",
+    "runtime": "HOLD",
+    "live_self_modification": "HOLD",
+    "superior_intelligence_claim": "HOLD_UNTIL_EXTERNAL_BENCHMARK_EVIDENCE"
+  }
+}
