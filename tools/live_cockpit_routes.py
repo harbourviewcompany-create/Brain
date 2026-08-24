@@ -4,18 +4,41 @@ from datetime import UTC, datetime
 import logging
 import os
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi.responses import JSONResponse
 
+import apps.api.tenant_app as tenant_api
 import apps.api.main as brain_api
-from apps.api.main import app, runtime, _learning_store
 from brain.attention import AttentionMarket, AttentionSignal
+from brain.tenant_auth import TenantRole
+from brain.tenant_context import trusted_tenant_context
+from brain.tenant_runtime import tenant_context_scope
 from tools.vercel_oidc import VercelOidcVerifier
 
 
 _logger = logging.getLogger(__name__)
 _attention_market = AttentionMarket()
+app = tenant_api.app
+
+# Stable compatibility tenant for pre-tenant production state. Migration 023
+# assigns existing tenant-owned rows to this tenant. Operators may override the
+# id explicitly, but no request header is allowed to choose it.
+_DEFAULT_OBSERVATORY_TENANT_ID = UUID("7d4427c4-8b8d-4f4a-9f75-b46cedc2f126")
+_OBSERVATORY_ACTOR_ID = "brain-observatory-bff"
+
+
+def _observatory_context():
+    raw = (os.environ.get("BRAIN_OBSERVATORY_TENANT_ID") or "").strip()
+    try:
+        tenant_id = UUID(raw) if raw else _DEFAULT_OBSERVATORY_TENANT_ID
+    except ValueError:
+        return None
+    return trusted_tenant_context(
+        tenant_id=tenant_id,
+        actor_id=_OBSERVATORY_ACTOR_ID,
+        roles=(TenantRole.OPERATOR,),
+    )
 
 
 def _iso(value: Any | None) -> str:
@@ -110,12 +133,8 @@ def _edge_item(edge: Any) -> dict[str, Any]:
 
 @app.get("/signals")
 def list_signals():
-    """Read signals from the canonical durable signal.enqueued event stream.
-
-    In production ``runtime.store.read_all()`` is backed by PostgresBrainStore and
-    therefore reads public.brain_events. This deliberately avoids the disposable
-    in-process ``runtime.store.evidence`` projection that can lag durable writes.
-    """
+    """Read signals from the canonical durable signal.enqueued event stream."""
+    runtime = brain_api.runtime
     items = [
         _signal_item_from_event(event)
         for event in runtime.store.read_all()
@@ -127,13 +146,7 @@ def list_signals():
 
 @app.get("/edges")
 def list_edges():
-    """Read graph edges from the configured learning edge store.
-
-    Production resolves ``brain_api.learning.edges`` to ``PostgresEdgeStore`` so
-    this reads ``public.graph_edges`` durably. Local/test mode uses the matching
-    in-memory store implementation. The existing POST /edges contract is owned by
-    apps.api.main and remains unchanged.
-    """
+    """Read graph edges from the configured tenant-aware learning edge store."""
     edge_store = brain_api.learning.edges or brain_api._learning_store
     items = [_edge_item(edge) for edge in edge_store.list_edges()]
     return _list_response(items)
@@ -142,6 +155,7 @@ def list_edges():
 @app.get("/contradictions")
 def list_contradictions():
     """Live contradiction read model derived from contested beliefs."""
+    runtime = brain_api.runtime
     items: list[dict[str, Any]] = []
     for belief in runtime.store.beliefs.values():
         supporting = [str(e) for e in getattr(belief, "supporting_evidence", set())]
@@ -168,6 +182,7 @@ def list_contradictions():
 @app.get("/curiosity")
 def list_curiosity_tasks():
     """Live curiosity read model derived from belief unknowns."""
+    runtime = brain_api.runtime
     items: list[dict[str, Any]] = []
     for belief in runtime.store.beliefs.values():
         for index, unknown in enumerate(getattr(belief, "unknowns", []) or []):
@@ -190,8 +205,9 @@ def list_curiosity_tasks():
 @app.get("/sources")
 def list_sources():
     """Live source read model from evidence and source reliability scores."""
+    runtime = brain_api.runtime
     source_ids = {str(e.source_id) for e in runtime.store.evidence.values()}
-    source_scores = getattr(_learning_store, "source_scores", {}) or {}
+    source_scores = getattr(brain_api._learning_store, "source_scores", {}) or {}
     source_ids.update(str(key) for key in source_scores.keys())
 
     items: list[dict[str, Any]] = []
@@ -239,12 +255,13 @@ def list_acceptance_reports():
 
 
 class VercelOidcAuthBridge:
-    """ASGI wrapper for the Railway-only deployment identity path.
+    """Railway deployment-identity bridge with server-owned tenant context.
 
-    The wrapped FastAPI application and its existing authentication middleware
-    remain unchanged. A valid Vercel deployment token is verified outside the
-    FastAPI middleware stack and exchanged only inside Railway for the local
-    BRAIN_API_KEY already stored in this service.
+    A verified Vercel deployment token is exchanged for the local API key and
+    bound to the configured Observatory tenant inside Railway. Neither API key
+    nor tenant identity is accepted from untrusted browser headers through this
+    bridge. Direct API-key clients continue through the normal Brain API and, in
+    tenant-required mode, must use the signed tenant membership contract.
     """
 
     def __init__(self, inner_app) -> None:
@@ -279,17 +296,40 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
-                blocked = {b"authorization", b"x-api-key", b"x-brain-api-key"}
+                context = _observatory_context()
+                if context is None:
+                    response = JSONResponse(
+                        status_code=503,
+                        content={"detail": "brain_observatory_tenant_invalid"},
+                    )
+                    await response(scope, receive, send)
+                    return
+
+                blocked = {
+                    b"authorization",
+                    b"x-api-key",
+                    b"x-brain-api-key",
+                    b"x-brain-tenant-id",
+                    b"x-brain-actor-id",
+                    b"x-brain-tenant-timestamp",
+                    b"x-brain-tenant-signature",
+                    b"x-brain-roles",
+                    b"x-brain-service-context",
+                }
                 scope = dict(scope)
                 scope["headers"] = [
                     (name, value) for name, value in headers if name.lower() not in blocked
                 ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
-            elif reason != "vercel_oidc_not_configured":
+
+                with tenant_context_scope(context):
+                    await self.inner_app(scope, receive, send)
+                return
+            if reason != "vercel_oidc_not_configured":
                 _logger.info("vercel_oidc_auth_rejected reason=%s", reason)
 
         await self.inner_app(scope, receive, send)
 
 
-# Uvicorn imports this module-level name. Cockpit routes remain registered on the
-# original FastAPI object above; only the Railway entrypoint is wrapped.
+# Uvicorn imports this module-level name. Compatibility routes are registered on
+# the tenant-aware FastAPI object and only the Railway deployment boundary is wrapped.
 app = VercelOidcAuthBridge(app)
