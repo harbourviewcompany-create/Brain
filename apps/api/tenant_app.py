@@ -1,20 +1,10 @@
 from __future__ import annotations
 
+import importlib
 import os
 from typing import Any
 
 from fastapi.responses import JSONResponse
-
-# Prevent the legacy module import from opening an unscoped database store before
-# signed tenant context exists. This module restores DATABASE_URL immediately and
-# installs tenant-aware persistence below.
-_DATABASE_URL = os.environ.pop("DATABASE_URL", None)
-try:
-    from apps.api import main as base
-    from apps.api import cognitive_organism_routes as organism_routes
-finally:
-    if _DATABASE_URL is not None:
-        os.environ["DATABASE_URL"] = _DATABASE_URL
 
 from brain.adapters.brain_store import PostgresBrainStore
 from brain.adapters.cognition import PostgresCognitiveOrganismStore
@@ -49,6 +39,17 @@ try:
 except ImportError:  # pragma: no cover
     ConnectionPool = None
     Jsonb = None
+
+# Prevent the legacy module import from opening an unscoped database store before
+# signed tenant context exists. Importlib keeps all static imports above this
+# initialization boundary so linting can enforce normal import ordering.
+_DATABASE_URL = os.environ.pop("DATABASE_URL", None)
+try:
+    base = importlib.import_module("apps.api.main")
+    organism_routes = importlib.import_module("apps.api.cognitive_organism_routes")
+finally:
+    if _DATABASE_URL is not None:
+        os.environ["DATABASE_URL"] = _DATABASE_URL
 
 
 class TenantAwareCognitiveOrganismStore(PostgresCognitiveOrganismStore):
