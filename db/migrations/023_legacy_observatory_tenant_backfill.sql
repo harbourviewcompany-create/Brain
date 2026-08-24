@@ -41,12 +41,15 @@ begin
   -- Every table below was explicitly made tenant-owned by migrations 020/021.
   -- Auth/control metadata is excluded; its tenant_id values are already
   -- semantically explicit and must never be guessed by a bulk backfill.
+  -- brain_events is handled separately because its append-only trigger must
+  -- remain authoritative outside this one transactional ownership migration.
   for r in
     select c.table_name
     from information_schema.columns c
     where c.table_schema = 'public'
       and c.column_name = 'tenant_id'
       and c.table_name not in (
+        'brain_events',
         'tenant_memberships',
         'tenant_invites',
         'tenant_audit_events'
@@ -59,6 +62,16 @@ begin
     ) using compatibility_tenant;
   end loop;
 end $$;
+
+-- brain_events is append-only in normal operation. PostgreSQL DDL is
+-- transactional, so this narrowly scoped trigger suspension cannot commit in a
+-- disabled state if the tenant assignment fails. No event payload, identity, or
+-- timestamp is changed.
+alter table public.brain_events disable trigger brain_events_append_only_update;
+update public.brain_events
+set tenant_id = '7d4427c4-8b8d-4f4a-9f75-b46cedc2f126'::uuid
+where tenant_id is null;
+alter table public.brain_events enable trigger brain_events_append_only_update;
 
 comment on table public.tenants is
   'Tenant lifecycle root. The deterministic brain-observatory-legacy-production tenant preserves ownership of pre-tenant production state after migrations 020-022.';
