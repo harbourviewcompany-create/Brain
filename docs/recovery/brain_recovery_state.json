@@ -1,0 +1,40 @@
+{
+  "verdict": {
+    "implementation": "HOLD",
+    "canonical_function_registry_update": "HOLD",
+    "source_recovery": "GO",
+    "shared_brain_audit": "GO"
+  },
+  "object_families": {
+    "Brain-Corpus": "Missing / HOLD",
+    "Brain-Registry": "Missing / HOLD",
+    "Brain-Beta": "Referenced but inaccessible / HOLD",
+    "Brain-Manual": "Referenced but inaccessible / HOLD",
+    "Shared-Brain": "Recovered / GO for audit only"
+  },
+  "required_next_recovery_order": [
+    "Brain Function Registry",
+    "Brain Master Corpus",
+    "BRAIN_MULTI_MODEL_SYNTHESIS_PACKAGE",
+    "PR 1 source-discovery handoff",
+    "Contaminated artifact audit",
+    "Missing Components Register v2",
+    "Appendix Z / registry-delta file",
+    "Compact forbidden-code list",
+    "Exact route/RLS/test/dashboard names",
+    "V0 implementation tickets",
+    "Exact schemas/state machines",
+    "Golden fixture library",
+    "Security governance appendix",
+    "Cost/budget appendix",
+    "Decision explanation schema",
+    "Outcome attribution model",
+    "Calibration/backtesting plan",
+    "Brain Beta source package",
+    "Brain Beta audit logs",
+    "Brain Manual V2/V3",
+    "Any repo/source export",
+    "Any test/build logs"
+  ],
+  "preservation_patch_note": "This repo artifact preserves the recovery state in structured form. The original downloadable zip should also be committed to artifacts/ when binary upload is available."
+}
