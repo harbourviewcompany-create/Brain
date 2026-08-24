@@ -1,0 +1,24 @@
+{
+  "fixture_id": "cross-cutting-cognitive-protocol-v1",
+  "source_refs": ["source:fixture-observation"],
+  "chain": [
+    {"kind": "evidence", "id": "evidence:e1", "origin": "external_observation"},
+    {"kind": "belief", "id": "belief:b1", "epistemic": {"confidence": 0.4, "uncertainty": 0.8, "evidence_strength": 0.3}},
+    {"kind": "knowledge_gap", "gap_type": "UNCERTAIN", "target": "belief:b1"},
+    {"kind": "cognitive_affordance", "affordance_type": "investigate", "external": false},
+    {"kind": "projection_decision", "consequential": true, "expected_state_without_approval": "governance_pending"},
+    {"kind": "outcome", "id": "outcome:o1"},
+    {"kind": "learning_event", "requires": ["outcome:o1", "attribution:t1", "evidence:e1"]},
+    {"kind": "developmental_plasticity_delta", "requires_rollback": true, "requires_benchmark": true},
+    {"kind": "cognitive_replay", "external_actions_executed": 0}
+  ],
+  "invariants": [
+    "provenance_continuity",
+    "contradiction_preservation",
+    "confidence_does_not_erase_epistemic_components",
+    "consequential_projection_requires_approval",
+    "learning_requires_attribution",
+    "replay_executes_no_external_actions",
+    "plasticity_preserves_rollback"
+  ]
+}
