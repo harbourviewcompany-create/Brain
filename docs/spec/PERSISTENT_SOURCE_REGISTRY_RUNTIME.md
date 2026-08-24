@@ -42,7 +42,9 @@ Source record -> ingestion run -> source observation -> evidence-backed signal i
 
 The durable SQL target is defined in:
 
-`db/migrations/008_source_registry_runtime.sql`
+`db/migrations/015_source_registry_runtime.sql`
+
+The migration was renumbered from the protected-main 008 slot during AGENT-021 convergence because `008_neuroscience_abstraction_layer.sql` already owns migration 008. Schema semantics are unchanged; strict migration-integrity enforcement is preserved.
 
 Tables:
 
