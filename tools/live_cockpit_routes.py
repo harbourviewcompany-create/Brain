@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import logging
+import os
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi.responses import JSONResponse
+
 from apps.api.main import app, runtime, _learning_store
+from tools.vercel_oidc import VercelOidcVerifier
+
+
+_logger = logging.getLogger(__name__)
 
 
 def _iso(value: Any | None) -> str:
@@ -150,3 +158,60 @@ def list_formula_runs():
 @app.get("/acceptance-reports")
 def list_acceptance_reports():
     return _list_response([])
+
+
+class VercelOidcAuthBridge:
+    """ASGI wrapper for the Railway-only deployment identity path.
+
+    The wrapped FastAPI application and its existing authentication middleware
+    remain unchanged. A valid Vercel deployment token is verified outside the
+    FastAPI middleware stack and exchanged only inside Railway for the local
+    BRAIN_API_KEY already stored in this service.
+    """
+
+    def __init__(self, inner_app) -> None:
+        self.inner_app = inner_app
+        self.verifier = VercelOidcVerifier.from_env()
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http":
+            await self.inner_app(scope, receive, send)
+            return
+
+        headers = list(scope.get("headers", []))
+        authorization = next(
+            (
+                value.decode("latin-1")
+                for name, value in headers
+                if name.lower() == b"authorization"
+            ),
+            "",
+        )
+
+        if authorization.lower().startswith("bearer "):
+            token = authorization[7:].strip()
+            verified, reason = self.verifier.verify(token)
+            if verified:
+                local_key = (os.environ.get("BRAIN_API_KEY") or "").strip()
+                if not local_key:
+                    response = JSONResponse(
+                        status_code=503,
+                        content={"detail": "brain_local_api_key_not_configured"},
+                    )
+                    await response(scope, receive, send)
+                    return
+
+                blocked = {b"authorization", b"x-api-key", b"x-brain-api-key"}
+                scope = dict(scope)
+                scope["headers"] = [
+                    (name, value) for name, value in headers if name.lower() not in blocked
+                ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
+            elif reason != "vercel_oidc_not_configured":
+                _logger.info("vercel_oidc_auth_rejected reason=%s", reason)
+
+        await self.inner_app(scope, receive, send)
+
+
+# Uvicorn imports this module-level name. Cockpit routes remain registered on the
+# original FastAPI object above; only the Railway entrypoint is wrapped.
+app = VercelOidcAuthBridge(app)
