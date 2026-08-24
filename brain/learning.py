@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from .attribution import LearningResult, OutcomeAttribution
 from .domain import Edge, Outcome, utcnow
 from .events import BrainEvent
 from .prediction import Prediction, PredictionEngine, PredictionStatus
+from .scheduler import CognitiveTask
 
 
 class EventAppender(Protocol):
@@ -47,6 +49,91 @@ def _prediction_payload(prediction: Prediction) -> dict[str, Any]:
         "resolved_at": prediction.resolved_at.isoformat() if prediction.resolved_at else None,
         "metadata": dict(prediction.metadata),
     }
+
+
+def prediction_for_task(
+    task: CognitiveTask,
+    *,
+    belief_id: UUID | None,
+    cycle_id: UUID,
+    source_id: str,
+    horizon: timedelta | None = None,
+    engine: PredictionEngine | None = None,
+) -> Prediction:
+    engine = engine or PredictionEngine()
+    expected = float(max(0.0, min(1.0, task.utility)))
+    confidence = float(max(0.05, min(0.95, 0.4 + 0.5 * task.utility)))
+    return engine.create(
+        f"Task {task.name} yields value",
+        expected_value=expected,
+        confidence=confidence,
+        horizon=horizon or timedelta(hours=24),
+        belief_id=belief_id,
+        action_id=task.id,
+        source_keys=[source_id] if source_id else [],
+        metadata={
+            "task_name": task.name,
+            "cycle_id": str(cycle_id),
+            "payload": dict(task.payload),
+            "auto": True,
+        },
+    )
+
+
+def emit_predictions_for_selected_tasks(
+    learning: "LearningService",
+    selected: list[CognitiveTask],
+    *,
+    belief_id: UUID | None,
+    cycle_id: UUID,
+    source_id: str,
+    engine: PredictionEngine | None = None,
+) -> dict[UUID, UUID]:
+    mapping: dict[UUID, UUID] = {}
+    engine = engine or PredictionEngine()
+    for task in selected:
+        pred = prediction_for_task(
+            task,
+            belief_id=belief_id,
+            cycle_id=cycle_id,
+            source_id=source_id,
+            engine=engine,
+        )
+        learning.create_prediction(pred)
+        mapping[task.id] = pred.id
+    return mapping
+
+
+def attribute_capital_or_result_outcome(
+    learning: "LearningService",
+    *,
+    action_id: UUID,
+    value_created: float,
+    prediction_id: UUID | None = None,
+    source_keys: list[str] | None = None,
+    operator_time_cost: float = 0.0,
+    prediction_accuracy: float | None = None,
+    open_by_action: dict[UUID, UUID] | None = None,
+) -> LearningResult:
+    pid = prediction_id
+    if pid is None and open_by_action is not None:
+        pid = open_by_action.get(action_id)
+    accuracy = prediction_accuracy
+    if accuracy is None:
+        accuracy = max(0.0, min(1.0, abs(float(value_created))))
+    outcome = Outcome(
+        action_id=action_id,
+        value_created=float(value_created),
+        operator_time_cost=float(operator_time_cost),
+        prediction_accuracy=float(accuracy),
+        prediction_id=pid,
+        source_keys=list(source_keys or []),
+    )
+    return learning.record_outcome(
+        outcome,
+        prediction_id=pid,
+        source_keys=list(source_keys or []) or None,
+    )
 
 
 class LearningService:
@@ -138,7 +225,6 @@ class LearningService:
         return result
 
     def expire_due_predictions(self, *, now=None) -> list[Prediction]:
-        """Mark open predictions past resolve_by as expired; emit events and persist."""
         now = now or utcnow()
         expired: list[Prediction] = []
         if self.predictions is None or not hasattr(self.predictions, "list_open"):

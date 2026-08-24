@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "human_authority": "docs/spec/BRAIN_STATE_MACHINES.md",
+  "state_machines": [
+    {"id":"OpportunityLifecycle","states":["detected","evidence_pending","scored","watch","candidate_action_generated","approval_pending","approved","simulated_executed","outcome_pending","outcome_logged","learned","archived","blocked","killed"],"hard_blocks":["detected->approved","scored->executed_without_approval","blocked->external_action","outcome_logged->major_learning_without_attribution"]},
+    {"id":"CandidateActionLifecycle","states":["drafted","simulated","gated","approval_pending","approved","rejected","executed_simulated","outcome_pending","closed"],"hard_blocks":["drafted->executed","gated_block->approval_bypass","approval_pending->external_send_without_approval"]},
+    {"id":"EvidenceLifecycle","states":["captured","scored","admitted","quarantined","contradicted","archived"],"hard_blocks":["quarantined->semantic_update","restricted->formula_influence","corrupted->belief_update"]},
+    {"id":"OutcomeLearningLifecycle","states":["outcome_logged","prediction_resolved","attribution_pending","attribution_scored","reward_pain_created","graph_update_pending","graph_updated","review_required"],"hard_blocks":["outcome_logged->reward_without_attribution","reward_pain_created->graph_update_without_formula_run"]},
+    {"id":"HypothesisLifecycle","states":["generated","supported","challenged","testing","provisionally_accepted","falsified","superseded","archived"],"cross_cutting":true},
+    {"id":"MemoryLifecycle","states":["encoded","labile","consolidated","reinforced","decaying","dormant","reactivated","reconsolidated"],"cross_cutting":true},
+    {"id":"GoalLifecycle","states":["generated","evaluated","adopted","planned","active","blocked","satisfied","abandoned"],"cross_cutting":true},
+    {"id":"ConflictLifecycle","states":["detected","characterized","arbitration_pending","resolved","unresolved","reopened","archived"],"cross_cutting":true,"invariants":["competing_states_preserved","resolution_may_remain_unresolved"]},
+    {"id":"KnowledgeGapLifecycle","states":["detected","prioritized","investigation_active","partially_resolved","resolved","deferred","reopened"],"cross_cutting":true},
+    {"id":"CognitiveAffordanceLifecycle","states":["detected","evaluated","simulated","selected","rejected","deferred","acted","outcome_recorded"],"cross_cutting":true,"hard_blocks":["detected->external_execution_without_projection"]},
+    {"id":"ProjectionLifecycle","states":["internal","candidate","deliberated","governance_pending","approved","rejected","externalized","closed"],"cross_cutting":true,"hard_blocks":["internal->externalized","governance_pending->externalized_without_approval"]},
+    {"id":"LearningEventLifecycle","states":["observed","attribution_pending","supported","applied","proposed","validated","rolled_back"],"cross_cutting":true,"hard_blocks":["observed->applied_without_attribution"]},
+    {"id":"DevelopmentalPlasticityLifecycle","states":["proposed","sandboxed","benchmark_pending","approved","applied","validated","rolled_back","rejected"],"cross_cutting":true,"invariants":["rollback_plan_required","benchmark_evidence_required_for_significant_change"]}
+  ],
+  "transition_record_required_fields":["object_id","object_kind","from_state","to_state","trigger","evidence_or_provenance_refs","actor_or_service","timestamp","audit_ref"],
+  "integration_rule":"Existing specialized state machines remain authoritative and may be stricter than the cross-cutting lifecycle families."
+}

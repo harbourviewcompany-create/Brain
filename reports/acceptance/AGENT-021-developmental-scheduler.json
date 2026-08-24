@@ -1,0 +1,25 @@
+{
+  "report_id": "AGENT-021-developmental-scheduler",
+  "source": "issue:103",
+  "verdict": "GO_PENDING_EXACT_HEAD_CI",
+  "runtime": "brain.developmental.scheduler.DevelopmentalSchedulerService",
+  "persistence": "AGENT-019 developmental evidence ledger",
+  "acceptance": [
+    "due/not-due scheduling",
+    "resource budget fail-closed",
+    "exponential failure backoff",
+    "stale evidence priority",
+    "regression-risk priority",
+    "restart reconstruction",
+    "assessment-only authority",
+    "self-approval bypass rejected"
+  ],
+  "holds": [
+    "self approval",
+    "autonomous code mutation",
+    "merge",
+    "production deploy",
+    "real spending",
+    "external action"
+  ]
+}

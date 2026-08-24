@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
@@ -333,6 +334,211 @@ class MoneySpineService:
         previous_source = self.source_scores.get(source_id, 0.5)
         self.source_scores[source_id] = round(max(0.0, min(1.0, previous_source + delta)), 4)
         return updated
+
+
+class RevenueActionState(StrEnum):
+    DRAFT = "draft"
+    APPROVAL_REQUIRED = "approval_required"
+    APPROVED = "approved"
+    MANUAL_ACTION_LOGGED = "manual_action_logged"
+    OUTCOME_LOGGED = "outcome_logged"
+    BLOCKED = "blocked"
+    KILLED = "killed"
+
+
+class RevenueOutcomeType(StrEnum):
+    NO_RESPONSE = "no_response"
+    REPLY = "reply"
+    MEETING = "meeting"
+    PAID_CONVERSION = "paid_conversion"
+    BAD_FIT = "bad_fit"
+    LEGAL_ACCESS_CONCERN = "legal_access_concern"
+
+
+@dataclass(slots=True)
+class RevenueExecutionAction:
+    opportunity_id: UUID
+    offer_id: UUID
+    lane_id: str
+    source_id: str
+    action_type: str
+    target_contact: str
+    proposal: str
+    evidence_refs: list[str]
+    approval_required: bool = True
+    state: RevenueActionState = RevenueActionState.APPROVAL_REQUIRED
+    approved_by: str | None = None
+    manual_proof_ref: str | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(slots=True)
+class RevenueFollowUp:
+    action_id: UUID
+    due_at: datetime
+    script: str
+    state: str = "scheduled"
+    completed_at: datetime | None = None
+    id: UUID = field(default_factory=uuid4)
+
+
+@dataclass(slots=True)
+class RevenueOutcomeLedgerEntry:
+    action_id: UUID
+    lane_id: str
+    source_id: str
+    outcome_type: RevenueOutcomeType
+    revenue: float
+    reply: bool
+    meeting_booked: bool
+    paid_conversion: bool
+    legal_risk: float
+    operator_hours: float
+    lesson: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    id: UUID = field(default_factory=uuid4)
+
+
+class RevenueExecutionSpine:
+    """Approval-gated cash-action loop. It queues work; it never sends or spends."""
+
+    def __init__(self, money: MoneySpineService | None = None) -> None:
+        self.money = money or MoneySpineService()
+        self.actions: dict[UUID, RevenueExecutionAction] = {}
+        self.followups: dict[UUID, RevenueFollowUp] = {}
+        self.outcomes: dict[UUID, RevenueOutcomeLedgerEntry] = {}
+
+    def queue_action_from_signal(
+        self,
+        signal: RevenueSignal,
+        *,
+        action_type: str = "outreach_draft",
+    ) -> tuple[ScoredOpportunity, PackagedOffer, RevenueExecutionAction]:
+        scored = self.money.score_signal(signal)
+        offer = self.money.package_offer(signal, scored)
+        action = RevenueExecutionAction(
+            opportunity_id=scored.id,
+            offer_id=offer.id,
+            lane_id=scored.lane_id,
+            source_id=signal.source_id,
+            action_type=action_type,
+            target_contact=offer.target_contact,
+            proposal=offer.outreach_script,
+            evidence_refs=list(offer.evidence_refs),
+        )
+        self.actions[action.id] = action
+        return scored, offer, action
+
+    def approve_action(self, action_id: UUID, *, approved_by: str) -> RevenueExecutionAction:
+        action = self.actions[action_id]
+        if action.state != RevenueActionState.APPROVAL_REQUIRED:
+            raise PermissionError("only_approval_required_revenue_actions_can_be_approved")
+        action.state = RevenueActionState.APPROVED
+        action.approved_by = approved_by
+        action.updated_at = datetime.now(timezone.utc)
+        return action
+
+    def log_manual_action(self, action_id: UUID, *, manual_proof_ref: str) -> RevenueExecutionAction:
+        action = self.actions[action_id]
+        if action.state != RevenueActionState.APPROVED:
+            raise PermissionError("manual_revenue_action_requires_operator_approval")
+        action.state = RevenueActionState.MANUAL_ACTION_LOGGED
+        action.manual_proof_ref = manual_proof_ref
+        action.updated_at = datetime.now(timezone.utc)
+        return action
+
+    def schedule_follow_up(
+        self,
+        action_id: UUID,
+        *,
+        script: str,
+        delay_hours: int = 48,
+    ) -> RevenueFollowUp:
+        action = self.actions[action_id]
+        if action.state not in {RevenueActionState.APPROVED, RevenueActionState.MANUAL_ACTION_LOGGED}:
+            raise PermissionError("follow_up_requires_approved_or_logged_action")
+        followup = RevenueFollowUp(
+            action_id=action_id,
+            due_at=datetime.now(timezone.utc) + timedelta(hours=delay_hours),
+            script=script,
+        )
+        self.followups[followup.id] = followup
+        return followup
+
+    def due_followups(self, *, now: datetime | None = None) -> list[RevenueFollowUp]:
+        current = now or datetime.now(timezone.utc)
+        return [
+            followup
+            for followup in self.followups.values()
+            if followup.state == "scheduled" and followup.due_at <= current
+        ]
+
+    def record_outcome(
+        self,
+        action_id: UUID,
+        *,
+        outcome_type: RevenueOutcomeType,
+        revenue: float,
+        reply: bool,
+        meeting_booked: bool,
+        paid_conversion: bool,
+        legal_risk: float,
+        operator_hours: float,
+        lesson: str,
+    ) -> RevenueOutcomeLedgerEntry:
+        action = self.actions[action_id]
+        if action.state not in {
+            RevenueActionState.APPROVED,
+            RevenueActionState.MANUAL_ACTION_LOGGED,
+            RevenueActionState.OUTCOME_LOGGED,
+        }:
+            raise PermissionError("outcome_requires_approved_or_logged_action")
+        entry = RevenueOutcomeLedgerEntry(
+            action_id=action_id,
+            lane_id=action.lane_id,
+            source_id=action.source_id,
+            outcome_type=outcome_type,
+            revenue=revenue,
+            reply=reply,
+            meeting_booked=meeting_booked,
+            paid_conversion=paid_conversion,
+            legal_risk=legal_risk,
+            operator_hours=operator_hours,
+            lesson=lesson,
+        )
+        self.outcomes[entry.id] = entry
+        action.state = RevenueActionState.OUTCOME_LOGGED
+        action.updated_at = datetime.now(timezone.utc)
+        self.money.apply_outcome_learning(
+            action.lane_id,
+            action.source_id,
+            revenue=revenue,
+            reply=reply,
+            legal_risk=legal_risk,
+            operator_hours=operator_hours,
+        )
+        return entry
+
+    def snapshot(self) -> dict[str, Any]:
+        action_counts: dict[str, int] = {state.value: 0 for state in RevenueActionState}
+        for action in self.actions.values():
+            action_counts[str(action.state)] += 1
+        revenue = sum(outcome.revenue for outcome in self.outcomes.values())
+        return {
+            "actions": len(self.actions),
+            "followups": len(self.followups),
+            "due_followups": len(self.due_followups()),
+            "outcomes": len(self.outcomes),
+            "revenue": revenue,
+            "action_counts": action_counts,
+            "source_scores": dict(self.money.source_scores),
+            "lane_priorities": {
+                lane_id: lane.priority_score for lane_id, lane in self.money.lanes.items()
+            },
+            "autonomy_boundary": "queues_only_no_send_no_spend_no_tier5_autonomy",
+        }
 
 
 def default_money_lanes() -> list[MoneyLane]:

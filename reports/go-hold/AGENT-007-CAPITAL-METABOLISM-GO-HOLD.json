@@ -1,0 +1,26 @@
+{
+  "report_id": "AGENT-007-CAPITAL-METABOLISM-GO-HOLD",
+  "issue": 130,
+  "verdict": "GO_PENDING_CI_AND_MERGE",
+  "go": [
+    "CapitalLedger can be injected into CognitiveCycle",
+    "CognitiveCycle tick metabolizes capital and emits capital.metabolized",
+    "Capital starvation emits capital.starvation through MetabolismEngine only",
+    "budget_pressure reaches HomeostaticState and HomeostasisEngine during process()",
+    "budget_pressure uses asymmetric hunger weighting in stress_index",
+    "starvation can dominate scheduler selection without unrelated pressure compounding",
+    "capital_outcome_amount can feed ledger through capital.fed with recovery evidence"
+  ],
+  "hold": [
+    "No external action is authorized by capital starvation",
+    "No autonomous spend or transaction execution is introduced",
+    "Production capital ledger persistence remains separate from this in-process runtime wiring",
+    "Full Brain completion claims remain HOLD"
+  ],
+  "evidence": {
+    "runtime": ["brain/cycle.py", "brain/cognitive_state.py", "brain/metabolism.py"],
+    "tests": ["tests/test_metabolism.py"],
+    "fixture": "tests/fixtures/brain/capital_starvation_cycle.json",
+    "traceability": "docs/spec/source-to-build-traceability.json"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "surface_id": "cross-cutting-cognitive-protocol-dashboard",
+  "status": "SPEC_ONLY",
+  "panels": [
+    {"id": "epistemic-inspector", "shows": ["confidence", "uncertainty", "evidence_strength", "evidence_diversity", "source_reliability", "contradiction", "recency", "causal_support", "prediction_performance", "calibration", "stability", "novelty"]},
+    {"id": "provenance-explorer", "shows": ["upstream_lineage", "downstream_lineage", "source_refs", "formula_runs", "transition_refs"]},
+    {"id": "conflict-inbox", "shows": ["conflict_class", "competing_objects", "arbitration_state", "unresolved_dimensions"]},
+    {"id": "ignorance-map", "shows": ["gap_type", "priority_score", "expected_information_gain", "dependencies", "curiosity_tasks"]},
+    {"id": "affordance-queue", "shows": ["kind", "evaluation_score", "risk", "resource_cost", "reversibility", "governance_requirement"]},
+    {"id": "projection-gate", "shows": ["state", "target", "consequential", "approval", "reason"]},
+    {"id": "learning-timeline", "shows": ["outcome_refs", "attribution_refs", "proposed_updates", "plasticity_deltas"]},
+    {"id": "replay-console", "shows": ["scope", "objects", "provenance", "gaps", "affordances", "projections", "outcomes", "learning", "external_actions_executed"]}
+  ],
+  "hard_rules": [
+    "surface_is_observability_not_authority",
+    "no_external_action_from_replay",
+    "unknowns_and_conflicts_must_remain_visible",
+    "internal_content_is_not_public_by_default"
+  ]
+}
