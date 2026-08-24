@@ -104,14 +104,26 @@ def table_rows(text: str) -> list[str]:
     return [line for line in text.splitlines() if line.startswith("| ")]
 
 
-def main() -> None:
+def canonical_matrix_text(policy: dict) -> str:
     if not MATRIX.exists():
         fail(f"missing matrix file: {MATRIX.relative_to(ROOT)}")
+    paths = [MATRIX]
+    extensions = policy.get("traceability_policy", {}).get(
+        "canonical_module_matrix_extensions", []
+    )
+    for rel in extensions:
+        path = ROOT / rel
+        if not path.is_file():
+            fail(f"missing canonical matrix extension: {rel}")
+        paths.append(path)
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
+
+def main() -> None:
     validate_migrations()
     policy = load_policy()
     module_paths = discover_modules(policy)
-    text = MATRIX.read_text(encoding="utf-8")
+    text = canonical_matrix_text(policy)
     lower = text.lower()
 
     for field in REQUIRED_FIELDS:
