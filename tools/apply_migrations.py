@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
 
 import psycopg
+from psycopg import sql as pgsql
+
+from brain.tenant_runtime import inspect_database_role, require_safe_runtime_role
 
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "db" / "migrations"
+TENANT_RLS_FIRST_VERSION = 19
 DESTRUCTIVE = re.compile(
     r"\b(drop\s+table|drop\s+schema|truncate(?:\s+table)?|delete\s+from|"
     r"alter\s+table[\s\S]{0,200}?drop\s+column)\b",
@@ -31,9 +38,22 @@ REQUIRED_TABLES = (
 )
 
 
+@dataclass(frozen=True)
+class TenantRlsReleaseState:
+    runtime_role: str
+    worker_role: str
+
+
 def _strip_comments(sql: str) -> str:
     sql = re.sub(r"/\*.*?\*/", "", sql, flags=re.DOTALL)
     return re.sub(r"--[^\n]*", "", sql)
+
+
+def _migration_version(path: Path) -> int:
+    try:
+        return int(path.name.split("_", 1)[0])
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"invalid migration filename: {path.name}") from exc
 
 
 def _ensure_compatibility_roles(conn: psycopg.Connection) -> None:
@@ -64,16 +84,135 @@ def _verify_required_schema(conn: psycopg.Connection) -> None:
     print("required schema verification passed: " + ", ".join(REQUIRED_TABLES), flush=True)
 
 
-def main() -> None:
-    dsn = os.environ.get("DATABASE_URL")
-    if not dsn:
-        raise RuntimeError("DATABASE_URL is required")
+def _preflight_constrained_login(dsn: str, label: str) -> str:
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        state = inspect_database_role(conn)
+    violations: list[str] = []
+    if state.is_database_owner:
+        violations.append("database_owner")
+    if state.is_superuser:
+        violations.append("superuser")
+    if state.bypass_rls:
+        violations.append("bypassrls")
+    if violations:
+        raise RuntimeError(
+            f"{label} database role is unsafe for tenant RLS: "
+            + ", ".join(violations)
+        )
+    return state.role_name
+
+
+def _prepare_tenant_rls_release(
+    migration_conn: psycopg.Connection,
+) -> TenantRlsReleaseState:
+    if os.environ.get("BRAIN_TENANT_RLS_RELEASE") != "1":
+        raise RuntimeError(
+            "tenant RLS migrations require BRAIN_TENANT_RLS_RELEASE=1"
+        )
+    if os.environ.get("BRAIN_TENANT_MODE", "").strip().lower() != "required":
+        raise RuntimeError(
+            "tenant RLS migrations require BRAIN_TENANT_MODE=required"
+        )
+    if not os.environ.get("BRAIN_TENANT_CONTEXT_SECRET"):
+        raise RuntimeError(
+            "tenant RLS migrations require BRAIN_TENANT_CONTEXT_SECRET"
+        )
+    if not os.environ.get("BRAIN_MIGRATION_DATABASE_URL"):
+        raise RuntimeError(
+            "tenant RLS migrations require a separate BRAIN_MIGRATION_DATABASE_URL"
+        )
+
+    runtime_dsn = os.environ.get("DATABASE_URL")
+    worker_dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL")
+    if not runtime_dsn:
+        raise RuntimeError("tenant RLS migrations require DATABASE_URL for the API runtime")
+    if not worker_dsn:
+        raise RuntimeError(
+            "tenant RLS migrations require BRAIN_WORKER_DATABASE_URL for the trusted worker"
+        )
+
+    runtime_role = _preflight_constrained_login(runtime_dsn, "API runtime")
+    worker_role = _preflight_constrained_login(worker_dsn, "worker")
+    migration_state = inspect_database_role(migration_conn)
+
+    if runtime_role == worker_role:
+        raise RuntimeError("API runtime and trusted worker must use distinct database roles")
+    if migration_state.role_name in {runtime_role, worker_role}:
+        raise RuntimeError(
+            "migration database role must be distinct from API runtime and worker roles"
+        )
+
+    print(
+        "tenant RLS release preflight passed: separate migrator, constrained API runtime, "
+        "and constrained worker roles",
+        flush=True,
+    )
+    return TenantRlsReleaseState(runtime_role=runtime_role, worker_role=worker_role)
+
+
+def _grant_tenant_runtime_memberships(
+    conn: psycopg.Connection,
+    release: TenantRlsReleaseState,
+) -> None:
+    if conn.execute("select to_regrole('brain_runtime_role')").fetchone()[0] is None:
+        raise RuntimeError("brain_runtime_role is missing after migration 019")
+    if conn.execute("select to_regrole('brain_trusted_service_role')").fetchone()[0] is None:
+        raise RuntimeError("brain_trusted_service_role is missing after migration 019")
+
+    conn.execute(
+        pgsql.SQL("grant brain_runtime_role to {}").format(
+            pgsql.Identifier(release.runtime_role)
+        )
+    )
+    conn.execute(
+        pgsql.SQL("revoke brain_trusted_service_role from {}").format(
+            pgsql.Identifier(release.runtime_role)
+        )
+    )
+    conn.execute(
+        pgsql.SQL("grant brain_trusted_service_role to {}").format(
+            pgsql.Identifier(release.worker_role)
+        )
+    )
+
+    runtime_dsn = os.environ["DATABASE_URL"]
+    worker_dsn = os.environ["BRAIN_WORKER_DATABASE_URL"]
+    with psycopg.connect(runtime_dsn, autocommit=True) as runtime_conn:
+        require_safe_runtime_role(runtime_conn, require_trusted_service=False)
+    with psycopg.connect(worker_dsn, autocommit=True) as worker_conn:
+        require_safe_runtime_role(worker_conn, require_trusted_service=True)
+    print("tenant RLS runtime role memberships verified", flush=True)
+
+
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--max-version",
+        type=int,
+        default=None,
+        help="Apply/verify migrations only through this numeric version.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = _parse_args(argv)
+    migration_dsn = os.environ.get("BRAIN_MIGRATION_DATABASE_URL") or os.environ.get(
+        "DATABASE_URL"
+    )
+    if not migration_dsn:
+        raise RuntimeError("DATABASE_URL or BRAIN_MIGRATION_DATABASE_URL is required")
 
     files = sorted(MIGRATIONS_DIR.glob("*.sql"), key=lambda path: path.name)
+    if args.max_version is not None:
+        files = [path for path in files if _migration_version(path) <= args.max_version]
     if not files:
         raise RuntimeError(f"no migrations found in {MIGRATIONS_DIR}")
 
-    with psycopg.connect(dsn, autocommit=False) as conn:
+    release_state: TenantRlsReleaseState | None = None
+    memberships_granted = False
+
+    with psycopg.connect(migration_dsn, autocommit=False) as conn:
         conn.execute("select pg_advisory_lock(hashtext('brain_schema_migrations'))")
         try:
             with conn.transaction():
@@ -109,6 +248,17 @@ def main() -> None:
                     print(f"skip {path.name} (already applied)", flush=True)
                     continue
 
+                version = _migration_version(path)
+                if version >= TENANT_RLS_FIRST_VERSION and release_state is None:
+                    release_state = _prepare_tenant_rls_release(conn)
+
+                if version > TENANT_RLS_FIRST_VERSION and not memberships_granted:
+                    if release_state is None:
+                        raise RuntimeError("tenant RLS release state is unavailable")
+                    with conn.transaction():
+                        _grant_tenant_runtime_memberships(conn, release_state)
+                    memberships_granted = True
+
                 print(f"apply {path.name}", flush=True)
                 with conn.transaction():
                     conn.execute(sql)
@@ -117,6 +267,13 @@ def main() -> None:
                         (path.name, digest),
                     )
                 print(f"applied {path.name}", flush=True)
+
+                if version == TENANT_RLS_FIRST_VERSION:
+                    if release_state is None:
+                        raise RuntimeError("tenant RLS release state is unavailable")
+                    with conn.transaction():
+                        _grant_tenant_runtime_memberships(conn, release_state)
+                    memberships_granted = True
 
             _verify_required_schema(conn)
         finally:
