@@ -95,6 +95,25 @@ class EpistemicState:
 
 
 @dataclass(slots=True)
+class CognitiveObjectEnvelope:
+    object_id: str
+    object_kind: str
+    provenance_refs: list[str]
+    lifecycle_state: str
+    epistemic_state: EpistemicState | None = None
+    related_refs: list[str] = field(default_factory=list)
+    world_valid_from: datetime | None = None
+    world_valid_to: datetime | None = None
+    created_at: datetime = field(default_factory=utcnow)
+
+    def __post_init__(self) -> None:
+        if not self.object_id or not self.object_kind:
+            raise ValueError("cognitive object envelope requires object identity and kind")
+        if not self.provenance_refs:
+            raise ValueError("cognitive object envelope requires provenance")
+
+
+@dataclass(slots=True)
 class ProvenanceEdge:
     from_id: str
     to_id: str
@@ -111,6 +130,51 @@ class ProvenanceEdge:
             raise ValueError("provenance edge requires source/evidence references")
         if self.confidence is not None:
             self.confidence = clamp01(self.confidence)
+
+
+@dataclass(slots=True)
+class CognitiveTransition:
+    object_id: str
+    object_kind: str
+    from_state: str
+    to_state: str
+    trigger: str
+    provenance_refs: list[str]
+    actor: str
+    reversible: bool = False
+    rollback_ref: str | None = None
+    audit_ref: str | None = None
+    id: UUID = field(default_factory=uuid4)
+    occurred_at: datetime = field(default_factory=utcnow)
+
+    def __post_init__(self) -> None:
+        if self.from_state == self.to_state:
+            raise ValueError("cognitive transition must change state")
+        if not self.provenance_refs:
+            raise ValueError("cognitive transition requires provenance")
+        if self.reversible and not self.rollback_ref:
+            raise ValueError("reversible transition requires rollback reference")
+
+
+@dataclass(slots=True)
+class CognitiveConflict:
+    conflict_class: str
+    competing_refs: list[str]
+    evidence_refs: list[str]
+    severity: float = 0.5
+    unresolved_dimensions: list[str] = field(default_factory=list)
+    candidate_resolutions: list[str] = field(default_factory=list)
+    selected_resolution: str | None = None
+    lifecycle_state: str = "detected"
+    id: UUID = field(default_factory=uuid4)
+    created_at: datetime = field(default_factory=utcnow)
+
+    def __post_init__(self) -> None:
+        if len(set(self.competing_refs)) < 2:
+            raise ValueError("cognitive conflict requires at least two competing states")
+        if not self.evidence_refs:
+            raise ValueError("cognitive conflict requires evidence/provenance")
+        self.severity = clamp01(self.severity)
 
 
 @dataclass(slots=True)
@@ -262,7 +326,10 @@ class CognitiveProtocolService:
 
     def __init__(self, store: InMemoryCognitiveObjectStore | None = None) -> None:
         self.store = store or InMemoryCognitiveObjectStore()
+        self.envelopes: dict[str, CognitiveObjectEnvelope] = {}
         self.provenance_edges: dict[UUID, ProvenanceEdge] = {}
+        self.transitions: dict[UUID, CognitiveTransition] = {}
+        self.conflicts: dict[UUID, CognitiveConflict] = {}
         self.gaps: dict[UUID, KnowledgeGap] = {}
         self.affordances: dict[UUID, CognitiveAffordance] = {}
         self.projections: dict[UUID, ProjectionDecision] = {}
@@ -270,15 +337,30 @@ class CognitiveProtocolService:
         self.plasticity_deltas: dict[UUID, DevelopmentalPlasticityDelta] = {}
         self.replays: dict[UUID, ReplayBundle] = {}
 
-    def _save(self, kind: str, object_id: UUID, payload: Any, source_refs: list[str]) -> None:
+    def _save(self, kind: str, object_id: UUID | str, payload: Any, source_refs: list[str]) -> None:
         if not source_refs:
             raise ValueError(f"{kind} requires provenance")
         self.store.save(kind, object_id, payload, source_refs=source_refs)
+
+    def register_envelope(self, envelope: CognitiveObjectEnvelope) -> CognitiveObjectEnvelope:
+        self.envelopes[envelope.object_id] = envelope
+        self._save("cognitive_object_envelope", envelope.object_id, envelope, envelope.provenance_refs)
+        return envelope
 
     def add_provenance_edge(self, edge: ProvenanceEdge) -> ProvenanceEdge:
         self.provenance_edges[edge.id] = edge
         self._save("provenance_edge", edge.id, edge, edge.source_refs)
         return edge
+
+    def record_transition(self, transition: CognitiveTransition) -> CognitiveTransition:
+        self.transitions[transition.id] = transition
+        self._save("cognitive_transition", transition.id, transition, transition.provenance_refs)
+        return transition
+
+    def register_conflict(self, conflict: CognitiveConflict) -> CognitiveConflict:
+        self.conflicts[conflict.id] = conflict
+        self._save("cognitive_conflict", conflict.id, conflict, conflict.evidence_refs)
+        return conflict
 
     def detect_gap(self, gap: KnowledgeGap) -> KnowledgeGap:
         if not gap.evidence_refs:
@@ -346,7 +428,10 @@ class CognitiveProtocolService:
 
     def snapshot(self) -> dict[str, int]:
         return {
+            "object_envelopes": len(self.envelopes),
             "provenance_edges": len(self.provenance_edges),
+            "transitions": len(self.transitions),
+            "conflicts": len(self.conflicts),
             "knowledge_gaps": len(self.gaps),
             "cognitive_affordances": len(self.affordances),
             "projection_decisions": len(self.projections),
