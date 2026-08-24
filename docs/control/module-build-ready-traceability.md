@@ -46,6 +46,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/higher_order_cognition.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/improvement_cycle.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/improvement_experiments.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/metacognitive_optimization.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/module_genesis.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -104,11 +105,11 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 
 ## Developmental traceability note
 
-The twelve `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. AGENT-019 adds durable typed evidence and restart replay, while production migration execution and repository-wide BUILD-READY remain separate HOLDs.
+The thirteen `brain/developmental/*` rows are included because those code paths exist and must be represented by the readiness validator. AGENT-020 integrates AGENT-017/018/019 into an end-to-end governed developmental cycle, but PROMOTE remains evidence-only and repository-wide BUILD-READY remains HOLD.
 
 ## Adapter traceability note
 
-`brain/adapters/developmental_evidence_store.py` is the PostgreSQL persistence boundary for AGENT-017/018 evidence. Its repository implementation is traceable, but production migration execution is environment-specific and remains HOLD until deployed and verified.
+`brain/adapters/developmental_evidence_store.py` remains the PostgreSQL persistence boundary for developmental improvement evidence. Production migration execution is environment-specific and remains HOLD until deployed and verified.
 
 ## MOD-008 through MOD-015 repair traceability note
 
