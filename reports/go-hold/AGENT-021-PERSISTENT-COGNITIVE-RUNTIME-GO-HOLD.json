@@ -1,0 +1,53 @@
+{
+  "agent_id": "AGENT-021",
+  "scope": "persistent cognitive runtime convergence onto protected current main",
+  "status": "HOLD_PENDING_EXACT_HEAD_ACCEPTANCE",
+  "go_for": [
+    "exact-head protected CI",
+    "container acceptance testing",
+    "Temporal test-server acceptance",
+    "user-authorized merge after every required gate is green"
+  ],
+  "hold_for": [
+    "merge before exact-head acceptance",
+    "production deployment",
+    "unapproved autonomous code mutation",
+    "autonomous external action",
+    "live scraping browser automation paid-license ingestion or live source connectors",
+    "literal consciousness Tier 5 autonomy or biological-equivalence claims"
+  ],
+  "required_before_merge": [
+    "Brain Control Policy passes on exact head",
+    "full test and lint workflow passes on exact head",
+    "MOD-008-015 117-row conformance remains green",
+    "Cognitive Organism checkpoint persistence API and operator cockpit tests remain green",
+    "MOD-016 and MOD-017 tests remain green",
+    "heartbeat and NEURO-006 tests remain green",
+    "all migrations apply through migration 016 with unique versions after the historical 006 exception",
+    "API and worker images build",
+    "authenticated PostgreSQL belief state survives API restart",
+    "database outage makes readiness fail closed",
+    "Temporal workflow acceptance including continue-as-new passes",
+    "current protected main is still an ancestor immediately before merge"
+  ],
+  "migration_authority": [
+    "011_developmental_evidence_ledger.sql",
+    "012_cognitive_organism.sql",
+    "013_neuro_global_workspace_proxy.sql",
+    "014_cognitive_object_store.sql",
+    "015_source_registry_runtime.sql",
+    "016_cognitive_organism_persistence.sql"
+  ],
+  "preserved_authority": [
+    "AGENT-017 through AGENT-020",
+    "Cognitive Organism V1",
+    "Cognitive Organism Persistence and Operator Cockpit V1",
+    "heartbeat runner and sensory inbox",
+    "NEURO-006 Global Workspace Proxy",
+    "MOD-008 through MOD-015",
+    "MOD-016 Capital Source Intelligence Registry",
+    "MOD-017 Persistent Source Registry and Signal Intake Runtime",
+    "neuroscience and unknown/theory boundaries"
+  ],
+  "production_deployment_status": "HOLD"
+}

@@ -24,99 +24,144 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 
 | Module path | Owner object | Schema | Runtime service | State machine | Fixtures / tests | Acceptance evidence | Audit events | GO/HOLD |
 |---|---|---|---|---|---|---|---|---|
-| apps/api/cognitive_organism_routes.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| apps/api/main.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| apps/operator/main.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| apps/worker/main.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/adapters/cognition.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/adapters/developmental_evidence_store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/adapters/economic_store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/adapters/learning_store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| apps/api/cognitive_organism_routes.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| apps/api/main.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| apps/operator/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| apps/worker/main.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/adapters/brain_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/adapters/cognition.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| brain/adapters/cognitive_object_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/adapters/developmental_evidence_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/adapters/economic_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/adapters/learning_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/postgres.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/agency.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/agency.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/attention.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/attribution.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/beliefs.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/cognitive_immune.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/cognitive_organism.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/benchmarks.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/cognitive_immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/cognitive_organism.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/cognitive_state.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/contradiction.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/contradiction_queue.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/curiosity.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/cycle.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/debate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/development.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/consolidation.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/evidence_store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/global_workspace.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/higher_order_cognition.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/immune.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/improvement_cycle.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/improvement_experiments.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/metacognitive_optimization.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/module_genesis.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/plasticity.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/prediction_error.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/self_model.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/theory_registry.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/domain.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/dreaming.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_atomic_lifecycles.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_atomic_services.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_attribution.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_capital.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_codec.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_compounding.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_conformance.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_hard_gates.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_replay.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_runtime.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_sources.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/economic_transaction.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/contradiction_queue.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/curiosity.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/cycle.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/debate.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/development.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/consolidation.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/evidence_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/higher_order_cognition.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/immune.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/improvement_cycle.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/improvement_experiments.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/metacognitive_optimization.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/module_genesis.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/plasticity.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/prediction_error.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/sandbox.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/theory_registry.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/domain.py | partial | present | partial | missing | partial | missing | partial | HOLD |
+| brain/dreaming.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/economic.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_atomic_lifecycles.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/economic_atomic_services.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/economic_attribution.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_capital.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_codec.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_compounding.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_conformance.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/economic_hard_gates.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_replay.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_runtime.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_sources.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/economic_transaction.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/events.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/experiments.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/formulas.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/global_workspace.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/goals.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/formulas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
+| brain/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/goals.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/governance.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/heartbeat.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/homeostasis.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/growth_runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/heartbeat.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/homeostasis.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/hydrate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/imagination.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/learning.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/memory.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/metabolism.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/money_spine.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/neuro/abstractions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/neuro/multiscale.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/neuro/regions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/originality_engine.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/imagination.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/learning.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/memory_systems.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/metabolism.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/model_cortex.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/money_spine.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/neuro/abstractions.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/neuro/multiscale.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/neuro/regions.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/observability.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/originality_engine.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/planning.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/ports.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/prediction.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/projections.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/protocol.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/replay.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/prediction.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/projections.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/protocol.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/replay.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/resources.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/reward.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/rewiring.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/runner.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/runtime.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/scheduler.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/schemas.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/self_model.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/sensory_inbox.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/source_intelligence.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/working_memory.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| scripts/validate_build_ready_traceability.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| scripts/validate_control_layer.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| scripts/validate_pr_body.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/rewiring.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/runner.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/scheduler.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
+| brain/security.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/sensory_inbox.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/source_intelligence.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/world_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+| scripts/validate_build_ready_traceability.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+| scripts/validate_control_layer.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+| scripts/validate_pr_body.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+| tools/validate_agent_control.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+| tools/validate_mod_008_015_conformance.py | partial | partial | partial | missing | partial | partial | partial | HOLD |
+
+## Cognitive Organism V1 traceability note
+
+`brain/agency.py`, `brain/cognitive_immune.py`, `brain/cognitive_organism.py`, `brain/development.py`, `brain/global_workspace.py`, `brain/goals.py`, `brain/imagination.py`, `brain/originality_engine.py`, `brain/self_model.py`, and `apps/api/cognitive_organism_routes.py` are preserved from the merged Cognitive Organism V1 authority. They remain HOLD at repository BUILD-READY level. Tier 5 autonomy, literal consciousness claims, unapproved external action and provider-backed autonomous reasoning remain HOLD.
+
+## Developmental traceability note
+
+The developmental rows are included because those code paths exist and must be represented by the readiness validator. AGENT-020 integrates AGENT-017/018/019 into an end-to-end governed developmental cycle, while the sandbox remains proposal-only; PROMOTE remains evidence-only and repository-wide BUILD-READY remains HOLD.
+
+## Persistent cognitive-growth traceability note
+
+The PostgreSQL Brain store, generic cognitive-object store at migration 014, benchmark/world/memory/model/planning/telemetry/growth/security modules and sandbox are explicitly represented. Their presence and prior test evidence do not promote them to BUILD-READY until exact-head convergence CI and shared app/runtime integration evidence pass.
+
+## Heartbeat perception-to-learning traceability note
+
+`brain/heartbeat.py` and `brain/sensory_inbox.py` preserve protected-main closed-loop perception→attention→evidence→belief→prediction→outcome-learning capability. The hardened API exposes `/signals`, `/tick`, and `/runner/status` while sharing AGENT-021's canonical event ledger. These modules remain HOLD at repository BUILD-READY level; a durable PostgreSQL sensory-inbox adapter and production continuous-heartbeat worker integration remain unresolved.
+
+## MOD-016 Capital Source Intelligence traceability note
+
+`brain/source_intelligence.py` is preserved from protected main MOD-016 authority with its source registry specification, machine-readable registry, fixture and tests. It remains HOLD at repository BUILD-READY level; persistent registry tables, live connectors and automated source discovery remain separate controlled work.
+
+## Adapter traceability note
+
+`brain/adapters/developmental_evidence_store.py` remains the PostgreSQL persistence boundary for developmental improvement evidence. `brain/adapters/brain_store.py` and `brain/adapters/cognitive_object_store.py` are additional controlled persistence boundaries. Production migration execution is environment-specific and remains HOLD until deployed and verified.
+
+## MOD-008 through MOD-015 repair traceability note
+
+`brain/economic_conformance.py`, `brain/economic_atomic_services.py`, `brain/economic_atomic_lifecycles.py`, and `tools/validate_mod_008_015_conformance.py` remain controlled evidence paths. Their rows remain HOLD at the BUILD-READY matrix level because BUILD-READY is stricter than MOD-008 through MOD-015 atomic conformance.
+
+## Neuroscience traceability note
+
+`brain/neuro/abstractions.py`, `brain/neuro/multiscale.py` and `brain/neuro/regions.py` remain controlled neuroscience abstraction paths and do not imply biological equivalence or whole-system BUILD-READY. Cognitive Organism V1 software proxies do not close unknown biological mechanisms.
 
 ## Source preservation statement
 
-This matrix preserves current main Cognitive Organism rows and adds MOD-016 source intelligence as HOLD. No runtime module is marked BUILD-READY by this matrix. Unknowns remain visible as `missing`, `partial`, or `HOLD`.
+No source material is deleted, narrowed, or reinterpreted by this matrix. Unknowns are preserved as `missing`, `partial`, or `HOLD` instead of being hidden.
 
 ## Next expansion required
 

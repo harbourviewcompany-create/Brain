@@ -1,0 +1,51 @@
+{
+  "agent_id": "AGENT-021",
+  "status": "HOLD_PENDING_EXACT_HEAD_ACCEPTANCE",
+  "base": "protected mainline including Cognitive Organism V1, Cognitive Organism Persistence + Operator Cockpit V1, heartbeat, NEURO-006, MOD-016, MOD-017 and latest metacognitive authority",
+  "scope": [
+    "canonical PostgreSQL Brain state",
+    "provenance-aware cognitive object persistence",
+    "bitemporal world model",
+    "multi-system memory",
+    "measured model routing",
+    "causal planning",
+    "cognitive benchmarks",
+    "observability",
+    "proposal-only sandbox evaluation",
+    "production security",
+    "separate API and worker deployment",
+    "Temporal durable orchestration"
+  ],
+  "preserved_authority": [
+    "AGENT-017 through AGENT-020",
+    "Cognitive Organism V1",
+    "Cognitive Organism Persistence and Operator Cockpit V1",
+    "heartbeat runner and sensory inbox",
+    "NEURO-006 Global Workspace Proxy",
+    "MOD-008-015 117-row conformance",
+    "MOD-016 Capital Source Intelligence Registry",
+    "MOD-017 Persistent Source Registry and Signal Intake Runtime",
+    "neuroscience unknown and theory boundaries"
+  ],
+  "implemented_at_checkpoint": [
+    "additive cognitive-growth modules reconciled onto protected current main",
+    "migration authority reconciled as 011 developmental evidence, 012 Cognitive Organism V1, 013 NEURO-006, 014 generic cognitive objects, 015 MOD-017 source registry and 016 Cognitive Organism checkpoint persistence",
+    "Cognitive Organism routes, checkpoint persistence inspection and operator cockpit preserved on the hardened API/operator surfaces",
+    "heartbeat routes use the governed Brain event and learning boundary",
+    "MOD-017 SQL target remains migration 015 without schema change",
+    "Cognitive Organism checkpoint migration renumbered from conflicting 013 to 016 without schema change",
+    "PostgreSQL event payloads normalized to JSON-safe primitives",
+    "canonical PostgreSQL belief state and readiness behavior integrated",
+    "Temporal worker orchestration and test-server acceptance coverage integrated",
+    "container acceptance workflow integrated for migrations, images, authentication, restart persistence and database-outage readiness"
+  ],
+  "pending": [
+    "exact-head protected control workflow",
+    "exact-head full tests and Ruff",
+    "exact-head container integration acceptance through migration 016",
+    "exact-head Temporal acceptance",
+    "final protected-main recheck immediately before merge"
+  ],
+  "external_actions": "GitHub branch and PR writes performed; user-authorized merge remains gated on exact-head acceptance. No production deployment or other consequential external action is authorized.",
+  "source_preservation": "No developmental, cognitive-organism, heartbeat, economic, source-intelligence, neuroscience, control, archive, speculative, unknown, theory or future Brain scope is deleted or narrowed."
+}

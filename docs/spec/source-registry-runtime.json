@@ -21,7 +21,8 @@
     "source_registry_health_checks",
     "source_registry_events"
   ],
-  "migration": "db/migrations/008_source_registry_runtime.sql",
+  "migration": "db/migrations/015_source_registry_runtime.sql",
+  "migration_renumbering_note": "Renumbered from protected-main 008 during AGENT-021 convergence because 008_neuroscience_abstraction_layer.sql already owns migration 008; schema semantics are unchanged.",
   "go_rules": [
     "registered source required",
     "legal/access HOLD states block ingestion",

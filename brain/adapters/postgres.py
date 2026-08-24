@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
+from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
+from enum import Enum
 from typing import Any
 from uuid import UUID
 
@@ -17,8 +19,28 @@ except ImportError:  # Allows domain/unit tests before infrastructure extras are
 from ..events import BrainEvent
 
 
-def _json(value: dict[str, Any]) -> Any:
-    return Jsonb(value) if Jsonb is not None else value
+def _jsonable(value: Any) -> Any:
+    """Convert cognitive payloads to deterministic JSON-safe primitives."""
+    if is_dataclass(value):
+        return _jsonable(asdict(value))
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if isinstance(value, Enum):
+        return _jsonable(value.value)
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, set):
+        return [_jsonable(item) for item in sorted(value, key=str)]
+    return value
+
+
+def _json(value: Any) -> Any:
+    normalized = _jsonable(value)
+    return Jsonb(normalized) if Jsonb is not None else normalized
 
 
 class PostgresEventStore:
@@ -79,16 +101,16 @@ class PostgresEventStore:
                     """,
                     [
                         (
-                            e.id,
-                            e.event_type,
-                            e.aggregate_type,
-                            e.aggregate_id,
-                            e.causation_id,
-                            e.correlation_id,
-                            _json(e.payload),
-                            e.occurred_at,
+                            event.id,
+                            event.event_type,
+                            event.aggregate_type,
+                            event.aggregate_id,
+                            event.causation_id,
+                            event.correlation_id,
+                            _json(event.payload),
+                            event.occurred_at,
                         )
-                        for e in events
+                        for event in events
                     ],
                 )
             conn.commit()

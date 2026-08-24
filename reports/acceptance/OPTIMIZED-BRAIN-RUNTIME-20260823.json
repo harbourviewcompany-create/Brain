@@ -1,0 +1,71 @@
+{
+  "report_id": "OPTIMIZED-BRAIN-RUNTIME-20260823",
+  "scope": "reconciled persistent cognitive growth and production runtime",
+  "runtime_evidence_commit": "0f5ca1efe314bcd55faf1ca21947c36083a69cd5",
+  "pull_request": 80,
+  "status": "GO_FOR_REVIEW",
+  "merge_status": "HOLD",
+  "production_deployment_status": "HOLD",
+  "source_preservation": "PASS",
+  "external_actions": "none",
+  "memory_writes": "CI-only test state in ephemeral PostgreSQL; no production cognitive memory writes",
+  "evidence": {
+    "brain_control_policy": {
+      "workflow_run_id": 32671078482,
+      "result": "PASS"
+    },
+    "test_workflow": {
+      "workflow_run_id": 32671078490,
+      "result": "PASS",
+      "checks": [
+        "Brain agent-control validation",
+        "117-row MOD-008 through MOD-015 conformance validation",
+        "pytest suite",
+        "Ruff E4/E7/E9/F lint"
+      ]
+    },
+    "production_container_persistence": {
+      "workflow_run_id": 32671078490,
+      "job_id": 97271907950,
+      "result": "PASS",
+      "checks": [
+        "pgvector PostgreSQL 16 starts in isolated Docker network",
+        "Supabase anon/authenticated roles are emulated for security migration compatibility",
+        "all repository SQL migrations apply with ON_ERROR_STOP",
+        "production API image builds",
+        "production cognition worker image builds",
+        "API /ready reports connected PostgreSQL",
+        "unauthenticated protected request returns HTTP 401",
+        "authenticated belief creation succeeds",
+        "belief survives API container restart and is rehydrated from PostgreSQL",
+        "stopping PostgreSQL makes /ready return HTTP 503"
+      ]
+    }
+  },
+  "implemented_acceptance": [
+    "PostgreSQL is authoritative for configured core Brain belief/evidence/graph/event state",
+    "configured database failure does not silently fall back to in-memory readiness",
+    "production API authentication fails closed",
+    "production CORS is allow-list based",
+    "external actions remain disabled by default and require explicit approval-mode configuration when enabled",
+    "cognitive event payloads normalize UUID/datetime/date/enum/set/nested values for JSONB deterministically",
+    "world observations preserve world-valid and learned time with source evidence",
+    "episodic/semantic/procedural/prospective memory preserves provenance and reconsolidation rollback",
+    "model routing is provider-replaceable and measured-performance based",
+    "counterfactual planning preserves causal evidence and approval routing",
+    "benchmark regressions block sandboxed self-modification promotion",
+    "generic cognitive objects persist with provenance and bitemporal metadata",
+    "existing cognition worker retains local mode and has a Temporal durable orchestration mode",
+    "API and worker have independently buildable production images",
+    "migration history rejects new duplicate versions while preserving the historical 006 pair"
+  ],
+  "unresolved_holds": [
+    "live Temporal service connection and worker-restart workflow recovery have not been evidenced against a production-like Temporal deployment",
+    "Railway/Fly/Supabase production deployment has not been executed by this acceptance run",
+    "Neo4j remains an optional projection and has not been production-validated here",
+    "production secret rotation and rollback drills remain environment-specific deployment work",
+    "existing archive BLOCKED items remain blocked where original binary source bytes are unavailable",
+    "full biological brain equivalence, consciousness, sentience, and unknown neuroscience mechanisms are not claimed"
+  ],
+  "next_action": "Run exact-head control and test workflows after committing this report; if green, PR may advance from draft HOLD to review-ready while production deployment remains separately gated."
+}
