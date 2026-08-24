@@ -126,12 +126,30 @@ def test_manual_only_and_prohibited_lifecycle_never_auto_route() -> None:
     assert operational_disposition(lifecycle_prohibited_record) == OperationalDisposition.HOLD_PROHIBITED
 
 
+def test_paid_licensed_source_requires_license_review_before_automation() -> None:
+    base = load_registry_fixture(FIXTURE)[0]
+    paid_record = base.model_copy(update={"legal_access_status": LegalAccessStatus.PAID_LICENSED})
+
+    assert paid_record.priority_score >= 16
+    assert operational_disposition(paid_record) == OperationalDisposition.HOLD_LICENSE_REVIEW
+
+
 def test_missing_mandatory_provenance_is_rejected() -> None:
     payload = load_registry_fixture(FIXTURE)[0].model_dump(mode="json")
     payload.pop("declared_priority_score", None)
     payload["provenance_requirements"] = []
 
     with pytest.raises(ValueError):
+        SourceIntelligenceRecord.model_validate(payload)
+
+
+def test_active_record_requires_operational_update_frequency() -> None:
+    payload = load_registry_fixture(FIXTURE)[0].model_dump(mode="json")
+    payload.pop("declared_priority_score", None)
+    payload["lifecycle_status"] = "active"
+    payload["update_frequency"] = " "
+
+    with pytest.raises(ValueError, match="update_frequency"):
         SourceIntelligenceRecord.model_validate(payload)
 
 
