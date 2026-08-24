@@ -1,7 +1,7 @@
 {
   "agent_id": "AGENT-021",
   "status": "HOLD_PENDING_EXACT_HEAD_ACCEPTANCE",
-  "base": "protected mainline including Cognitive Organism V1 and MOD-016 Capital Source Intelligence Registry",
+  "base": "protected mainline including Cognitive Organism V1, NEURO-006 Global Workspace Proxy and MOD-016 Capital Source Intelligence Registry",
   "scope": [
     "canonical PostgreSQL Brain state",
     "provenance-aware cognitive object persistence",
@@ -22,14 +22,16 @@
     "AGENT-019",
     "AGENT-020",
     "Cognitive Organism V1",
+    "NEURO-006 Global Workspace Proxy",
     "MOD-008-015 117-row conformance",
     "MOD-016 Capital Source Intelligence Registry",
     "neuroscience unknown and theory boundaries"
   ],
   "implemented_at_checkpoint": [
     "additive cognitive-growth modules reconciled onto protected current main",
-    "migration authority reconciled as 011 developmental evidence, 012 Cognitive Organism V1, 013 generic cognitive objects",
+    "migration authority reconciled as 011 developmental evidence, 012 Cognitive Organism V1, 013 NEURO-006 Global Workspace Proxy, 014 generic cognitive objects",
     "Cognitive Organism routes registered on the hardened API",
+    "NEURO-006 runtime, persistence migration, specification, fixture and tests preserved from protected main",
     "MOD-016 runtime, specifications, manifests, fixture and tests preserved from protected main",
     "all combined enforced runtime paths registered in source requirement registry",
     "all combined runtime paths represented in BUILD-READY matrix as HOLD",
