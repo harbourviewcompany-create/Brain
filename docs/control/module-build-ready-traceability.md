@@ -89,6 +89,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/metabolism.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/money_spine.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/neuro/abstractions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/neuro/memory_systems.py | partial | partial | partial | missing | partial | partial | partial | HOLD |
 | brain/neuro/multiscale.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/neuro/regions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/originality_engine.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -116,7 +117,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 
 ## Source preservation statement
 
-This matrix preserves current main Cognitive Organism rows and adds MOD-016 source intelligence as HOLD. No runtime module is marked BUILD-READY by this matrix. Unknowns remain visible as `missing`, `partial`, or `HOLD`.
+This matrix preserves current main Cognitive Organism rows, NEURO-001 through NEURO-007 rows and MOD-016 source intelligence as HOLD. No runtime module is marked BUILD-READY by this matrix. Unknowns remain visible as `missing`, `partial`, or `HOLD`.
 
 ## Next expansion required
 

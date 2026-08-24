@@ -1,0 +1,17 @@
+{
+  "fixture_id": "rich_memory_systems",
+  "scenario": "all required memory systems preserve provenance and quarantine unsafe memory",
+  "expected": {
+    "required_count": 23,
+    "retrieval_cue": "urgent contradiction",
+    "retrieved_memory_id": "MEM-CONTRADICTION-001",
+    "quarantine_memory_id": "MEM-QUARANTINE-001",
+    "quarantine_reason": "source contamination risk",
+    "required_tables": [
+      "memory_system_records",
+      "memory_consolidation_events",
+      "memory_links",
+      "memory_quarantine_decisions"
+    ]
+  }
+}

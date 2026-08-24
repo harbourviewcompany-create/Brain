@@ -16,6 +16,14 @@ from .abstractions import (
     UnknownMechanismRegistryService,
     UnknownMechanismValidationService,
 )
+from .memory_systems import (
+    MemoryConsolidationEvent,
+    MemoryLifecycleState,
+    MemoryRecord,
+    MemorySystemKind,
+    RichMemorySystemService,
+    RichMemoryValidationService,
+)
 from .multiscale import CognitionScaleLayer, MultiscaleCognitionService, MultiscaleCognitionStack
 from .regions import BrainRegionFunction, BrainRegionMappingService
 
@@ -26,6 +34,10 @@ __all__ = [
     "ImplementationPosture",
     "ImplementationStatus",
     "MechanismCertainty",
+    "MemoryConsolidationEvent",
+    "MemoryLifecycleState",
+    "MemoryRecord",
+    "MemorySystemKind",
     "MultiscaleCognitionService",
     "MultiscaleCognitionStack",
     "NeuroAbstraction",
@@ -33,6 +45,8 @@ __all__ = [
     "NeuroAbstractionValidationService",
     "NeuroScaleLevel",
     "NeuroscienceTheory",
+    "RichMemorySystemService",
+    "RichMemoryValidationService",
     "TheoryConflict",
     "TheoryRegistryService",
     "TheoryStatus",
