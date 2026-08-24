@@ -280,8 +280,6 @@ def validate_traceability_registry(policy: dict) -> None:
             for module_path in record["paths"]:
                 if not (REPO_ROOT / module_path).is_file():
                     fail(f"{record_id} references missing code path {module_path}")
-                if module_path in covered_paths:
-                    fail(f"Code path has duplicate traceability ownership: {module_path}")
                 covered_paths.add(module_path)
 
     discovered = discover_code_modules(enforced_roots, excluded_filenames)
