@@ -42,6 +42,9 @@ class InMemoryLearningStore:
     def get_edge(self, edge_id: UUID) -> Edge | None:
         return self.edges.get(edge_id)
 
+    def list_edges(self) -> list[Edge]:
+        return list(self.edges.values())
+
     def upsert_edge(self, edge: Edge) -> None:
         self.edges[edge.id] = edge
 
@@ -177,6 +180,30 @@ class PostgresEdgeStore:
                 evidence_ids=set(row["evidence_ids"] or []),
                 updated_at=row["updated_at"],
             )
+
+    def list_edges(self) -> list[Edge]:
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                    select id, source_id, target_id, relation, weight, confidence,
+                           evidence_ids, updated_at
+                    from public.graph_edges
+                    order by updated_at desc, id
+                    """
+            )
+            return [
+                Edge(
+                    id=row["id"],
+                    source=row["source_id"],
+                    target=row["target_id"],
+                    relation=row["relation"],
+                    weight=float(row["weight"]),
+                    confidence=float(row["confidence"]),
+                    evidence_ids=set(row["evidence_ids"] or []),
+                    updated_at=row["updated_at"],
+                )
+                for row in cur.fetchall()
+            ]
 
     def upsert_edge(self, edge: Edge) -> None:
         with self.pool.connection() as conn:
