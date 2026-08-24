@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Generic reward and pain.
 
 ``brain/reward.py`` is real but entirely business-scoped: it scores
@@ -19,6 +17,8 @@ distinct nociceptive/pain pathway for punishment signals that isn't just
 "negative reward" -- pain has its own urgency/withdrawal-driving character
 that a symmetric reward scale doesn't capture.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from uuid import UUID, uuid4

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Sensory perception encoding.
 
 ``brain/adapters/cognition.py`` has ``PostgresSensoryInbox`` -- a durable
@@ -19,6 +17,8 @@ external model (text, numeric/sensor streams). Wiring in a real vision or
 audio model later means implementing one more ``PerceptionEncoder``, not
 changing this architecture.
 """
+
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field

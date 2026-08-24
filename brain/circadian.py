@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Circadian and sleep-wake cycling.
 
 ``brain/developmental/consolidation.py`` (episodic->semantic compression)
@@ -24,6 +22,8 @@ call SleepConsolidationService or DreamEngine itself -- the runner/cycle
 layer wires those together, same separation of concerns as
 HomeostasisEngine only ever writing to NeuromodulatorState.
 """
+
+from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field

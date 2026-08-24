@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Motor execution and error-driven adaptation.
 
 ``brain/governance.py`` decides whether an action is *allowed* to run.
@@ -19,6 +17,8 @@ the result was desirable. A perfectly-executed action with a bad outcome
 should not degrade motor calibration; a badly-executed action with a
 lucky good outcome should.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Callable

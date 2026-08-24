@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Theory of mind / social cognition.
 
 ``brain/developmental/theory_registry.py`` tracks competing *scientific*
@@ -16,6 +14,8 @@ makes that representable and gives the Brain a mechanism to predict other
 agents' behavior from attributed beliefs/goals, and to update trust in its
 own model of an agent based on whether predictions land.
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
