@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install
-        run: pip install -e '.[dev]'
+        run: pip install -c constraints.txt -e '.[dev]'
       - name: Validate Brain agent-control artifacts
         run: python tools/validate_agent_control.py
       - name: Validate MOD-008 through MOD-015 conformance
@@ -56,10 +56,21 @@ jobs:
             docker exec -i brain-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain < "${migration}"
           done
 
-      - name: Build API and worker images
+      - name: Build production images
         run: |
           docker build -t brain-api-ci -f Dockerfile .
           docker build -t brain-worker-ci -f Dockerfile.worker .
+          docker build -t brain-cockpit-ci -f Dockerfile.railway .
+
+      - name: Verify production images run as non-root
+        run: |
+          for image in brain-api-ci brain-worker-ci brain-cockpit-ci; do
+            uid=$(docker run --rm --entrypoint id "${image}" -u)
+            if [ "${uid}" = "0" ]; then
+              echo "${image} runs as root"
+              exit 1
+            fi
+          done
 
       - name: Start production API
         run: |
