@@ -1,0 +1,32 @@
+{
+  "report_id": "AGENT-XCUT-001-cross-cutting-cognitive-protocol",
+  "ticket_id": "AGENT-XCUT-001",
+  "issue_number": 117,
+  "verdict": "GO",
+  "scope": "bounded cross-cutting protocol, persistence and replay slice only",
+  "tests": [
+    "test_epistemic_state_preserves_dimensions_and_clamps",
+    "test_object_envelope_requires_and_persists_provenance",
+    "test_lifecycle_transition_is_appendable_and_reversible_only_with_rollback",
+    "test_conflicting_states_coexist_without_forced_resolution",
+    "test_gap_drives_domain_general_affordance_and_persists",
+    "test_consequential_projection_cannot_bypass_explicit_approval",
+    "test_learning_requires_outcome_attribution_and_evidence",
+    "test_provenance_and_replay_preserve_lineage_without_external_execution",
+    "test_plasticity_requires_learning_evidence_and_rollback_and_growth_runtime_shares_store"
+  ],
+  "fixtures": ["cross_cutting_cognitive_protocol"],
+  "evidence": [
+    "brain/protocol.py extends the existing traced protocol boundary with provenance-required cognitive envelopes, epistemic state, transitions, conflict preservation, knowledge gaps, cognitive affordances, projection decisions, attributed learning, rollback-aware plasticity and zero-action replay bundles",
+    "brain/growth_runtime.py shares PR #105 cognitive-object persistence with CognitiveProtocolService rather than introducing parallel storage",
+    "tests/test_cognitive_protocol.py exercises runtime, persistence and invariant failures",
+    "tests/fixtures/brain/cross_cutting_cognitive_protocol.json materializes the evidence-to-learning replay chain",
+    "docs/spec/ACCEPTANCE_MATRIX_DELTA.md retains full organ integration, tenant reconciliation, PR #108/#109/#110 adoption and production restart replay as broader HOLD boundaries"
+  ],
+  "unresolved_items": [
+    "full organ-by-organ adapters are not accepted by this report",
+    "tenant-aware production persistence remains dependent on PR #100/#104 reconciliation",
+    "Theory of Mind PR #108, Executive Control PR #109 and Affect PR #110 have not yet adopted the shared protocol",
+    "production PostgreSQL restart replay evidence remains outside this bounded acceptance unit"
+  ]
+}

@@ -16,6 +16,9 @@ from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = REPO_ROOT / "docs/control/policy-registry.json"
+SUPPLEMENTAL_TRACEABILITY_PATHS = (
+    "docs/control/source-requirement-registry.convergence.json",
+)
 
 
 def fail(message: str) -> None:
@@ -117,15 +120,39 @@ def validate_policy_shape(policy: dict) -> None:
 
 
 def validate_issue_template(path: str) -> None:
-    require_tokens(path, ["name:", "about:", "title:", "labels:", "body:"], "issue-template structure")
-
+    require_tokens(
+        path,
+        ["name:", "about:", "title:", "labels:", "body:"],
+        "issue-template structure",
+    )
     expected_by_template = {
-        ".github/ISSUE_TEMPLATE/blocked.yml": ["BLOCKED", "Source authority", "Unblock condition"],
-        ".github/ISSUE_TEMPLATE/build-ready.yml": ["BUILD-READY", "owner object", "runtime service", "GO/HOLD status"],
-        ".github/ISSUE_TEMPLATE/conflict.yml": ["CONFLICT", "Conflicting source records", "Resolution needed"],
-        ".github/ISSUE_TEMPLATE/source-record.yml": ["SOURCE", "Authority label", "Preserved content description"],
+        ".github/ISSUE_TEMPLATE/blocked.yml": [
+            "BLOCKED",
+            "Source authority",
+            "Unblock condition",
+        ],
+        ".github/ISSUE_TEMPLATE/build-ready.yml": [
+            "BUILD-READY",
+            "owner object",
+            "runtime service",
+            "GO/HOLD status",
+        ],
+        ".github/ISSUE_TEMPLATE/conflict.yml": [
+            "CONFLICT",
+            "Conflicting source records",
+            "Resolution needed",
+        ],
+        ".github/ISSUE_TEMPLATE/source-record.yml": [
+            "SOURCE",
+            "Authority label",
+            "Preserved content description",
+        ],
     }
-    require_tokens(path, expected_by_template.get(path, []), "template-specific control fields")
+    require_tokens(
+        path,
+        expected_by_template.get(path, []),
+        "template-specific control fields",
+    )
 
 
 def discover_code_modules(roots: Iterable[str], excluded_filenames: set[str]) -> set[str]:
@@ -144,28 +171,57 @@ def discover_code_modules(roots: Iterable[str], excluded_filenames: set[str]) ->
     return modules
 
 
+def _traceability_registries(policy: dict) -> list[tuple[str, dict]]:
+    registry_path = policy["traceability_policy"].get("registry_path")
+    if not registry_path or not (REPO_ROOT / registry_path).is_file():
+        fail("traceability_policy.registry_path is missing or invalid")
+
+    registries = [(registry_path, read_json(REPO_ROOT / registry_path))]
+    for path in SUPPLEMENTAL_TRACEABILITY_PATHS:
+        candidate = REPO_ROOT / path
+        if candidate.is_file():
+            registries.append((path, read_json(candidate)))
+    return registries
+
+
 def validate_traceability_registry(policy: dict) -> None:
     trace_policy = policy["traceability_policy"]
     schema_path = trace_policy.get("schema_path")
-    registry_path = trace_policy.get("registry_path")
     enforced_roots = trace_policy.get("enforced_code_roots", [])
     excluded_filenames = set(trace_policy.get("excluded_filenames", []))
 
     if not schema_path or not (REPO_ROOT / schema_path).is_file():
         fail("traceability_policy.schema_path is missing or invalid")
-    if not registry_path or not (REPO_ROOT / registry_path).is_file():
-        fail("traceability_policy.registry_path is missing or invalid")
 
-    registry = read_json(REPO_ROOT / registry_path)
-    required_keys = {"registry_id", "status", "sources", "requirements", "code_module_records"}
-    missing_keys = sorted(required_keys - set(registry))
-    if missing_keys:
-        fail(f"{registry_path} missing keys: {', '.join(missing_keys)}")
+    registries = _traceability_registries(policy)
+    required_keys = {
+        "registry_id",
+        "status",
+        "sources",
+        "requirements",
+        "code_module_records",
+    }
 
-    sources = {item.get("source_id"): item for item in registry.get("sources", [])}
-    requirements = {item.get("requirement_id"): item for item in registry.get("requirements", [])}
-    if None in sources or None in requirements:
-        fail(f"{registry_path} contains source or requirement records without IDs")
+    sources: dict[str, dict] = {}
+    requirements: dict[str, dict] = {}
+    for registry_path, registry in registries:
+        missing_keys = sorted(required_keys - set(registry))
+        if missing_keys:
+            fail(f"{registry_path} missing keys: {', '.join(missing_keys)}")
+        for item in registry.get("sources", []):
+            source_id = item.get("source_id")
+            if source_id is None:
+                fail(f"{registry_path} contains a source record without an ID")
+            if source_id in sources and sources[source_id] != item:
+                fail(f"Conflicting duplicate source traceability ID: {source_id}")
+            sources[source_id] = item
+        for item in registry.get("requirements", []):
+            requirement_id = item.get("requirement_id")
+            if requirement_id is None:
+                fail(f"{registry_path} contains a requirement record without an ID")
+            if requirement_id in requirements and requirements[requirement_id] != item:
+                fail(f"Conflicting duplicate requirement traceability ID: {requirement_id}")
+            requirements[requirement_id] = item
 
     for requirement_id, requirement in requirements.items():
         for source_id in requirement.get("source_ids", []):
@@ -192,31 +248,39 @@ def validate_traceability_registry(policy: dict) -> None:
     ]
 
     covered_paths: set[str] = set()
-    for record in registry.get("code_module_records", []):
-        record_id = record.get("record_id", "<missing record_id>")
-        missing_fields = [
-            field
-            for field in required_record_fields
-            if field not in record or record[field] in ("", [], None)
-        ]
-        if missing_fields:
-            fail(f"Traceability record {record_id} missing fields: {', '.join(missing_fields)}")
+    record_ids: set[str] = set()
+    for registry_path, registry in registries:
+        for record in registry.get("code_module_records", []):
+            record_id = record.get("record_id", "<missing record_id>")
+            if record_id in record_ids:
+                fail(f"Duplicate traceability record ID: {record_id}")
+            record_ids.add(record_id)
+            missing_fields = [
+                field
+                for field in required_record_fields
+                if field not in record or record[field] in ("", [], None)
+            ]
+            if missing_fields:
+                fail(
+                    f"Traceability record {record_id} in {registry_path} "
+                    f"missing fields: {', '.join(missing_fields)}"
+                )
 
-        if record["classification"] not in policy["source_authority_labels"]:
-            fail(f"{record_id} has invalid classification: {record['classification']}")
-        if record["go_hold_status"] not in policy["go_hold_statuses"]:
-            fail(f"{record_id} has invalid GO/HOLD status: {record['go_hold_status']}")
+            if record["classification"] not in policy["source_authority_labels"]:
+                fail(f"{record_id} has invalid classification: {record['classification']}")
+            if record["go_hold_status"] not in policy["go_hold_statuses"]:
+                fail(f"{record_id} has invalid GO/HOLD status: {record['go_hold_status']}")
 
-        for source_id in record.get("source_ids", []):
-            if source_id not in sources:
-                fail(f"{record_id} references missing source {source_id}")
-        for requirement_id in record.get("requirement_ids", []):
-            if requirement_id not in requirements:
-                fail(f"{record_id} references missing requirement {requirement_id}")
-        for module_path in record["paths"]:
-            if not (REPO_ROOT / module_path).is_file():
-                fail(f"{record_id} references missing code path {module_path}")
-            covered_paths.add(module_path)
+            for source_id in record.get("source_ids", []):
+                if source_id not in sources:
+                    fail(f"{record_id} references missing source {source_id}")
+            for requirement_id in record.get("requirement_ids", []):
+                if requirement_id not in requirements:
+                    fail(f"{record_id} references missing requirement {requirement_id}")
+            for module_path in record["paths"]:
+                if not (REPO_ROOT / module_path).is_file():
+                    fail(f"{record_id} references missing code path {module_path}")
+                covered_paths.add(module_path)
 
     discovered = discover_code_modules(enforced_roots, excluded_filenames)
     missing_records = sorted(discovered - covered_paths)
@@ -225,9 +289,15 @@ def validate_traceability_registry(policy: dict) -> None:
 
     unknown_records = sorted(covered_paths - discovered)
     if unknown_records:
-        warn("Traceability records exist for non-discovered code paths: " + ", ".join(unknown_records))
+        warn(
+            "Traceability records exist for non-discovered code paths: "
+            + ", ".join(unknown_records)
+        )
 
-    print(f"OK: traceability registry covers enforced code modules ({len(discovered)})")
+    print(
+        "OK: traceability registries cover enforced code modules "
+        f"({len(discovered)} modules across {len(registries)} registries)"
+    )
 
 
 def main() -> int:
@@ -265,7 +335,12 @@ def main() -> int:
     )
     require_tokens(
         "docs/control/acceptance-evidence-template.md",
-        ["tests_run", "external_actions_taken", "memory_writes_made", "source_preservation_statement"],
+        [
+            "tests_run",
+            "external_actions_taken",
+            "memory_writes_made",
+            "source_preservation_statement",
+        ],
         "acceptance evidence fields",
     )
 
@@ -277,7 +352,10 @@ def main() -> int:
     validate_traceability_registry(policy)
 
     if policy["archive_policy"].get("allow_pending_assets") is True:
-        warn("archive assets may remain pending; validate_archive_manifest.py enforces manifest integrity")
+        warn(
+            "archive assets may remain pending; "
+            "validate_archive_manifest.py enforces manifest integrity"
+        )
 
     print("Brain control layer validation passed.")
     return 0
