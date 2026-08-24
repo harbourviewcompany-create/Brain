@@ -93,6 +93,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/scheduler.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
+| brain/source_intelligence.py | present | present | partial | partial | partial | partial | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
@@ -113,6 +114,10 @@ The twelve `brain/developmental/*` rows are included because those code paths ex
 ## MOD-008 through MOD-015 repair traceability note
 
 `brain/economic_conformance.py`, `brain/economic_atomic_services.py`, `brain/economic_atomic_lifecycles.py`, and `tools/validate_mod_008_015_conformance.py` remain controlled evidence paths. Their rows remain HOLD at the BUILD-READY matrix level because BUILD-READY is stricter than MOD-008 through MOD-015 atomic conformance.
+
+## MOD-016 source intelligence traceability note
+
+`brain/source_intelligence.py` is now represented as a controlled MOD-016 source-intelligence primitive path. It remains HOLD at the BUILD-READY matrix level because persistent registry tables, health dashboards, source ROI attribution, signal inbox integration, evidence viewer integration, and production connectors remain deferred.
 
 ## Neuroscience traceability note
 
