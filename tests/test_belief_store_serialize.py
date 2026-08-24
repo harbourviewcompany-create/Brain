@@ -1,5 +1,3 @@
-from uuid import uuid4
-
 from brain.adapters.belief_store import serialize_belief
 from brain.domain import Belief, BeliefState
 from brain.runtime import BrainRuntime
