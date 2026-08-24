@@ -22,7 +22,8 @@
     "docs/control/source-requirement-registry.json",
     "docs/control/source-requirement-registry.convergence.json",
     "docs/control/module-build-ready-traceability.schema.json",
-    "docs/control/module-build-ready-traceability.md"
+    "docs/control/module-build-ready-traceability.md",
+    "docs/control/module-build-ready-traceability.pr126.md"
   ],
   "required_templates": [
     ".github/pull_request_template.md",
@@ -85,6 +86,7 @@
     "canonical_registry_extensions": ["docs/control/source-requirement-registry.convergence.json"],
     "module_build_ready_schema_path": "docs/control/module-build-ready-traceability.schema.json",
     "module_build_ready_matrix_path": "docs/control/module-build-ready-traceability.md",
+    "canonical_module_matrix_extensions": ["docs/control/module-build-ready-traceability.pr126.md"],
     "enforced_code_roots": ["apps", "brain", "scripts"],
     "excluded_filenames": ["__init__.py"],
     "fail_on_missing_code_traceability": true,
