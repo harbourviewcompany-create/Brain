@@ -8,11 +8,18 @@ from uuid import NAMESPACE_URL, uuid5
 
 from fastapi.responses import JSONResponse
 
-import apps.api.main as brain_api
-from apps.api.main import app, runtime, _learning_store
+import apps.api.tenant_app as tenant_api
 from brain.attention import AttentionMarket, AttentionSignal
 from tools.vercel_oidc import VercelOidcVerifier
 
+# Railway's cockpit compatibility surface is registered on the same tenant-aware
+# FastAPI object used by the canonical production API. This preserves the live
+# read-model routes while ensuring forced-RLS startup and request membership
+# checks cannot be bypassed by the compatibility entrypoint.
+brain_api = tenant_api.base
+app = tenant_api.app
+runtime = brain_api.runtime
+_learning_store = brain_api._learning_store
 
 _logger = logging.getLogger(__name__)
 _attention_market = AttentionMarket()
@@ -110,12 +117,7 @@ def _edge_item(edge: Any) -> dict[str, Any]:
 
 @app.get("/signals")
 def list_signals():
-    """Read signals from the canonical durable signal.enqueued event stream.
-
-    In production ``runtime.store.read_all()`` is backed by PostgresBrainStore and
-    therefore reads public.brain_events. This deliberately avoids the disposable
-    in-process ``runtime.store.evidence`` projection that can lag durable writes.
-    """
+    """Read signals from the canonical durable signal.enqueued event stream."""
     items = [
         _signal_item_from_event(event)
         for event in runtime.store.read_all()
@@ -291,5 +293,5 @@ class VercelOidcAuthBridge:
 
 
 # Uvicorn imports this module-level name. Cockpit routes remain registered on the
-# original FastAPI object above; only the Railway entrypoint is wrapped.
+# tenant-aware FastAPI object above; only the Railway entrypoint is wrapped.
 app = VercelOidcAuthBridge(app)
