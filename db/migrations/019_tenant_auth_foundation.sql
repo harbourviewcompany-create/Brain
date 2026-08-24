@@ -2,6 +2,22 @@
 -- This migration introduces tenant ownership primitives only.
 -- Existing cognitive tables are not retrofitted here; PR 3 owns tenant_id/RLS
 -- migration for existing Brain state.
+--
+-- Production release is gated by tools/apply_migrations.py. These are NOLOGIN
+-- group roles only; the migration runner grants existing verified runtime
+-- login roles membership without creating or storing credentials.
+
+do $$ begin
+  create role brain_runtime_role nologin;
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create role brain_trusted_service_role nologin;
+exception when duplicate_object then null;
+end $$;
+
+grant brain_runtime_role to brain_trusted_service_role;
 
 create table if not exists tenants (
   id uuid primary key default gen_random_uuid(),
@@ -71,8 +87,12 @@ revoke all on table tenant_memberships from anon, authenticated;
 revoke all on table tenant_invites from anon, authenticated;
 revoke all on table tenant_audit_events from anon, authenticated;
 
+grant usage on schema public to brain_runtime_role;
+grant select on table tenants, tenant_memberships to brain_runtime_role;
+
 -- Invariant: one active owner must remain per tenant. The application service
--- enforces last-owner protection; this index makes active-owner discovery fast.
+-- enforces last-owner protection; this remains HOLD for a future durable,
+-- transactionally authoritative tenant-administration implementation.
 create index if not exists tenant_memberships_active_owner_idx
   on tenant_memberships (tenant_id)
   where role = 'owner' and status = 'active';
@@ -83,6 +103,6 @@ comment on column tenant_invites.token_hash is
 comment on table tenants is
   'PR 2 tenant lifecycle root. Existing cognitive tables are scoped in PR 3.';
 comment on table tenant_memberships is
-  'PR 2 tenant membership and role foundation. Last-owner protection is application-enforced.';
+  'PR 2 tenant membership and role foundation. Last-owner protection remains application-enforced and is not yet a durable administration GO claim.';
 comment on table tenant_audit_events is
   'Append-only tenant/auth lifecycle audit events.';
