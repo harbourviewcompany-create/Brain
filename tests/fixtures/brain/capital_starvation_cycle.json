@@ -2,6 +2,7 @@
   "fixture_id": "capital_starvation_cycle",
   "issue": 130,
   "agent_task": "AGENT-007",
+  "scenario": "Capital-as-hunger reaches the live CognitiveCycle, creates starvation pressure, selects internal capital recovery, then accepts operator-confirmed capital feed evidence.",
   "purpose": "End-to-end fixture for capital-as-hunger reaching the live cognitive cycle.",
   "initial_ledger": {
     "balance": 1.0,
@@ -41,6 +42,13 @@
       "homeostasis.budget_pressure_updated"
     ],
     "expected_recovered_from_starvation": true
+  },
+  "expected": {
+    "first_cycle_starves": true,
+    "first_cycle_budget_pressure": 1.0,
+    "first_cycle_selected_task": "pursue_capital_recovery",
+    "recovery_cycle_feeds_ledger": true,
+    "external_action_created": false
   },
   "hard_gates": [
     "CapitalLedger balance changes are the only source of capital.starvation",
