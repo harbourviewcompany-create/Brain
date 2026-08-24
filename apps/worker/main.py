@@ -5,10 +5,13 @@ import os
 import time
 from datetime import timedelta
 
+import psycopg
 from temporalio import activity, workflow
 from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 from temporalio.worker import Worker
+
+from brain.tenant_runtime import require_safe_runtime_role, tenant_rls_enforced
 
 
 @workflow.defn
@@ -52,6 +55,38 @@ class ContinuousCognitionWorkflow:
         raise RuntimeError("continue_as_new_returned_unexpectedly")
 
 
+_verified_worker_dsn: str | None = None
+
+
+def worker_database_url() -> str:
+    """Return the worker DSN after validating the tenant-RLS role topology.
+
+    Before tenant RLS is installed, the historical DATABASE_URL remains a valid
+    compatibility path. Once forced RLS is active, the worker must use a
+    dedicated constrained login that is a member of the audited PostgreSQL
+    ``brain_trusted_service_role``; the ordinary API runtime login is rejected.
+    """
+    global _verified_worker_dsn
+    if _verified_worker_dsn is not None:
+        return _verified_worker_dsn
+
+    dedicated_dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL")
+    dsn = dedicated_dsn or os.environ.get("DATABASE_URL")
+    if not dsn:
+        raise RuntimeError("DATABASE_URL or BRAIN_WORKER_DATABASE_URL is required")
+
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        if tenant_rls_enforced(conn):
+            if not dedicated_dsn:
+                raise RuntimeError(
+                    "BRAIN_WORKER_DATABASE_URL is required when tenant RLS is enforced"
+                )
+            require_safe_runtime_role(conn, require_trusted_service=True)
+
+    _verified_worker_dsn = dsn
+    return dsn
+
+
 def build_learning():
     from brain.adapters.learning_store import (
         PostgresAttributionStore,
@@ -62,7 +97,7 @@ def build_learning():
     from brain.adapters.postgres import PostgresEventStore
     from brain.learning import LearningService
 
-    dsn = os.environ["DATABASE_URL"]
+    dsn = worker_database_url()
     event_store = PostgresEventStore(dsn)
     return LearningService(
         event_store,
@@ -79,7 +114,7 @@ def build_runner():
     from brain.cycle import CognitiveCycle
     from brain.runner import ContinuousCognitionRunner
 
-    dsn = os.environ["DATABASE_URL"]
+    dsn = worker_database_url()
     event_store = PostgresEventStore(dsn)
     checkpoint_store = ProjectionCheckpointStore(event_store.pool)
     learning = None
@@ -183,6 +218,10 @@ async def run_temporal_worker() -> None:
 
 def main() -> None:
     mode = os.environ.get("BRAIN_WORKER_MODE", "cognition")
+    if mode == "verify":
+        worker_database_url()
+        print("worker database topology verification passed")
+        return
     if mode == "temporal" or os.environ.get("TEMPORAL_ADDRESS"):
         asyncio.run(run_temporal_worker())
     elif mode == "maintenance":
