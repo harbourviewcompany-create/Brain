@@ -44,8 +44,22 @@ Added:
 - `reports/acceptance/AGENT-017-metacognitive-benchmark-runtime.json`
 - `reports/go-hold/AGENT-017-RUNTIME-GO-HOLD.json`
 
+## CI evidence
+
+Latest observed PR head before this handoff update passed:
+
+- Brain Control Policy: success
+- test: success
+
+This handoff update changes only this report file, so CI must re-run on the new head before merge.
+
+## Merge gate
+
+The GitHub merge API returned a branch-protection response that the two required checks are still expected. No branch-protection bypass was performed.
+
 ## Unresolved items
 
+- PR #78 remains open until GitHub accepts the required checks for the latest head.
 - Live self-modification remains HOLD.
 - External action remains HOLD.
 - Unsupported full-Brain and superior-intelligence claims remain HOLD.
@@ -53,6 +67,6 @@ Added:
 
 ## GO/HOLD
 
-GO for AGENT-017 runtime V0 after CI passes.
+GO for AGENT-017 runtime V0 after CI passes on the final PR head.
 
-HOLD for live autonomous self-modification, external action, full Brain completion, biological equivalence, consciousness, and superior-intelligence claims without external benchmark evidence.
+HOLD for merge until branch protection accepts the required checks. HOLD for live autonomous self-modification, external action, full Brain completion, biological equivalence, consciousness, and superior-intelligence claims without external benchmark evidence.
