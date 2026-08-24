@@ -137,7 +137,7 @@ The developmental rows are included because those code paths exist and must be r
 
 ## Persistent cognitive-growth traceability note
 
-The PostgreSQL Brain store, generic cognitive-object store at migration 013, benchmark/world/memory/model/planning/telemetry/growth/security modules and sandbox are explicitly represented. Their presence and prior test evidence do not promote them to BUILD-READY until exact-head convergence CI and shared app/runtime integration evidence pass.
+The PostgreSQL Brain store, generic cognitive-object store at migration 014, benchmark/world/memory/model/planning/telemetry/growth/security modules and sandbox are explicitly represented. Their presence and prior test evidence do not promote them to BUILD-READY until exact-head convergence CI and shared app/runtime integration evidence pass.
 
 ## Heartbeat perception-to-learning traceability note
 
