@@ -1,13 +1,14 @@
 {
   "fixture_id": "AGENT-021-CONVERGENCE",
-  "base_authority": ["AGENT-017", "AGENT-018", "AGENT-019", "AGENT-020"],
-  "migration_sequence": {"developmental_evidence": 11, "cognitive_objects": 12},
+  "base_authority": ["AGENT-017", "AGENT-018", "AGENT-019", "AGENT-020", "COGNITIVE-ORGANISM-V1"],
+  "migration_sequence": {"developmental_evidence": 11, "cognitive_organism": 12, "cognitive_objects": 13},
   "required_invariants": [
     "configured_database_is_authoritative",
     "provenance_required_for_generic_cognitive_objects",
     "benchmark_regression_blocks_sandbox_promotion",
     "external_action_requires_explicit_approval",
     "developmental_promote_is_evidence_only",
+    "cognitive_organism_tier_5_remains_hold",
     "unknown_neuroscience_mechanisms_remain_explicit"
   ],
   "merge_status": "HOLD_PENDING_EXACT_HEAD_ACCEPTANCE"
