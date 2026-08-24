@@ -9,10 +9,12 @@ from uuid import NAMESPACE_URL, uuid5
 from fastapi.responses import JSONResponse
 
 from apps.api.main import app, runtime, _learning_store
+from brain.attention import AttentionMarket, AttentionSignal
 from tools.vercel_oidc import VercelOidcVerifier
 
 
 _logger = logging.getLogger(__name__)
+_attention_market = AttentionMarket()
 
 
 def _iso(value: Any | None) -> str:
@@ -31,33 +33,78 @@ def _list_response(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"items": items, "total": len(items), "source": "api"}
 
 
+def _number(payload: dict[str, Any], key: str, default: float = 0.0) -> float:
+    try:
+        return float(payload.get(key, default) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _signal_item_from_event(event: Any) -> dict[str, Any]:
+    """Build the compatibility Signal shape from a durable signal.enqueued event."""
+    event_payload = dict(getattr(event, "payload", {}) or {})
+    signal_payload = dict(event_payload.get("payload") or {})
+
+    commercial_upside = _number(signal_payload, "commercial_upside")
+    novelty = _number(signal_payload, "novelty", 0.5)
+    urgency = _number(signal_payload, "urgency")
+    contradiction_value = _number(signal_payload, "contradiction_value")
+    source_quality = _number(signal_payload, "source_reliability", 0.5)
+    uncertainty_reduction = _number(signal_payload, "uncertainty_reduction", 0.5)
+    noise_probability = _number(signal_payload, "noise_probability", 0.2)
+    operator_burden = _number(signal_payload, "operator_burden")
+    attention_score = _attention_market.score(
+        AttentionSignal(
+            commercial_upside=commercial_upside,
+            novelty=novelty,
+            urgency=urgency,
+            contradiction_value=contradiction_value,
+            source_quality=source_quality,
+            uncertainty_reduction=uncertainty_reduction,
+            noise_probability=noise_probability,
+            operator_burden=operator_burden,
+        )
+    )
+
+    occurred_at = getattr(event, "occurred_at", None)
+    metadata = dict(signal_payload.get("metadata") or {})
+    metadata.update(
+        {
+            "content": str(event_payload.get("content") or ""),
+            "claim": str(event_payload.get("claim") or ""),
+            "source_key": str(event_payload.get("source_key") or "unknown"),
+        }
+    )
+
+    return {
+        "id": str(getattr(event, "aggregate_id")),
+        "created_at": _iso(occurred_at),
+        "updated_at": _iso(occurred_at),
+        "source_id": str(event_payload.get("source_key") or "unknown"),
+        "evidence_ids": [],
+        "novelty": novelty,
+        "urgency": urgency,
+        "commercial_upside": commercial_upside,
+        "attention_score": attention_score,
+        "formula_run_id": None,
+        "metadata": metadata,
+    }
+
+
 @app.get("/signals")
 def list_signals():
-    """Live attention-market read model derived from stored evidence.
+    """Read signals from the canonical durable signal.enqueued event stream.
 
-    The Brain does not yet have a dedicated persistent Signal service. This
-    endpoint exposes real evidence as live attention signals instead of returning
-    cockpit fixture data.
+    In production ``runtime.store.read_all()`` is backed by PostgresBrainStore and
+    therefore reads public.brain_events. This deliberately avoids the disposable
+    in-process ``runtime.store.evidence`` projection that can lag durable writes.
     """
-    items: list[dict[str, Any]] = []
-    for evidence in runtime.store.evidence.values():
-        reliability = float(getattr(evidence, "reliability", 0.5) or 0.5)
-        metadata = getattr(evidence, "metadata", {}) or {}
-        items.append(
-            {
-                "id": _stable_uuid("signal", str(evidence.id)),
-                "created_at": _iso(getattr(evidence, "created_at", None)),
-                "updated_at": _iso(getattr(evidence, "created_at", None)),
-                "source_id": str(evidence.source_id),
-                "evidence_ids": [str(evidence.id)],
-                "novelty": reliability,
-                "urgency": float(metadata.get("urgency", 0.0) or 0.0),
-                "commercial_upside": float(metadata.get("commercial_upside", 0.0) or 0.0),
-                "attention_score": reliability,
-                "formula_run_id": None,
-            }
-        )
-    items.sort(key=lambda item: item["attention_score"], reverse=True)
+    items = [
+        _signal_item_from_event(event)
+        for event in runtime.store.read_all()
+        if getattr(event, "event_type", None) == "signal.enqueued"
+    ]
+    items.sort(key=lambda item: item["created_at"], reverse=True)
     return _list_response(items)
 
 
