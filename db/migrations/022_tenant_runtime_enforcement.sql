@@ -48,6 +48,40 @@ begin
   end loop;
 end $$;
 
+-- A constrained runtime role still needs ordinary SQL privileges before RLS can
+-- enforce row visibility. Grant DML only to tenant-owned runtime tables. Tenant
+-- lifecycle mutation remains unavailable until a durable administration service
+-- and transactionally authoritative last-owner protection are implemented.
+do $$
+declare
+  r record;
+begin
+  for r in
+    select distinct table_name
+    from information_schema.columns
+    where table_schema = 'public'
+      and column_name = 'tenant_id'
+      and table_name not in (
+        'tenant_memberships',
+        'tenant_invites',
+        'tenant_audit_events'
+      )
+  loop
+    execute format(
+      'grant select, insert, update, delete on table public.%I to brain_runtime_role',
+      r.table_name
+    );
+  end loop;
+end $$;
+
+grant usage on schema public to brain_runtime_role;
+grant usage, select on all sequences in schema public to brain_runtime_role;
+grant select on table public.tenants, public.tenant_memberships to brain_runtime_role;
+revoke insert, update, delete on table public.tenants, public.tenant_memberships
+  from brain_runtime_role;
+revoke all on table public.tenant_invites, public.tenant_audit_events
+  from brain_runtime_role;
+
 -- Cognitive Organism uses a constant checkpoint name, so the old global primary
 -- key would prevent the same checkpoint name from existing in different tenants.
 alter table public.cognitive_organism_checkpoints
@@ -70,3 +104,8 @@ create unique index if not exists cognitive_organism_checkpoints_tenant_name_uni
 -- conflating tenant-local display/natural keys with globally-addressable cognitive ids.
 comment on table public.cognitive_objects is
   'Cognitive object identity is globally addressable; tenant ownership/visibility is enforced independently by tenant_id and RLS.';
+
+comment on role brain_runtime_role is
+  'NOLOGIN group for non-owner, non-BYPASSRLS Brain API/runtime logins. Membership is granted only by the gated migration runner after runtime-role verification.';
+comment on role brain_trusted_service_role is
+  'NOLOGIN audited service group used only by trusted cross-tenant internal workers. It inherits brain_runtime_role privileges and receives RLS service context solely through PostgreSQL role membership.';
