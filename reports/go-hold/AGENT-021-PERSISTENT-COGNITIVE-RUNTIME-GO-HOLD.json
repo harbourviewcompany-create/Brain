@@ -1,0 +1,27 @@
+{
+  "agent_id": "AGENT-021",
+  "scope": "persistent cognitive runtime convergence",
+  "status": "HOLD",
+  "go_for": [
+    "continued branch implementation",
+    "exact-head protected CI",
+    "container and Temporal acceptance testing"
+  ],
+  "hold_for": [
+    "merge",
+    "production deployment",
+    "autonomous code mutation",
+    "autonomous external action",
+    "literal consciousness or biological-equivalence claims"
+  ],
+  "required_before_merge_consideration": [
+    "Brain Control Policy passes on exact head",
+    "full test and lint workflow passes on exact head",
+    "all migrations apply including migration 012",
+    "API and worker images build",
+    "authenticated PostgreSQL state survives API restart",
+    "database outage makes readiness fail closed",
+    "Temporal workflow acceptance passes",
+    "current main is reconciled without deleting AGENT-017 through AGENT-020 evidence"
+  ]
+}
