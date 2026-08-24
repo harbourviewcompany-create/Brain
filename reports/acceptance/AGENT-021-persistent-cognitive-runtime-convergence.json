@@ -1,7 +1,7 @@
 {
   "agent_id": "AGENT-021",
   "status": "HOLD_PENDING_EXACT_HEAD_ACCEPTANCE",
-  "base": "protected AGENT-020 mainline",
+  "base": "protected mainline including Cognitive Organism V1 and MOD-016 Capital Source Intelligence Registry",
   "scope": [
     "canonical PostgreSQL Brain state",
     "provenance-aware cognitive object persistence",
@@ -21,22 +21,30 @@
     "AGENT-018",
     "AGENT-019",
     "AGENT-020",
+    "Cognitive Organism V1",
     "MOD-008-015 117-row conformance",
+    "MOD-016 Capital Source Intelligence Registry",
     "neuroscience unknown and theory boundaries"
   ],
   "implemented_at_checkpoint": [
-    "additive cognitive-growth modules ported from previously validated branch",
-    "migration collision resolved by assigning cognitive object store to migration 012",
-    "new runtime paths registered in source requirement registry",
-    "new runtime paths added to BUILD-READY matrix as HOLD",
-    "PostgreSQL event payloads normalized to JSON-safe primitives"
+    "additive cognitive-growth modules reconciled onto protected current main",
+    "migration authority reconciled as 011 developmental evidence, 012 Cognitive Organism V1, 013 generic cognitive objects",
+    "Cognitive Organism routes registered on the hardened API",
+    "MOD-016 runtime, specifications, manifests, fixture and tests preserved from protected main",
+    "all combined enforced runtime paths registered in source requirement registry",
+    "all combined runtime paths represented in BUILD-READY matrix as HOLD",
+    "PostgreSQL event payloads normalized to JSON-safe primitives",
+    "canonical PostgreSQL belief state and readiness behavior integrated",
+    "Temporal worker orchestration and test-server acceptance coverage integrated",
+    "container acceptance workflow integrated for migrations, images, authentication, restart persistence and database-outage readiness"
   ],
   "pending": [
-    "shared API merge",
-    "Temporal worker merge and acceptance",
-    "migration-integrity CI merge",
-    "production container acceptance on final exact head"
+    "exact-head protected control workflow",
+    "exact-head full tests and Ruff",
+    "exact-head container integration acceptance",
+    "exact-head Temporal acceptance",
+    "final protected-main recheck immediately before merge"
   ],
-  "external_actions": "none",
-  "source_preservation": "No mainline developmental, economic, neuroscience, control or future scope is deleted or narrowed."
+  "external_actions": "GitHub branch and PR writes performed; user-authorized merge remains gated on exact-head acceptance. No production deployment or other consequential external action is authorized.",
+  "source_preservation": "No developmental, cognitive-organism, economic, source-intelligence, neuroscience, control, archive, speculative, unknown, theory or future Brain scope is deleted or narrowed."
 }
