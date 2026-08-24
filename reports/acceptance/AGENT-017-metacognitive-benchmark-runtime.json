@@ -1,0 +1,52 @@
+{
+  "acceptance_id": "AGENT-017-metacognitive-benchmark-runtime-v0",
+  "issue": 77,
+  "status": "GO_FOR_RUNTIME_V0",
+  "scope": "Metacognitive benchmark and self-optimization flywheel runtime V0 implemented as an evidence-bound extension of brain.developmental.self_model.",
+  "runtime_files": [
+    "brain/developmental/self_model.py"
+  ],
+  "tests": [
+    "tests/test_metacognitive_benchmark_flywheel.py",
+    "tests/test_developmental_self_model.py"
+  ],
+  "fixtures": [
+    "tests/fixtures/brain/metacognitive_benchmark_runtime.json",
+    "tests/fixtures/brain/metacognitive_benchmark_flywheel.json"
+  ],
+  "implemented_objects": [
+    "CapabilityBenchmark",
+    "BenchmarkRun",
+    "RegressionSignal",
+    "LearningDebtItem",
+    "ImprovementHypothesis",
+    "SelfOptimizationPlan"
+  ],
+  "implemented_services": [
+    "BenchmarkService",
+    "RegressionDetectionService",
+    "LearningDebtPrioritizationService",
+    "SelfOptimizationPlanner"
+  ],
+  "acceptance_criteria": [
+    "benchmark runs require evidence and tests",
+    "regressions are explicit and cannot be hidden",
+    "learning debt priority is affected by regression pressure",
+    "self-optimization plans remain proposal-only and rollback-bound",
+    "superiority claims require external benchmark evidence"
+  ],
+  "hard_gates": [
+    "no unsupported superior-intelligence claim",
+    "no autonomous self-modification execution from benchmark output",
+    "no hidden regression",
+    "no optimization plan without rollback, test target and acceptance criteria"
+  ],
+  "go_hold": {
+    "runtime_v0": "GO",
+    "live_self_modification": "HOLD",
+    "external_action": "HOLD",
+    "full_brain_completion": "HOLD",
+    "superior_intelligence_claim": "HOLD_WITHOUT_EXTERNAL_BENCHMARK_EVIDENCE"
+  },
+  "source_preservation": "No source material is deleted, narrowed or overwritten. The runtime preserves limitations and unsupported claims as HOLD."
+}
