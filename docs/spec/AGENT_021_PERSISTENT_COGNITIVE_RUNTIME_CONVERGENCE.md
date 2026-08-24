@@ -2,7 +2,7 @@
 
 ## Purpose
 
-AGENT-021 converges the previously validated production persistence and cognitive-growth substrate onto the protected AGENT-020 mainline. It is additive: AGENT-017 through AGENT-020, MOD-008 through MOD-015, neuroscience control-layer work, economic cognition, source preservation, and unknown/theory boundaries remain authoritative.
+AGENT-021 converges the previously validated production persistence and cognitive-growth substrate onto the protected current Brain mainline. It is additive: AGENT-017 through AGENT-020, Cognitive Organism V1, MOD-008 through MOD-015, neuroscience control-layer work, economic cognition, source preservation, and unknown/theory boundaries remain authoritative.
 
 ## Required capabilities
 
@@ -17,10 +17,11 @@ AGENT-021 converges the previously validated production persistence and cognitiv
 - Production API authentication, CORS restriction, readiness and database failure behavior.
 - Independently deployable API and cognition worker processes.
 - Durable Temporal cognition orchestration with replay-safe timers and restart acceptance.
+- Cognitive Organism V1 routes and governed agency preserved on the hardened API.
 
 ## Persistence sequence
 
-Migration `011_developmental_evidence_ledger.sql` remains AGENT-019 authority. The generic cognitive object repository is migration `012_cognitive_object_store.sql`. The historical duplicate `006` pair is preserved as an explicit legacy exception only; no new migration version collision is allowed.
+Migration `011_developmental_evidence_ledger.sql` remains AGENT-019 authority. Migration `012_cognitive_organism.sql` remains Cognitive Organism V1 authority. The generic cognitive object repository is migration `013_cognitive_object_store.sql`. The historical duplicate `006` pair is preserved as an explicit legacy exception only; no new migration version collision is allowed.
 
 ## Acceptance
 
@@ -28,12 +29,13 @@ The exact PR head must pass:
 
 1. Brain control policy and source traceability.
 2. MOD-008 through MOD-015 117-row conformance validation.
-3. Full pytest and Ruff suite.
-4. Clean PostgreSQL/pgvector migration chain.
+3. Full pytest and Ruff suite, including Cognitive Organism V1 and Temporal test-server tests.
+4. Clean PostgreSQL/pgvector migration chain through migration 013.
 5. API and worker image builds.
 6. Authenticated belief write, API restart, and durable readback.
 7. Database-outage readiness failure.
 8. Temporal test-server workflow execution and replay/continue-as-new acceptance.
+9. Cognitive Organism V1 route/API replay and governance tests remain passing after production hardening.
 
 ## Permanent HOLD boundaries
 
