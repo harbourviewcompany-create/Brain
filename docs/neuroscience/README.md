@@ -32,10 +32,12 @@ Every accepted abstraction maps to:
 - `MULTISCALE_COGNITION_STACK.md`: L0-L11 cognition stack and cross-scale dependencies.
 - `UNKNOWN_MECHANISM_REGISTRY.md`: control rules for unresolved, disputed and speculative mechanisms.
 - `THEORY_CONFLICT_REGISTRY.md`: control rules for competing neuroscience theories.
+- `GLOBAL_WORKSPACE_PROXY.md`: bounded workspace access, competition, suppression and broadcast proxy.
 - `json/neuro-abstraction-registry.json`: machine-readable abstraction registry for validation.
 - `json/brain-region-map.json`: machine-readable brain-region mapping registry.
 - `json/multiscale-cognition-stack.json`: machine-readable L0-L11 stack registry.
 - `json/unknown-mechanism-registry.json`: machine-readable unknown-mechanism HOLD registry.
 - `json/theory-conflict-registry.json`: machine-readable theory conflict registry.
+- `json/global-workspace-proxy.json`: machine-readable global workspace proxy registry.
 
-Future files will add workspace, memory, perception, action, affect, self-model, immune, development, sleep and reality-boundary systems.
+Future files will add memory, perception, action, affect, self-model, immune, development, sleep and reality-boundary systems.

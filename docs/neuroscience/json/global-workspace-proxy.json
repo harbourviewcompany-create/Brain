@@ -1,0 +1,101 @@
+{
+  "registry_id": "neuro-global-workspace-proxy-v1",
+  "slice_id": "NEURO-006",
+  "status": "APPROVED_FOR_CONTROL_LAYER",
+  "runtime_anchor": "brain.developmental.global_workspace.GlobalWorkspaceService",
+  "dashboard": "Global Workspace Viewer",
+  "non_claims": [
+    "phenomenal consciousness",
+    "sentience",
+    "human-brain equivalence",
+    "subjective experience"
+  ],
+  "state_machine": [
+    "candidate_registered",
+    "competition_open",
+    "winner_selected",
+    "alternatives_suppressed",
+    "broadcast_recorded",
+    "frame_archived"
+  ],
+  "objects": [
+    {
+      "object_id": "GlobalWorkspaceFrame",
+      "purpose": "bounded current-contents-of-mind proxy",
+      "required_fields": [
+        "frame_id",
+        "active_goals",
+        "active_memories",
+        "active_conflicts",
+        "top_signals",
+        "selected_interpretation",
+        "suppressed_alternatives",
+        "uncertainty_map",
+        "affective_or_modulatory_state",
+        "available_actions",
+        "approval_constraints",
+        "predicted_consequences",
+        "current_self_state",
+        "current_world_state",
+        "explanation_trace"
+      ],
+      "database_table": "global_workspace_frames",
+      "go_hold_status": "GO"
+    },
+    {
+      "object_id": "WorkspaceItem",
+      "purpose": "candidate content competing for global access",
+      "required_fields": ["content_ref", "priority", "evidence_refs", "proposing_module"],
+      "database_table": "workspace_items",
+      "go_hold_status": "GO"
+    },
+    {
+      "object_id": "WorkspaceCompetition",
+      "purpose": "priority-bounded competition among candidates",
+      "required_fields": ["candidate_ids", "winner_id", "suppressed_item_ids"],
+      "database_table": "workspace_competitions",
+      "go_hold_status": "GO"
+    },
+    {
+      "object_id": "WorkspaceBroadcast",
+      "purpose": "evidence-bound broadcast to explicit consumer modules",
+      "required_fields": ["winner_id", "consumer_modules", "suppressed_item_ids", "evidence_refs", "consciousness_claim"],
+      "database_table": "workspace_broadcasts",
+      "go_hold_status": "GO"
+    },
+    {
+      "object_id": "SuppressedAlternative",
+      "purpose": "preserved losing interpretation or signal",
+      "required_fields": ["content_ref", "reason_suppressed", "evidence_refs"],
+      "database_table": "workspace_suppressed_alternatives",
+      "go_hold_status": "GO"
+    },
+    {
+      "object_id": "AttentionAccessDecision",
+      "purpose": "decision record explaining why one item won global access",
+      "required_fields": ["winner_id", "decision_rule", "input_scores", "rejected_alternatives"],
+      "database_table": "workspace_access_decisions",
+      "go_hold_status": "GO"
+    },
+    {
+      "object_id": "WorkspaceTrace",
+      "purpose": "replayable evidence and consumer trace",
+      "required_fields": ["frame_id", "source_event_ids", "consumer_modules", "audit_event_ids"],
+      "database_table": "workspace_traces",
+      "go_hold_status": "GO"
+    }
+  ],
+  "acceptance_criteria": [
+    "candidates require evidence references",
+    "broadcasts require consumer modules",
+    "winner selection preserves suppressed alternatives",
+    "broadcast records consciousness_claim as false",
+    "workspace proxy cannot execute external action",
+    "frame records are traceable and replayable"
+  ],
+  "unresolved_gaps": [
+    "operator Global Workspace Viewer is registry-defined but not yet a full UI",
+    "production database migration execution is not claimed",
+    "full cognitive-cycle integration remains future work"
+  ]
+}
