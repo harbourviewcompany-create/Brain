@@ -12,15 +12,15 @@ from .domain import Belief, Evidence, Observation, utcnow
 from .events import BrainEvent
 from .homeostasis import HomeostasisEngine
 from .hydrate import hydrate_belief_cache
-from .learning import LearningService
+from .learning import (
+    LearningService,
+    attribute_capital_or_result_outcome,
+    emit_predictions_for_selected_tasks,
+)
 from .metabolism import CapitalLedger, MetabolismEngine
 from .projections import default_projection_engine, incremental_checkpoint
 from .scheduler import CognitiveScheduler, CognitiveTask
 from .working_memory import WorkingMemory
-from .cycle_learning import (
-    attribute_capital_or_result_outcome,
-    emit_predictions_for_selected_tasks,
-)
 
 from .affect import AffectAppraisalService, AppraisalInput
 from .circadian import CircadianClock
