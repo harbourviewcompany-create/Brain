@@ -1,11 +1,12 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.0.1",
   "module_id": "MOD-016",
   "module_name": "Capital Source Intelligence Registry",
   "status": "staged_control_layer_with_executable_primitives",
   "objective": "Maintain a living source intelligence registry for opportunity detection, market intelligence, commercial research, and automated ingestion.",
   "chain": ["Sources", "Signals", "Evidence", "Intelligence", "Opportunity", "Action", "Outcome", "Source learning"],
   "priority_score_formula": "(signal_value * 3) + freshness + reliability - extraction_difficulty",
+  "priority_score_semantics": "priority_score is derived from the nested score object. Payloads may provide priority_score as an assertion, but validation rejects any value that does not match the formula.",
   "required_fields": [
     "source_name",
     "source_category",
@@ -17,20 +18,31 @@
     "signal_freshness",
     "update_frequency",
     "access_methods",
-    "extraction_difficulty",
     "legal_access_status",
     "noise_level",
     "reliability_level",
     "downstream_use_cases",
     "example_intelligence_questions",
     "best_ingestion_method",
-    "compounding_sources_to_pair",
-    "priority_score",
+    "score",
     "notes_risks",
     "lifecycle_status",
     "owner_role",
     "review_cadence_days",
     "provenance_requirements"
+  ],
+  "score_schema": {
+    "required_fields": ["signal_value", "extraction_difficulty", "freshness", "reliability"],
+    "range": "Each score member must be an integer from 1 to 5."
+  },
+  "derived_fields": ["priority_score"],
+  "mandatory_provenance_requirements": [
+    "source_id",
+    "source_url_or_path",
+    "observed_at",
+    "retrieved_at",
+    "extract_hash_or_snapshot_id",
+    "legal_access_status"
   ],
   "source_categories": [
     "government_registry",
@@ -99,7 +111,7 @@
     "terms_review_required": "HOLD until reviewed.",
     "pii_sensitive": "HOLD for legal/privacy review.",
     "rate_limited": "Requires throttling, health checks, and failure monitoring.",
-    "manual_only": "Cannot be represented as automated ingestion.",
+    "manual_only": "Cannot be represented as automated ingestion; high-value sources route to analyst review.",
     "prohibited": "HOLD; cannot be ingested."
   },
   "lifecycle_statuses": [
@@ -118,8 +130,9 @@
   "acceptance": {
     "go": [
       "source record validates required fields",
-      "priority score matches formula",
-      "legal/access HOLD states block automation",
+      "priority score derives from nested score payload and matches formula",
+      "manual-only, terms-review, PII-sensitive, and prohibited states block automation",
+      "prohibited lifecycle state routes to HOLD even if legal status is stale",
       "source clusters define false-positive controls",
       "ingestion policies preserve evidence and compliance cautions",
       "fixture demonstrates ranked source records"
@@ -128,7 +141,7 @@
       "source lacks legal/access status",
       "source lacks jurisdiction/market coverage",
       "source has no downstream use case",
-      "source cannot preserve provenance",
+      "source cannot preserve mandatory provenance",
       "source action would collect prohibited or unreviewed sensitive data",
       "score is asserted without formula evidence",
       "intelligence claim conflates inference with verified fact"
