@@ -46,6 +46,7 @@ REQUIRED_FIXTURES = [
     "tests/fixtures/brain/outcome_reward_pain_learning.json",
     "tests/fixtures/brain/contradiction_review.json",
     "tests/fixtures/brain/acceptance_gate_go_hold.json",
+    "tests/fixtures/brain/cross_cutting_cognitive_protocol.json",
 ]
 
 VALID_TASK_STATUSES = {"implemented", "in_progress", "planned", "blocked"}
@@ -57,6 +58,7 @@ REQUIRED_REPORTS = [
     "reports/acceptance/AGENT-004-contradiction-review.json",
     "reports/acceptance/AGENT-005-ci-acceptance-gate.json",
     "reports/acceptance/AGENT-006-source-to-build-traceability.json",
+    "reports/acceptance/AGENT-XCUT-001-cross-cutting-cognitive-protocol.json",
     "reports/go-hold/GO-HOLD-SUMMARY.json",
 ]
 
@@ -103,11 +105,6 @@ def implemented_tasks_of(tasks: list[dict]) -> list[dict]:
 
 
 def validate_implemented_fixtures_materialized(tasks: list[dict], fixture_ids: set[str]) -> None:
-    # Only tasks actually claiming to be done need materialized evidence.
-    # A queue that can only represent finished work isn't a queue, it's a
-    # changelog. Backlog statuses may reference fixtures/tests that don't
-    # exist yet -- that's the point of tracking planned work honestly
-    # instead of only registering it after the fact.
     referenced: set[str] = set()
     for task in implemented_tasks_of(tasks):
         referenced.update(task.get("required_fixtures", []))
