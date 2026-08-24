@@ -198,7 +198,8 @@ jobs:
           cat /tmp/tenant-release-denied.log
           test "${status}" -ne 0
           grep -q 'BRAIN_TENANT_RLS_RELEASE=1' /tmp/tenant-release-denied.log
-          test "$(docker exec brain-tenant-postgres psql -At -U brain -d brain -c \"select count(*) from public.brain_schema_migrations where filename = '019_tenant_auth_foundation.sql'\")" = "0"
+          applied_019=$(docker exec brain-tenant-postgres psql -At -U brain -d brain -c "select count(*) from public.brain_schema_migrations where filename = '019_tenant_auth_foundation.sql'")
+          test "${applied_019}" = "0"
 
       - name: Apply tenant migrations with explicit safe topology
         env:
