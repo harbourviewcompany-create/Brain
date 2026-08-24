@@ -8,6 +8,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from fastapi.responses import JSONResponse
 
+import apps.api.main as brain_api
 from apps.api.main import app, runtime, _learning_store
 from brain.attention import AttentionMarket, AttentionSignal
 from tools.vercel_oidc import VercelOidcVerifier
@@ -91,6 +92,22 @@ def _signal_item_from_event(event: Any) -> dict[str, Any]:
     }
 
 
+def _edge_item(edge: Any) -> dict[str, Any]:
+    updated_at = getattr(edge, "updated_at", None)
+    return {
+        "id": str(edge.id),
+        "source": str(edge.source),
+        "target": str(edge.target),
+        "source_node_id": str(edge.source),
+        "target_node_id": str(edge.target),
+        "relation": str(edge.relation),
+        "weight": float(edge.weight),
+        "confidence": float(edge.confidence),
+        "created_at": _iso(updated_at),
+        "updated_at": _iso(updated_at),
+    }
+
+
 @app.get("/signals")
 def list_signals():
     """Read signals from the canonical durable signal.enqueued event stream.
@@ -105,6 +122,20 @@ def list_signals():
         if getattr(event, "event_type", None) == "signal.enqueued"
     ]
     items.sort(key=lambda item: item["created_at"], reverse=True)
+    return _list_response(items)
+
+
+@app.get("/edges")
+def list_edges():
+    """Read graph edges from the configured learning edge store.
+
+    Production resolves ``brain_api.learning.edges`` to ``PostgresEdgeStore`` so
+    this reads ``public.graph_edges`` durably. Local/test mode uses the matching
+    in-memory store implementation. The existing POST /edges contract is owned by
+    apps.api.main and remains unchanged.
+    """
+    edge_store = brain_api.learning.edges or brain_api._learning_store
+    items = [_edge_item(edge) for edge in edge_store.list_edges()]
     return _list_response(items)
 
 
