@@ -1,0 +1,45 @@
+{
+  "surface_id": "metacognitive-benchmark-dashboard-v0",
+  "status": "APPROVED_SURFACE_SPEC_RUNTIME_HOLD",
+  "issue": 77,
+  "purpose": "Expose Brain capability measurement, regressions, learning debt, self-optimization proposals and claim boundaries to the operator.",
+  "panels": [
+    {
+      "panel_id": "capability_map",
+      "records": ["CapabilityBenchmark", "BenchmarkRun"],
+      "fields": ["benchmark_id", "capability", "task_family", "latest_score", "baseline_score", "evidence_ids", "go_hold_status"]
+    },
+    {
+      "panel_id": "regression_alerts",
+      "records": ["RegressionSignal"],
+      "fields": ["regression_id", "benchmark_id", "baseline_score", "current_score", "delta", "severity", "evidence_ids", "created_at"]
+    },
+    {
+      "panel_id": "learning_debt_queue",
+      "records": ["LearningDebtItem"],
+      "fields": ["debt_id", "capability", "severity", "repeated_failures", "dependency_centrality", "safety_risk", "priority_score", "source_ids"]
+    },
+    {
+      "panel_id": "self_optimization_proposals",
+      "records": ["SelfOptimizationPlan"],
+      "fields": ["plan_id", "hypothesis_id", "target_tests", "rollback_plan", "acceptance_criteria", "risk", "status"]
+    },
+    {
+      "panel_id": "claim_boundary_report",
+      "records": ["CapabilityClaimBoundary"],
+      "fields": ["claim", "allowed", "blocked_reason", "required_evidence", "current_evidence"]
+    }
+  ],
+  "forbidden_controls": [
+    "execute_self_modification",
+    "delete_regression",
+    "publish_superiority_claim",
+    "activate_external_action"
+  ],
+  "allowed_controls": [
+    "create_review_issue",
+    "request_benchmark_run",
+    "mark_plan_needs_evidence",
+    "link_acceptance_report"
+  ]
+}
