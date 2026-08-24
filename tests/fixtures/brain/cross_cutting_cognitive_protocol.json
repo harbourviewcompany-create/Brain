@@ -1,5 +1,6 @@
 {
-  "fixture_id": "cross-cutting-cognitive-protocol-v1",
+  "fixture_id": "cross_cutting_cognitive_protocol",
+  "scenario": "evidence-backed belief uncertainty produces a knowledge gap, a domain-general investigative affordance, a governed projection decision, attributed learning, rollback-aware plasticity, and replay with no external execution",
   "source_refs": ["source:fixture-observation"],
   "chain": [
     {"kind": "evidence", "id": "evidence:e1", "origin": "external_observation"},
@@ -12,6 +13,15 @@
     {"kind": "developmental_plasticity_delta", "requires_rollback": true, "requires_benchmark": true},
     {"kind": "cognitive_replay", "external_actions_executed": 0}
   ],
+  "expected": {
+    "knowledge_gap_priority_gt": 0.6,
+    "affordance_kind": "investigate",
+    "consequential_projection_without_approval": "governance_pending",
+    "competing_conflict_states_preserved": true,
+    "learning_requires_attribution": true,
+    "plasticity_requires_rollback": true,
+    "replay_external_actions_executed": 0
+  },
   "invariants": [
     "provenance_continuity",
     "contradiction_preservation",
