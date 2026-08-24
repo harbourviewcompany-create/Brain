@@ -1,0 +1,32 @@
+ID,Source / artifact,Object family,Status,Classification,Allowed use now,Blocker
+SRC-001,ChatGPT project URL,Project container,Not inspectable,Inaccessible,Mention only as inaccessible,App/auth boundary
+SRC-002,Visible current project chat excerpts,Brain-Corpus / Registry,Partial,Reference,"Recovery checklist, gap detection",Not full artifacts
+SRC-003,BRAIN_MULTI_MODEL_SYNTHESIS_PACKAGE,Brain-Corpus,Not recovered,Missing,Do not use as source,Artifact unavailable
+SRC-004,Brain Master Corpus,Brain-Corpus,Not recovered,Missing,Do not implement,Corpus unavailable
+SRC-005,Brain Function Registry,Brain-Registry,Not recovered,Missing,Do not update canonical registry,Registry unavailable
+SRC-006,BRAIN_FORMULA_COMPLETENESS_PATCH.md,Brain-Corpus,Not recovered,Missing,Do not use,Artifact unavailable
+SRC-007,BRAIN_V0_IMPLEMENTATION_TICKETS.md,Implementation plan,Not recovered,Missing,Do not execute tickets,Artifact unavailable
+SRC-008,BRAIN_EXACT_SCHEMAS_AND_STATE_MACHINES.md,Contract/spec,Not recovered,Missing,Do not implement schema/state machine,Artifact unavailable
+SRC-009,BRAIN_GOLDEN_FIXTURE_LIBRARY.md,Testing / fixtures,Not recovered,Missing,Do not certify fixtures,Artifact unavailable
+SRC-010,BRAIN_SECURITY_GOVERNANCE_APPENDIX.md,Governance,Not recovered,Missing,Do not approve external writes,Artifact unavailable
+SRC-011,BRAIN_COST_BUDGET_CONTROL_APPENDIX.md,Cost governance,Not recovered,Missing,Do not implement spend controls,Artifact unavailable
+SRC-012,BRAIN_DECISION_EXPLANATION_SCHEMA.md,Explainability,Not recovered,Missing,Do not implement explanations,Artifact unavailable
+SRC-013,BRAIN_OUTCOME_ATTRIBUTION_MODEL.md,Learning loop,Not recovered,Missing,Do not implement attribution,Artifact unavailable
+SRC-014,BRAIN_CALIBRATION_BACKTESTING_PLAN.md,Validation,Not recovered,Missing,Do not run validation,Artifact unavailable
+SRC-015,Brain Missing Components Register v2,Gap control,Not recovered,Missing,Do not close gaps,Artifact unavailable
+SRC-016,PR 1 source-discovery handoff,Source governance,Not recovered,Missing,Do not authorize implementation PR,Artifact unavailable
+SRC-017,Contaminated SQL/TypeScript snippets,Contaminated reference,Not recovered,Presumed contaminated,Do not copy,Snippets unavailable
+SRC-018,Appendix Z / registry-delta refinements,Brain-Registry,Not recovered,Missing,Do not merge,File unavailable
+SRC-019,Compact forbidden-code list,Source exclusion,Not recovered,Missing,Cannot enforce exact exclusions,List unavailable
+SRC-020,Exact route/RLS/test/dashboard names,Registry metadata,Not recovered,Missing,Cannot add canonical entries,Names unavailable
+SRC-021,Brain Beta / mini-brain-v0 source package,Brain-Beta,Not recovered,Inaccessible,Do not patch,Source package unavailable
+SRC-022,Brain Beta audit report,Brain-Beta,Referenced but unavailable,Reference / inaccessible,Use as pointer only,Report unavailable in current pass
+SRC-023,Brain Master Manual V2,Brain-Manual,Referenced but unavailable,Reference / inaccessible,Use as pointer only,Manual unavailable
+SRC-024,Brain Master Manual V3 builder/source,Brain-Manual,Referenced but unavailable,Reference / inaccessible,Use as pointer only,Source unavailable
+SRC-025,Notion HARBOURVIEW SHARED BRAIN,Shared-Brain,Recovered,Canonical for coordination,Audit coordination structure,Not Brain-Corpus
+SRC-026,Notion SHARED MEMORY,Shared-Brain,Recovered,Canonical for current state,Use for state/blockers,Not Brain-Corpus
+SRC-027,Linear HAR-70,Portfolio control,Recovered,Canonical for execution rules,Use for gates,Not corpus
+SRC-028,Airtable PRJ-BRAIN-001,Portfolio control,Recovered,Canonical project row,Use for HOLD and acceptance criteria,Not corpus
+SRC-029,Google Drive Brain result,Drive search noise,Recovered but unrelated,Unrelated / noisy,Exclude,Term collision
+SRC-030,GitHub connected search,Source-code search,No result,Missing,Do not infer,Repo/source unknown
+SRC-031,Uploaded files in current turn,Upload surface,None,Missing,No file evidence,No files uploaded
