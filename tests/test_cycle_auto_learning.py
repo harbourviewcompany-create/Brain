@@ -2,12 +2,12 @@ from uuid import uuid4
 
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.cycle import CognitiveCycle, CognitiveStimulus
-from brain.cycle_learning import (
+from brain.learning import (
+    LearningService,
     attribute_capital_or_result_outcome,
     emit_predictions_for_selected_tasks,
     prediction_for_task,
 )
-from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
 from brain.metabolism import CapitalLedger
 from brain.prediction import PredictionStatus
