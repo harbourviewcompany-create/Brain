@@ -134,6 +134,7 @@ The Brain is being built primarily by AI agents. These documents are the agent-e
 - [Fixture Library](docs/spec/BRAIN_FIXTURE_LIBRARY.md)
 - [Acceptance Matrix](docs/spec/BRAIN_ACCEPTANCE_MATRIX.md)
 - [Source-to-Build Traceability](docs/spec/BRAIN_SOURCE_TO_BUILD_TRACEABILITY.md)
+- [Capital Source Intelligence Registry](docs/spec/CAPITAL_SOURCE_INTELLIGENCE_REGISTRY.md)
 
 ### Machine-readable control files
 
@@ -144,6 +145,7 @@ The Brain is being built primarily by AI agents. These documents are the agent-e
 - [schema-registry.json](docs/spec/schema-registry.json)
 - [acceptance-matrix.json](docs/spec/acceptance-matrix.json)
 - [source-to-build-traceability.json](docs/spec/source-to-build-traceability.json)
+- [source-intelligence-registry.json](docs/spec/source-intelligence-registry.json)
 
 ### Reports and fixtures
 
