@@ -1,0 +1,33 @@
+app = 'brain-api'
+primary_region = 'yyz'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  BRAIN_ENV = 'production'
+  BRAIN_EXTERNAL_ACTIONS_ENABLED = 'false'
+
+[processes]
+  app = 'sh -c "uvicorn apps.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"'
+  worker = 'python -m apps.worker.main'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/ready'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

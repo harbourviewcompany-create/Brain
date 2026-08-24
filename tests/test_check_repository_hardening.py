@@ -15,6 +15,7 @@ rename can't silently reintroduce this bug without breaking this test.
 """
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -119,3 +120,30 @@ def test_check_archive_assets_reports_missing_manifest_or_files():
     # repo-state content here would duplicate issue #52 tracking.
     result = check_archive_assets()
     assert isinstance(result, list)
+
+
+def test_repository_does_not_track_local_environments_or_packaging_outputs():
+    """Prevent the contamination class observed in PR #53 from recurring."""
+    tracked = subprocess.check_output(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        text=True,
+    ).splitlines()
+    forbidden_root_prefixes = (".venv/", "venv/", "env/", "build/", "dist/")
+    offenders = [
+        path
+        for path in tracked
+        if path.startswith(forbidden_root_prefixes)
+        or path.endswith(".egg-info")
+        or ".egg-info/" in path
+    ]
+    assert offenders == [], (
+        "Generated local environments or packaging outputs are tracked by git: "
+        + ", ".join(offenders[:20])
+    )
+
+
+def test_gitignore_blocks_repository_contamination_paths():
+    ignored = set((ROOT / ".gitignore").read_text().splitlines())
+    required = {".venv/", "venv/", "env/", "*.egg-info/", "build/", "dist/"}
+    assert required <= ignored

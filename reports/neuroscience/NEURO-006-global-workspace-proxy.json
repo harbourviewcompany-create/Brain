@@ -5,7 +5,7 @@
   "implemented_files": [
     "docs/neuroscience/GLOBAL_WORKSPACE_PROXY.md",
     "docs/neuroscience/json/global-workspace-proxy.json",
-    "db/migrations/012_neuro_global_workspace_proxy.sql",
+    "db/migrations/013_neuro_global_workspace_proxy.sql",
     "tests/fixtures/neuro/global_workspace_frame.json",
     "tests/test_global_workspace_proxy.py",
     "reports/neuroscience/NEURO-006-global-workspace-proxy.json"
@@ -30,5 +30,6 @@
     "operator Global Workspace Viewer UI not yet implemented",
     "production migration execution not performed",
     "full cognitive-cycle integration remains future work"
-  ]
+  ],
+  "migration_renumbering_note": "Protected-main NEURO-006 migration was renumbered from 012 to 013 during AGENT-021 convergence to preserve unique migration ordering without changing schema semantics."
 }

@@ -1,15 +1,15 @@
-# Legacy Railway cockpit compatibility image.
-# The default Brain API deployment uses Dockerfile via railway.toml.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     BRAIN_ENV=production \
-    BRAIN_EXTERNAL_ACTIONS_ENABLED=false
+    BRAIN_EXTERNAL_ACTIONS_ENABLED=false \
+    BRAIN_WORKER_MODE=temporal
 
 WORKDIR /app
 
+# Dependency layer: shared lock and cache behavior with the API image.
 COPY pyproject.toml README.md constraints.txt ./
 RUN mkdir -p brain \
     && python -m pip install --upgrade pip \
@@ -17,8 +17,6 @@ RUN mkdir -p brain \
 
 COPY brain ./brain
 COPY apps ./apps
-COPY db ./db
-COPY tools ./tools
 RUN python -m pip install --no-cache-dir --no-deps --force-reinstall . \
     && python -m pip check
 
@@ -27,10 +25,4 @@ RUN groupadd --system brain \
     && chown -R brain:brain /app
 USER brain
 
-ENV PORT=8000
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/ready', timeout=4).read()" || exit 1
-
-CMD ["sh", "-c", "python -m uvicorn tools.live_cockpit_routes:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["python", "-m", "apps.worker.main"]

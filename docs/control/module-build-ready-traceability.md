@@ -28,7 +28,9 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | apps/api/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | apps/operator/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | apps/worker/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| brain/adapters/brain_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/adapters/cognition.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| brain/adapters/cognitive_object_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/adapters/developmental_evidence_store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/adapters/economic_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/learning_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
@@ -38,6 +40,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/attention.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/attribution.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/beliefs.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/benchmarks.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/circadian.py | partial | partial | partial | partial | present | missing | partial | HOLD |
 | brain/cognitive_immune.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_organism.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -59,6 +62,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/developmental/module_genesis.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/plasticity.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/prediction_error.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/developmental/sandbox.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/theory_registry.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/domain.py | partial | present | partial | missing | partial | missing | partial | HOLD |
@@ -83,6 +87,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/global_workspace.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/goals.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/governance.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/growth_runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/heartbeat.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/hedonic.py | partial | partial | partial | missing | present | missing | partial | HOLD |
 | brain/homeostasis.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
@@ -90,14 +95,18 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/imagination.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/learning.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/memory_systems.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/metabolism.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/model_cortex.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/money_spine.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/motor.py | partial | partial | partial | missing | present | missing | partial | HOLD |
 | brain/neuro/abstractions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/neuro/multiscale.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/neuro/regions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/observability.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/originality_engine.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/perception.py | partial | partial | partial | missing | present | missing | partial | HOLD |
+| brain/planning.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/ports.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/prediction.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/projections.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -110,17 +119,20 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/scheduler.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
+| brain/security.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/self_model.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/sensory_inbox.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/source_intelligence.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/theory_of_mind.py | partial | partial | partial | missing | present | missing | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/world_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_build_ready_traceability.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_control_layer.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_pr_body.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | tools/validate_agent_control.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
+| tools/validate_mod_008_015_conformance.py | partial | partial | partial | missing | partial | partial | partial | HOLD |
 
 ## Developmental traceability note
 
@@ -128,7 +140,7 @@ The `brain/developmental/*` rows are included because those code paths exist and
 
 ## Source preservation statement
 
-This matrix merges rows independently added on `main` (Cognitive Organism modules, MOD-016 source intelligence, and related additions) with rows added by the affect/executive/circadian/theory-of-mind/hedonic/sensorimotor cognitive-extension work, taking the union of both sets rather than one side overwriting the other. No source material is deleted, narrowed, or reinterpreted by this merge. No runtime module is marked BUILD-READY by this matrix. Unknowns remain visible as `missing`, `partial`, or `HOLD`.
+This matrix merges rows independently added on `main` (Cognitive Organism modules, MOD-016 source intelligence, control-plane wiring, and related additions) with rows added by the affect/executive/circadian/theory-of-mind/hedonic/sensorimotor cognitive-extension work, taking the union of both sets across repeated merges rather than one side overwriting the other. No source material is deleted, narrowed, or reinterpreted by these merges. No runtime module is marked BUILD-READY by this matrix. Unknowns remain visible as `missing`, `partial`, or `HOLD`.
 
 ## Next expansion required
 
