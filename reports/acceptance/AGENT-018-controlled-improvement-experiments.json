@@ -1,0 +1,26 @@
+{
+  "report_id":"AGENT-018-controlled-improvement-experiments",
+  "issue":87,
+  "verdict":"GO_VALIDATED_PENDING_FINAL_EVIDENCE_HEAD_CI",
+  "validated_implementation_head":"16681fd245f4fe8e3cb1c5fea2e64620e281bd47",
+  "implemented_files":[
+    "brain/developmental/improvement_experiments.py",
+    "tests/test_improvement_experiments.py",
+    "tests/fixtures/brain/improvement_experiment_cycle.json",
+    "docs/spec/BRAIN_CONTROLLED_IMPROVEMENT_EXPERIMENTS.md",
+    "docs/operator-surfaces/improvement-experiments-dashboard.json"
+  ],
+  "capabilities":[
+    "approved-plan experiment creation",
+    "candidate artifact/test/benchmark/rollback gating",
+    "before-after benchmark evaluation",
+    "protected-regression promotion gate",
+    "control-suite rejection gate",
+    "PROMOTE/REVISE/REJECT/HOLD evidence decisions",
+    "rollback evidence preservation",
+    "direct mutation/merge/deploy prohibition"
+  ],
+  "validated_results":["Brain Control Policy success","agent-control success","MOD-008-015 conformance regression gate success","pytest success","ruff success"],
+  "hold":["autonomous code mutation","automatic merge","deployment","external action","unsupported superiority claims"],
+  "closure_rule":"Final evidence metadata head must pass the same protected workflows before merge."
+}

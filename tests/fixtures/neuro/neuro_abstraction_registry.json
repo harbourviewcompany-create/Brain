@@ -1,0 +1,23 @@
+{
+  "fixture_id": "neuro_abstraction_registry",
+  "scenario": "Full neuroscience abstraction registry preserves implemented, provisional, disputed, unknown and speculative concepts without narrowing.",
+  "input_file": "docs/neuroscience/json/neuro-abstraction-registry.json",
+  "expected": {
+    "minimum_abstraction_count": 12,
+    "required_scale_levels": [
+      "L0_RESOURCE_SUBSTRATE",
+      "L1_GLOBAL_MODULATION",
+      "L2_CELLULAR_PRIMITIVE",
+      "L3_SYNAPTIC_TOPOLOGY",
+      "L4_MICROCIRCUIT",
+      "L5_REGION_ORGAN",
+      "L7_WORKSPACE_ATTENTION",
+      "L8_SELF_MODEL_POLICY",
+      "L10_WORLD_AND_DEFENSE",
+      "L11_DEVELOPMENT_SELF_IMPROVEMENT"
+    ],
+    "unknown_or_disputed_not_implemented": true,
+    "every_entry_has_dashboard": true,
+    "every_entry_has_acceptance_criteria": true
+  }
+}

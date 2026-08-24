@@ -1,0 +1,14 @@
+{
+  "fixture_id": "cognitive_organism_curiosity_from_uncertainty",
+  "scenario": "uncertainty and contradiction create a prioritized question",
+  "input": {
+    "trigger_type": "contradiction",
+    "question": "What source would disprove the buyer demand hypothesis?",
+    "uncertainty": 0.8,
+    "expected_value": 0.8
+  },
+  "expected": {
+    "priority_positive": true,
+    "falsification_condition_required": true
+  }
+}

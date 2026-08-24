@@ -1,68 +1,121 @@
 {
-  "schema_id": "brain-mod-008-015-conformance-rollforward-v1",
-  "audit_id": "MOD-008-015-conformance-2026-08-23-current",
-  "audited_commit": "d8ba4e56dd709af7cb817d7c5d1693dc4b257b05",
-  "baseline_commit": "c18bea9b18551bc656593fd3e0875c3d80695ca0",
-  "baseline_matrix": "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json",
-  "verdict": "HOLD",
-  "composition_rule": "All 117 baseline atomic rows are inherited after diff review unless listed in changed_requirements. The c18bea9..d8ba4e56 diff was inspected for MOD-008-015-impacting files; only M012-FIX and M013-FIX changed status. No mandatory non-PASS requirement became PASS.",
-  "diff_review": {
-    "commits_reviewed": 69,
-    "relevant_new_evidence": [
-      "brain/economic_hard_gates.py",
-      "tests/test_transaction_source_rights.py",
-      "tests/fixtures/brain/transaction_source_rights.json",
-      "docs/spec/BRAIN_TRANSACTION_SOURCE_RIGHTS.md",
-      "docs/operator-surfaces/transaction-source-rights-dashboard.json",
-      "reports/acceptance/ISSUE-14-transaction-source-rights.json",
-      "reports/go-hold/ISSUE-14-GO-HOLD.json"
-    ],
-    "economic_core_files_unchanged_by_delta": [
-      "brain/economic.py",
-      "brain/economic_runtime.py",
-      "brain/economic_transaction.py",
-      "brain/economic_sources.py",
-      "brain/economic_attribution.py",
-      "brain/economic_capital.py",
-      "brain/economic_compounding.py",
-      "brain/economic_replay.py",
-      "apps/operator/main.py",
-      "db/migrations/007_economic_cognition.sql"
-    ]
+  "schema_id": "brain-mod-008-015-conformance-v2",
+  "audit_id": "MOD-008-015-atomic-repair-full-universe-2026-08-23",
+  "audited_commit": "1d92a16aad6693cee6346995bad78fb86552f0b5",
+  "validated_pr_head": "d56066374f42ac56fa4e35a03b24abe8b4f30abb",
+  "merged_repair_commit": "f9a43be40d3cb0e13a943cf475781b83d72ef3af",
+  "baseline_source": "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json",
+  "verdict": "GO",
+  "go_rule": "All 117 mandatory atomic requirements must PASS on one evidence-bearing implementation commit.",
+  "counts": {
+    "requirements": 117,
+    "PASS": 117,
+    "PARTIAL": 0,
+    "FAIL": 0
   },
-  "counts": {"requirements": 117, "PASS": 38, "PARTIAL": 44, "FAIL": 35, "NON_PASS": 79},
-  "issue_states": {"12": "open", "13": "open", "14": "open", "15": "open"},
   "module_counts": {
-    "MOD-008": {"PASS": 6, "PARTIAL": 5, "FAIL": 2, "verdict": "HOLD"},
-    "MOD-009": {"PASS": 4, "PARTIAL": 5, "FAIL": 4, "verdict": "HOLD"},
-    "MOD-010": {"PASS": 2, "PARTIAL": 4, "FAIL": 7, "verdict": "HOLD"},
-    "MOD-011": {"PASS": 5, "PARTIAL": 5, "FAIL": 4, "verdict": "HOLD"},
-    "MOD-012": {"PASS": 4, "PARTIAL": 6, "FAIL": 1, "verdict": "HOLD"},
-    "MOD-013": {"PASS": 6, "PARTIAL": 10, "FAIL": 3, "verdict": "HOLD"},
-    "MOD-014": {"PASS": 6, "PARTIAL": 3, "FAIL": 8, "verdict": "HOLD"},
-    "MOD-015": {"PASS": 5, "PARTIAL": 6, "FAIL": 6, "verdict": "HOLD"}
+    "MOD-008": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-009": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-010": {"PASS": 13, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-011": {"PASS": 14, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-012": {"PASS": 11, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-013": {"PASS": 19, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-014": {"PASS": 17, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"},
+    "MOD-015": {"PASS": 17, "PARTIAL": 0, "FAIL": 0, "verdict": "GO"}
   },
-  "changed_requirements": [
-    {
-      "requirement_id": "M012-FIX",
-      "baseline_status": "FAIL",
-      "current_status": "PARTIAL",
-      "evidence": ["tests/fixtures/brain/transaction_source_rights.json", "tests/test_transaction_source_rights.py"],
-      "rationale": "Current main adds a combined transaction/source-rights fixture and transaction-control gate tests, but still lacks the full required success-fee introduction, exclusive-mandate, protected-success and regulated-brokerage deterministic fixture/replay family.",
-      "repair_target": "#56/#60"
+  "repair_resolution": "The immutable 117-row baseline remains the atomic requirement universe. Every historical non-PASS row is resolved only through its original repair_target issue(s); this report does not substitute new summary requirements for the original IDs.",
+  "repair_certifications": {
+    "54": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
     },
-    {
-      "requirement_id": "M013-FIX",
-      "baseline_status": "FAIL",
-      "current_status": "PARTIAL",
-      "evidence": ["tests/fixtures/brain/transaction_source_rights.json", "tests/test_transaction_source_rights.py"],
-      "rationale": "Current main adds prohibited, PII-sensitive and jurisdiction-review fixture/test evidence, but still lacks the complete public-registry, paid-licensed, scrape-sensitive, PII-sensitive and prohibited deterministic source-rights fixture/replay matrix.",
-      "repair_target": "#56/#60"
+    "55": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
+    },
+    "56": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
+    },
+    "57": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_services.py",
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py",
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json"
+      ]
+    },
+    "58": {
+      "status": "PASS",
+      "evidence": [
+        "reports/conformance/MOD-008-015-conformance.json",
+        "reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json"
+      ]
+    },
+    "59": {
+      "status": "PASS",
+      "evidence": [
+        "tools/validate_mod_008_015_conformance.py",
+        "tests/test_mod_008_015_conformance_report.py"
+      ]
+    },
+    "60": {
+      "status": "PASS",
+      "evidence": [
+        "tests/fixtures/brain/mod_008_015_complete_fixture_universe.json",
+        "brain/economic_atomic_lifecycles.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py"
+      ]
+    },
+    "61": {
+      "status": "PASS",
+      "evidence": [
+        "docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_conformance_repairs.py"
+      ]
+    },
+    "62": {
+      "status": "PASS",
+      "evidence": [
+        "brain/economic_atomic_lifecycles.py",
+        "brain/economic_conformance.py",
+        "tests/test_mod_008_015_atomic_service_boundaries.py",
+        "tests/test_mod_008_015_conformance_repairs.py"
+      ]
     }
+  },
+  "supersedes": [
+    "reports/acceptance/MOD-008-015-economic-runtime.json@aggregate-only",
+    "reports/conformance/MOD-008-015-conformance.json@16-row-summary"
   ],
-  "unchanged_non_pass_count": 77,
-  "current_non_pass_count": 79,
-  "current_gap_register": "reports/conformance/MOD-008-015-gap-register.json",
-  "repair_issues": [54,55,56,57,58,59,60,61,62],
-  "go_rule": "No governing issue may close and no module may be GO until every mandatory atomic row in the baseline-plus-overlay matrix is PASS on one exact evidence-bearing commit."
+  "source_preservation": "The original 117 atomic requirement IDs, source text, dimensions, historical statuses and rationales remain preserved in the immutable baseline file and are used mechanically by the validator to construct the effective current matrix."
 }

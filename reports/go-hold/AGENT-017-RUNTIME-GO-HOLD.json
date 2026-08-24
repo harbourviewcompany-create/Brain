@@ -1,0 +1,28 @@
+{
+  "report_id": "AGENT-017-runtime-go-hold-v0",
+  "issue": 77,
+  "verdict": "GO_FOR_RUNTIME_V0_HOLD_FOR_LIVE_SELF_MODIFICATION_AND_SUPERIORITY_CLAIMS",
+  "go": [
+    "capability benchmark registration and evidence-backed run recording",
+    "visible regression detection",
+    "learning-debt prioritization",
+    "proposal-only self-optimization planning",
+    "rollback/test/acceptance requirements for improvement hypotheses",
+    "external-evidence gate for superiority claims"
+  ],
+  "hold": [
+    "live autonomous self-modification",
+    "external action triggered by benchmark output",
+    "full Brain completion claim",
+    "biological equivalence claim",
+    "consciousness claim",
+    "superior-intelligence claim without external benchmark evidence",
+    "archive file-byte completion until issue #52 is resolved"
+  ],
+  "evidence": [
+    "brain/developmental/self_model.py",
+    "tests/test_metacognitive_benchmark_flywheel.py",
+    "tests/fixtures/brain/metacognitive_benchmark_runtime.json",
+    "reports/acceptance/AGENT-017-metacognitive-benchmark-runtime.json"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "report_id":"AGENT-020-GOVERNED-DEVELOPMENTAL-CYCLE-GO-HOLD",
+  "issue":91,
+  "status":"GO_EXACT_HEAD_VALIDATED",
+  "validated_implementation_sha":"b3721d24388285a56eb7f356295738c991ec19ed",
+  "go":["end-to-end developmental improvement orchestration","durable cycle checkpoints","separate approval gates","evidence-only experiment decisions","restart reconstruction"],
+  "hold":["self-approval","autonomous code mutation","automatic merge","deployment","spending","external action","unsupported intelligence-superiority claims"],
+  "closure_rule":"Merge only after the metadata head also passes protected control, test and lint workflows and main has no relevant drift."
+}

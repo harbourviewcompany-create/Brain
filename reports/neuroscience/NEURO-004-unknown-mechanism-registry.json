@@ -1,0 +1,30 @@
+{
+  "report_id": "NEURO-004-unknown-mechanism-registry",
+  "module_id": "MOD-NEURO-004",
+  "verdict": "GO",
+  "scope": "Unknown mechanism registry foundation",
+  "evidence": [
+    "docs/neuroscience/UNKNOWN_MECHANISM_REGISTRY.md",
+    "docs/neuroscience/json/unknown-mechanism-registry.json",
+    "tests/fixtures/neuro/unknown_mechanism_registry.json",
+    "tests/test_unknown_mechanism_registry.py",
+    "db/migrations/010_neuro_unknown_theory_registry.sql"
+  ],
+  "acceptance": [
+    "unknown mechanisms remain HOLD",
+    "claim boundaries are required",
+    "forbidden claims are explicit",
+    "allowed uses are bounded",
+    "execution mappings are present"
+  ],
+  "non_claims": [
+    "does not claim consciousness",
+    "does not claim sentience",
+    "does not claim literal emotion or selfhood",
+    "does not solve disputed neuroscience"
+  ],
+  "unresolved_gaps": [
+    "research evidence thresholds need future expansion",
+    "operator dashboard implementation remains future work"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "report_id": "COGNITIVE-ORGANISM-V1",
+  "verdict": "GO",
+  "scope": "deterministic functional consciousness proxy implementation slice",
+  "evidence": [
+    "brain/cognitive_organism.py",
+    "brain/self_model.py",
+    "brain/goals.py",
+    "brain/global_workspace.py",
+    "brain/imagination.py",
+    "brain/originality_engine.py",
+    "brain/cognitive_immune.py",
+    "brain/agency.py",
+    "brain/development.py",
+    "db/migrations/011_cognitive_organism.sql",
+    "tests/test_cognitive_organism_replay.py",
+    "tests/test_cognitive_organism_api.py"
+  ],
+  "accepted_capabilities": [
+    "self_state_snapshot",
+    "goal_pressure_competition",
+    "global_workspace_focus",
+    "curiosity_generation",
+    "originality_from_memory_refs",
+    "dream_consolidation",
+    "internal_debate",
+    "cognitive_immune_quarantine",
+    "approval_gated_agency",
+    "development_timeline",
+    "cockpit_surface"
+  ],
+  "not_claimed": [
+    "literal_subjective_consciousness",
+    "unapproved_external_action",
+    "tier_5_autonomy",
+    "production_live_scraping"
+  ]
+}

@@ -8,8 +8,9 @@ from brain.domain import Edge, Node, Outcome
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
 from brain.prediction import PredictionEngine, PredictionStatus
+from tests.conftest import TEST_API_KEY
 
-client = TestClient(app)
+client = TestClient(app, headers={"x-api-key": TEST_API_KEY})
 
 
 def test_create_prediction_emits_event_and_persists():

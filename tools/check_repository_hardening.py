@@ -21,7 +21,15 @@ REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "harbourviewcompany-create/Brai
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 MAIN_BRANCH = os.environ.get("BRAIN_MAIN_BRANCH", "main")
 
-REQUIRED_STATUS_CHECKS = {"Brain Control Policy", "test"}
+# NOTE: these must be the job-level `name:` fields from the workflow files
+# (what GitHub actually records as the status-check context), not the
+# top-level workflow `name:` field. See
+# .github/workflows/control-policy.yml -> jobs.control-policy.name and
+# .github/workflows/test.yml -> jobs.test.name.
+# tests/test_check_repository_hardening.py cross-checks this constant
+# against those files directly so a future workflow rename can't silently
+# reintroduce this bug.
+REQUIRED_STATUS_CHECKS = {"Validate Brain control policy", "test"}
 EXPECTED_ARCHIVE_PATHS = [
     "docs/archive/Brain_Compilation_Full_Current_Thread.docx",
     "docs/archive/Brain_Compilation_Full_Current_Thread.md",

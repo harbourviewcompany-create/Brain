@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .domain import Belief, CandidateAction
+from .cognitive_organism import CognitiveDebateSociety, DebateArgument, InternalDebate
 
 
 @dataclass(slots=True)
@@ -22,3 +23,12 @@ class DebateChamber:
         score = belief.confidence * action.expected_value - action.uncertainty
         recommendation = "advance" if score > 0.25 else "research_more" if score > 0 else "hold"
         return DebateVerdict(recommendation, pros, cons, max(0.0, min(1.0, 0.5 + score / 2)))
+
+
+__all__ = [
+    "DebateChamber",
+    "DebateVerdict",
+    "CognitiveDebateSociety",
+    "DebateArgument",
+    "InternalDebate",
+]
