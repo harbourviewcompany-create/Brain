@@ -182,8 +182,8 @@
     },
     {
       "ticket_id": "AGENT-007",
-      "issue_number": null,
-      "issue_url": null,
+      "issue_number": 130,
+      "issue_url": "https://github.com/harbourviewcompany-create/Brain/issues/130",
       "status": "in_progress",
       "title": "Wire CapitalLedger metabolism into cognitive homeostasis and scheduling",
       "phase": "V0_proof_harness",
