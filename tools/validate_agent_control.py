@@ -46,6 +46,7 @@ REQUIRED_FIXTURES = [
     "tests/fixtures/brain/outcome_reward_pain_learning.json",
     "tests/fixtures/brain/contradiction_review.json",
     "tests/fixtures/brain/acceptance_gate_go_hold.json",
+    "tests/fixtures/brain/capital_starvation_cycle.json",
 ]
 
 VALID_TASK_STATUSES = {"implemented", "in_progress", "planned", "blocked"}
