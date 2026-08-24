@@ -47,7 +47,7 @@
       "classification": "APPROVED",
       "go_hold_status": "REVIEW",
       "source_ids": ["SRC-CONTROL", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN"],
-      "requirement_ids": ["REQ-BRAIN-APPS", "REQ-CONTROL-ENFORCEMENT", "REQ-BRAIN-OPERATOR-DASHBOARD"],
+      "requirement_ids": ["REQ-BRAIN-APPS", "REQ-CONTROL-ENFORCEMENT"],
       "owner_object": "Fail-closed tenant-aware Brain operator plane",
       "schema": "Outer FastAPI security/readiness boundary mounting the preserved economic and Cognitive Organism operator routes; tenant-partitioned economic and organism read models",
       "runtime_service": "apps.operator.secure_main with SecurityConfig, TenantRequestSecurity, PostgresTenantMembershipResolver, TenantScopedConnectionPool and PostgresEconomicStore",
