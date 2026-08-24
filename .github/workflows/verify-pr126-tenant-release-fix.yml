@@ -42,6 +42,7 @@ jobs:
         run: |
           pytest -q \
             tests/test_pr126_release_integration.py \
+            tests/test_live_cockpit_signals.py \
             tests/test_edges_read_api.py \
             tests/test_api_key_auth.py \
             tests/test_tenant_auth.py \
@@ -128,7 +129,7 @@ jobs:
             select rolname||'|'||rolsuper||'|'||rolbypassrls from pg_roles where rolname='brain_runtime';
             select 'membership|'||role||'|'||status from public.tenant_memberships where tenant_id='${OBSERVATORY_TENANT_ID}'::uuid and user_id='brain-observatory-bff';
             select c.relname||'|'||c.relrowsecurity||'|'||c.relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('brain_events','graph_edges','beliefs','predictions','organism_audit_events') order by c.relname;
-            select 'event_trigger|'||tgenabled from pg_trigger where tgrelid='public.brain_events'::regclass and tgname='brain_events_append_only_update';
+            select 'event_trigger|'||tgenabled::text from pg_trigger where tgrelid='public.brain_events'::regclass and tgname='brain_events_append_only_update';
             set role brain_runtime;
             select 'runtime_service_context|'||public.current_brain_service_context();
             select 'runtime_tenants_without_context|'||count(*) from public.tenants;
@@ -196,9 +197,7 @@ jobs:
           done
           docker exec brain-pr126-upgrade psql -v ON_ERROR_STOP=1 -U brain -d brain -c "create table if not exists public.brain_schema_migrations(filename text primary key, sha256 text not null, applied_at timestamptz not null default now())"
           python - <<'PY'
-          import hashlib, pathlib, psycopg
-          conn=psycopg.connect('postgresql://brain:brain@127.0.0.1:55433/brain') if False else None
-          # SQL is emitted to a file so the Docker-network-only database remains isolated.
+          import hashlib, pathlib
           out=[]
           for p in sorted(pathlib.Path('db/migrations').glob('*.sql')):
               if p.name >= '019_':
@@ -234,12 +233,7 @@ jobs:
           PY
           docker rm -f brain-pr126-pre
       - name: Apply only missing 019 through 023 through privileged migration DSN
-        env:
-          DATABASE_URL: postgresql://brain_runtime:runtime@127.0.0.1:55432/brain
-          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
         run: |
-          docker run -d --name brain-pr126-forward -p 55432:5432 --network brain-pr126-release alpine sleep 1 >/dev/null 2>&1 || true
-          # Host port forwarding is intentionally not used; execute the canonical runner in the release image on the Docker network.
           docker run --rm --network brain-pr126-release \
             -e DATABASE_URL=postgresql://brain_runtime:runtime@brain-pr126-upgrade:5432/brain \
             -e BRAIN_MIGRATION_DATABASE_URL=postgresql://brain:brain@brain-pr126-upgrade:5432/brain \
@@ -260,7 +254,7 @@ jobs:
             select 'null_edges|'||count(*) from public.graph_edges where tenant_id is null;
             select 'null_events|'||count(*) from public.brain_events where tenant_id is null;
             select 'membership|'||role||'|'||status from public.tenant_memberships where tenant_id='${OBSERVATORY_TENANT_ID}'::uuid and user_id='brain-observatory-bff';
-            select 'event_trigger|'||tgenabled from pg_trigger where tgrelid='public.brain_events'::regclass and tgname='brain_events_append_only_update';
+            select 'event_trigger|'||tgenabled::text from pg_trigger where tgrelid='public.brain_events'::regclass and tgname='brain_events_append_only_update';
           " | tee evidence/backfill.txt
           grep -q 'role|false|false' evidence/backfill.txt
           grep -q "legacy_edge|${OBSERVATORY_TENANT_ID}" evidence/backfill.txt
@@ -312,12 +306,13 @@ jobs:
         run: |
           docker exec brain-pr126-upgrade psql -At -U brain -d brain -c "
             select 'runtime_edge_tenant|'||tenant_id from public.graph_edges where id='44444444-4444-4444-8444-444444444444'::uuid;
-            select 'runtime_events|'||count(*) from public.brain_events where tenant_id='${OBSERVATORY_TENANT_ID}'::uuid;
+            select 'runtime_signal_events|'||count(*) from public.brain_events where tenant_id='${OBSERVATORY_TENANT_ID}'::uuid and event_type='signal.enqueued';
             set role brain_runtime;
             select 'runtime_service_context|'||public.current_brain_service_context();
             reset role;
           " | tee evidence/runtime-db-verdict.txt
           grep -q "runtime_edge_tenant|${OBSERVATORY_TENANT_ID}" evidence/runtime-db-verdict.txt
+          grep -Eq 'runtime_signal_events\|[2-9][0-9]*' evidence/runtime-db-verdict.txt
           grep -q 'runtime_service_context|false' evidence/runtime-db-verdict.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -328,7 +323,7 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker rm -f brain-pr126-pre brain-pr126-runtime brain-pr126-upgrade brain-pr126-forward >/dev/null 2>&1 || true
+          docker rm -f brain-pr126-pre brain-pr126-runtime brain-pr126-upgrade >/dev/null 2>&1 || true
           docker network rm brain-pr126-release >/dev/null 2>&1 || true
 
   live-baseline:
