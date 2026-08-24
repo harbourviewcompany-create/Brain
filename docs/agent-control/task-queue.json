@@ -184,7 +184,7 @@
       "ticket_id": "AGENT-007",
       "issue_number": 130,
       "issue_url": "https://github.com/harbourviewcompany-create/Brain/issues/130",
-      "status": "implemented_pending_ci_and_merge",
+      "status": "implemented",
       "title": "Wire CapitalLedger metabolism into cognitive homeostasis and scheduling",
       "phase": "V0_proof_harness",
       "objective": "Register the capital-as-hunger homeostatic loop and wire it into the live CognitiveCycle so ticks and outcomes update HomeostaticState.budget_pressure at runtime, while resolving single-dimension stress_index dilution.",
