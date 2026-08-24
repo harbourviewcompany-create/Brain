@@ -1,48 +1,42 @@
 {
   "agent_id": "AGENT-021",
   "evidence_type": "MERGE_READY_CANDIDATE",
-  "status": "GO_CANDIDATE_PENDING_REPORT_HEAD_REVALIDATION",
-  "validated_candidate_head": "9a32a64098c47ecb4eb18e2a491c062284eceb68",
-  "validated_merge_ref": "39c50a21e7f99ceac9037f6806882ceafe8a21dd",
-  "protected_main": "e0b02a9f95544f7fb880c68a9f10d56beb7c9f82",
-  "protected_control": {
-    "run_id": 32681388554,
-    "job_id": 97298577160,
-    "job_name": "Validate Brain control policy",
-    "conclusion": "success"
+  "status": "HOLD_PENDING_FINAL_EXACT_HEAD_REVALIDATION",
+  "previous_validated_candidate_head": "9a32a64098c47ecb4eb18e2a491c062284eceb68",
+  "previous_validated_merge_ref": "39c50a21e7f99ceac9037f6806882ceafe8a21dd",
+  "reconciliation_note": "Protected main advanced after the previous green candidate. The convergence now preserves the heartbeat perception-to-learning loop and NEURO-006 Global Workspace Proxy, and resolves migration numbering without weakening migration-integrity enforcement. This report-bearing head must pass all protected gates again before merge.",
+  "previous_green_evidence": {
+    "protected_control_run_id": 32681388554,
+    "test_workflow_run_id": 32681388578,
+    "pytest": "287 passed, 1 warning on the prior validated candidate",
+    "mod_008_015": "117/117 PASS; 0 PARTIAL; 0 FAIL on the prior validated candidate",
+    "ruff": "All checks passed on the prior validated candidate",
+    "temporal": "Temporal SDK time-skipping and continue-as-new acceptance passed on the prior validated candidate",
+    "container": "PostgreSQL migrations, API/worker images, authenticated restart persistence and database-outage readiness passed on the prior validated candidate"
   },
-  "test_workflow": {
-    "run_id": 32681388578,
-    "job_id": 97298577583,
-    "conclusion": "success",
-    "pytest": "287 passed, 1 warning",
-    "mod_008_015": "117/117 PASS; 0 PARTIAL; 0 FAIL",
-    "ruff": "All checks passed",
-    "temporal": "tests/test_temporal_orchestration.py executed in ordinary pytest using WorkflowEnvironment.start_time_skipping; cognition and maintenance activities plus continue-as-new acceptance are covered"
-  },
-  "container_workflow": {
-    "run_id": 32681388578,
-    "job_id": 97298577322,
-    "conclusion": "success",
-    "checks": [
-      "PostgreSQL/pgvector started",
-      "all database migrations through 013 applied",
-      "API image built",
-      "worker image built",
-      "production API became ready",
-      "unauthenticated protected request returned 401",
-      "authenticated belief write survived API restart",
-      "configured database outage made readiness return 503"
-    ]
-  },
+  "final_required_evidence": [
+    "Validate Brain control policy succeeds on the exact report-bearing head",
+    "full test job succeeds on the exact report-bearing head",
+    "MOD-008 through MOD-015 remains 117/117 PASS",
+    "MOD-016 and NEURO-006 tests remain green",
+    "Temporal workflow test-server acceptance including continue-as-new remains green",
+    "all SQL migrations apply through migration 014 with no new duplicate version",
+    "API and worker images build",
+    "authenticated PostgreSQL belief state survives API restart",
+    "configured database outage makes readiness fail closed",
+    "current protected main remains an ancestor immediately before merge"
+  ],
   "migration_authority": [
     "011_developmental_evidence_ledger.sql",
     "012_cognitive_organism.sql",
-    "013_cognitive_object_store.sql"
+    "013_neuro_global_workspace_proxy.sql",
+    "014_cognitive_object_store.sql"
   ],
   "preserved_authority": [
     "AGENT-017 through AGENT-020",
     "Cognitive Organism V1",
+    "heartbeat runner and sensory inbox closed perception-to-learning loop",
+    "NEURO-006 Global Workspace Proxy",
     "MOD-008 through MOD-015 117-row conformance",
     "MOD-016 Capital Source Intelligence Registry",
     "neuroscience unknown and theory boundaries",
@@ -50,6 +44,6 @@
   ],
   "merge_authorization": "User explicitly authorized merge after repository acceptance gates are green.",
   "production_deployment_status": "HOLD",
-  "report_head_rule": "This evidence file changes the branch head. The report-bearing head must pass the same protected control, test/lint and container acceptance gates before merge.",
-  "source_preservation": "No developmental, cognitive-organism, economic, source-intelligence, neuroscience, control, archive, speculative, theory, unknown or future Brain scope is deleted or narrowed."
+  "external_action_status": "HOLD except for the explicitly authorized GitHub merge after final gates are green",
+  "source_preservation": "No developmental, cognitive-organism, heartbeat, neuroscience, economic, source-intelligence, control, archive, speculative, theory, unknown or future Brain scope is deleted or narrowed."
 }
