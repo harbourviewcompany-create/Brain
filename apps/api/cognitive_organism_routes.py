@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, is_dataclass
 from typing import Any
 from uuid import UUID
@@ -8,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
+from brain.adapters.cognition import InMemoryCognitiveOrganismStore, PostgresCognitiveOrganismStore
 from brain.cognitive_organism import AgencyTier, CognitiveOrganism, GlobalWorkspaceItem
 
 organism = CognitiveOrganism()
@@ -100,10 +102,51 @@ class AgencyApproveRequest(BaseModel):
     approved_by: str
 
 
+def _configure_persistence_store() -> InMemoryCognitiveOrganismStore | PostgresCognitiveOrganismStore:
+    dsn = os.environ.get("DATABASE_URL")
+    if not dsn:
+        return InMemoryCognitiveOrganismStore()
+    try:
+        return PostgresCognitiveOrganismStore(dsn)
+    except Exception:
+        return InMemoryCognitiveOrganismStore()
+
+
+organism_store = _configure_persistence_store()
+startup_checkpoint = organism_store.load_checkpoint("organism_runtime")
+organism_store.append_audit_event(
+    "COGNITIVE_ORGANISM_ROUTE_BOOTSTRAPPED",
+    "cognitive_organism_runtime",
+    "organism_runtime",
+    {"rehydrated_checkpoint": startup_checkpoint is not None},
+)
+
+
 def encode(value: Any) -> Any:
     if is_dataclass(value):
         return jsonable_encoder(asdict(value))
     return jsonable_encoder(value)
+
+
+def _checkpoint(reason: str) -> None:
+    organism_store.save_checkpoint(
+        "organism_runtime",
+        {
+            "reason": reason,
+            "cockpit": organism.cockpit(),
+            "counts": {
+                "self_state_snapshots": len(organism.self_model.snapshots),
+                "workspace_items": len(organism.workspace.items),
+                "curiosity_tasks": len(organism.curiosity.tasks),
+                "original_ideas": len(organism.originality.ideas),
+                "dream_insights": len(organism.dreams.insights),
+                "debates": len(organism.debates.debates),
+                "quarantine_items": len(organism.immune.quarantine),
+                "agency_actions": len(organism.agency.actions),
+                "development_events": len(organism.development.events),
+            },
+        },
+    )
 
 
 def register_cognitive_organism_routes(app: FastAPI) -> None:
@@ -151,43 +194,92 @@ def register_cognitive_organism_routes(app: FastAPI) -> None:
     def organism_cockpit():
         return organism.cockpit()
 
+    @app.get("/organism/persistence/status")
+    def organism_persistence_status():
+        return {
+            "store": type(organism_store).__name__,
+            "checkpoint_name": "organism_runtime",
+            "has_startup_checkpoint": startup_checkpoint is not None,
+            "autonomy_boundary": "persistence_only_no_external_action",
+        }
+
+    @app.get("/organism/persistence/checkpoint")
+    def organism_persistence_checkpoint():
+        return {"checkpoint": organism_store.load_checkpoint("organism_runtime")}
+
+    @app.post("/organism/persistence/checkpoint")
+    def organism_persistence_checkpoint_now():
+        _checkpoint("operator_requested_checkpoint")
+        return {"checkpoint": organism_store.load_checkpoint("organism_runtime")}
+
+    @app.post("/organism/persistence/rehydrate")
+    def organism_persistence_rehydrate():
+        checkpoint = organism_store.load_checkpoint("organism_runtime")
+        organism_store.append_audit_event(
+            "COGNITIVE_ORGANISM_REHYDRATE_REQUESTED",
+            "cognitive_organism_checkpoint",
+            "organism_runtime",
+            {"checkpoint_found": checkpoint is not None},
+        )
+        return {"rehydrated": checkpoint is not None, "checkpoint": checkpoint}
+
+    @app.get("/organism/audit-events")
+    def organism_audit_events(limit: int = 50):
+        return {"items": organism_store.list_audit_events(limit=limit)}
+
     @app.post("/organism/self-state/update")
     def organism_update_self_state(body: SelfStateUpdateRequest):
-        return encode(organism.update_self_state(**body.model_dump()))
+        result = organism.update_self_state(**body.model_dump())
+        _checkpoint("self_state_update")
+        return encode(result)
 
     @app.post("/organism/workspace/admit")
     def organism_admit_workspace(body: WorkspaceAdmitRequest):
         item = GlobalWorkspaceItem(**body.model_dump())
         admitted = organism.admit_workspace_item(item)
+        _checkpoint("workspace_admit")
         return {"admitted": admitted, "item": encode(item), "workspace": organism.workspace.snapshot()}
 
     @app.post("/organism/curiosity/generate")
     def organism_generate_curiosity(body: CuriosityGenerateRequest):
-        return encode(organism.curiosity.generate(**body.model_dump()))
+        result = organism.curiosity.generate(**body.model_dump())
+        _checkpoint("curiosity_generate")
+        return encode(result)
 
     @app.post("/organism/original-ideas/generate")
     def organism_generate_original_idea(body: OriginalIdeaGenerateRequest):
-        return encode(organism.generate_original_idea(**body.model_dump()))
+        result = organism.generate_original_idea(**body.model_dump())
+        _checkpoint("original_idea_generate")
+        return encode(result)
 
     @app.post("/organism/dream/run")
     def organism_run_dream(body: DreamRunRequest):
         cycle, insight = organism.dreams.run(body.memory_refs, body.signal_refs, body.repeated_patterns)
+        _checkpoint("dream_run")
         return {"cycle": encode(cycle), "insight": encode(insight)}
 
     @app.post("/organism/debate")
     def organism_debate(body: DebateRequest):
-        return encode(organism.debates.debate(**body.model_dump()))
+        result = organism.debates.debate(**body.model_dump())
+        _checkpoint("debate")
+        return encode(result)
 
     @app.post("/organism/immune/screen")
     def organism_immune_screen(body: ImmuneScreenRequest):
-        return encode(organism.immune.screen(**body.model_dump()))
+        result = organism.immune.screen(**body.model_dump())
+        _checkpoint("immune_screen")
+        return encode(result)
 
     @app.post("/organism/agency/propose")
     def organism_agency_propose(body: AgencyProposeRequest):
         data = body.model_dump()
         data["tier"] = AgencyTier(data["tier"])
-        return encode(organism.agency.propose(**data))
+        result = organism.agency.propose(**data)
+        _checkpoint("agency_propose")
+        return encode(result)
 
     @app.post("/organism/agency/approve")
     def organism_agency_approve(body: AgencyApproveRequest):
-        return encode(organism.agency.approve(UUID(body.action_id), body.approved_by))
+        result = organism.agency.approve(UUID(body.action_id), body.approved_by)
+        _checkpoint("agency_approve")
+        return encode(result)

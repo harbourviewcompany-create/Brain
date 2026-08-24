@@ -7,10 +7,12 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
+from brain.cognitive_organism import AgencyTier, CognitiveOrganism, GlobalWorkspaceItem
 from brain.economic_runtime import EconomicRuntime, InMemoryEconomicStore
 
-app = FastAPI(title="Brain Economic Operator", version="0.1.0")
+app = FastAPI(title="Brain Economic Operator", version="0.2.0")
 economic = EconomicRuntime(InMemoryEconomicStore())
+organism = CognitiveOrganism()
 
 
 def _configure_from_env() -> None:
@@ -26,6 +28,52 @@ def _configure_from_env() -> None:
 
 
 _configure_from_env()
+
+
+def _seed_organism_operator_state() -> None:
+    if organism.self_model.current is not None:
+        return
+    workspace_item = GlobalWorkspaceItem(
+        item_type="operator_focus",
+        title="Persistence and cockpit verification",
+        content="The operator cockpit is focused on durable state, approvals and safe autonomy boundaries.",
+        source_refs=["operator:cognitive-organism-persistence-cockpit-v1"],
+        salience=0.82,
+        novelty=0.55,
+        urgency=0.65,
+        risk=0.15,
+        goal_pressure=0.72,
+    )
+    organism.admit_workspace_item(workspace_item)
+    organism.curiosity.generate(
+        "operator_gap",
+        ["operator:cognitive-organism-persistence-cockpit-v1"],
+        "What production state is missing before higher autonomy is safe?",
+        expected_value=0.8,
+        uncertainty=0.62,
+        falsification_condition="Do not advance autonomy until persistence replay and approval logs survive restart.",
+    )
+    organism.agency.propose(
+        action_type="operator_review",
+        proposal="Review persistence checkpoint and approval queue before enabling live source execution.",
+        tier=AgencyTier.TIER_3_RECOMMEND,
+        source_refs=["operator:cognitive-organism-persistence-cockpit-v1"],
+    )
+    organism.update_self_state(
+        current_focus_summary="Persistence-backed organism cockpit is active",
+        belief_count=1,
+        event_count=1,
+        prediction_count=1,
+        opportunity_count=0,
+        uncertainty_load=0.35,
+        contradiction_load=0.1,
+        curiosity_pressure=0.62,
+        revenue_pressure=0.55,
+        risk_pressure=0.25,
+        memory_pressure=0.28,
+        action_backlog_pressure=0.35,
+        source_event_ids=["operator:cognitive-organism-persistence-cockpit-v1"],
+    )
 
 
 @app.get("/health")
@@ -131,6 +179,12 @@ def sources() -> list[dict[str, Any]]:
     ]
 
 
+@app.get("/operator/organism")
+def organism_operator_snapshot() -> dict[str, Any]:
+    _seed_organism_operator_state()
+    return organism.cockpit()
+
+
 @app.get("/operator/ui", response_class=HTMLResponse)
 def operator_ui() -> str:
     snapshot = economic.operator_snapshot()
@@ -162,7 +216,53 @@ nav{{margin-top:24px;display:flex;gap:16px;flex-wrap:wrap}}a{{color:#9cc9ff}}
 </style></head><body><main><h1>Brain Economic Operator</h1>
 <p>Attention, pressure, money paths, transactions, source rights/ROI and compounding state.</p>
 <section>{cards}</section><nav>
-<a href='/operator'>JSON snapshot</a><a href='/operator/pressure'>Pressure map</a>
-<a href='/operator/money-paths'>Money paths</a><a href='/operator/counterparties'>Counterparties</a>
-<a href='/operator/transactions'>Transactions</a><a href='/operator/sources'>Sources</a>
+<a href='/operator'>JSON snapshot</a><a href='/operator/organism/ui'>Organism cockpit</a>
+<a href='/operator/pressure'>Pressure map</a><a href='/operator/money-paths'>Money paths</a>
+<a href='/operator/counterparties'>Counterparties</a><a href='/operator/transactions'>Transactions</a>
+<a href='/operator/sources'>Sources</a>
 </nav></main></body></html>"""
+
+
+@app.get("/operator/organism/ui", response_class=HTMLResponse)
+def organism_operator_ui() -> str:
+    _seed_organism_operator_state()
+    snapshot = organism.cockpit()
+    self_state = snapshot.get("self_state") or {}
+    rows = [
+        ("FOCUS ITEMS", len(snapshot["conscious_focus"]["active_focus"])),
+        ("CURIOSITY", len(snapshot["curiosity_queue"])),
+        ("ORIGINAL IDEAS", len(snapshot["original_ideas"])),
+        ("DREAM INSIGHTS", len(snapshot["dream_insights"])),
+        ("DEBATES", len(snapshot["internal_debates"])),
+        ("QUARANTINE", len(snapshot["immune_quarantine"])),
+        ("ACTIONS", len(snapshot["proposed_actions"])),
+        ("DEVELOPMENT EVENTS", len(snapshot["development_timeline"])),
+    ]
+    cards = "".join(
+        f"<article><strong>{html.escape(label)}</strong><span>{value}</span></article>"
+        for label, value in rows
+    )
+    focus = html.escape(str(self_state.get("focus", "no self-state yet")))
+    boundary = html.escape(str(snapshot["autonomy_boundary"]))
+    curiosity = "".join(f"<li>{html.escape(item)}</li>" for item in snapshot["curiosity_queue"])
+    actions = "".join(f"<li>{html.escape(item)}</li>" for item in snapshot["proposed_actions"])
+    return f"""<!doctype html>
+<html><head><meta charset='utf-8'><title>Brain Organism Operator</title>
+<style>
+body{{font-family:system-ui;margin:0;background:#081018;color:#edf2f7}}
+main{{max-width:1160px;margin:40px auto;padding:0 20px}}
+h1{{font-size:30px}}p,li{{color:#a7b4c2}}strong{{color:#dbeafe}}
+section.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}}
+article{{background:#121c27;border:1px solid #26394f;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}}
+article strong{{font-size:12px;letter-spacing:.08em;color:#9fb0c3}}article span{{font-size:30px}}
+section.panel{{margin-top:18px;background:#101925;border:1px solid #26394f;border-radius:10px;padding:18px}}
+a{{color:#9cc9ff}}
+</style></head><body><main><h1>Brain Organism Operator</h1>
+<p>Functional consciousness proxy cockpit. This is governed cognition, not a literal consciousness claim.</p>
+<section class='cards'>{cards}</section>
+<section class='panel'><strong>Current focus</strong><p>{focus}</p></section>
+<section class='panel'><strong>Autonomy boundary</strong><p>{boundary}</p></section>
+<section class='panel'><strong>Curiosity queue</strong><ul>{curiosity}</ul></section>
+<section class='panel'><strong>Proposed actions</strong><ul>{actions}</ul></section>
+<p><a href='/operator/organism'>JSON organism snapshot</a> · <a href='/operator/ui'>Economic cockpit</a></p>
+</main></body></html>"""
