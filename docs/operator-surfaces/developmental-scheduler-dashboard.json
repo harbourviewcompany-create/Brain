@@ -1,0 +1,22 @@
+{
+  "surface_id": "developmental-scheduler",
+  "status": "GO_INTERNAL_HOLD_EXTERNAL",
+  "panels": [
+    "due_capabilities",
+    "evidence_staleness",
+    "regression_risk",
+    "resource_budget",
+    "active_backoff",
+    "run_history",
+    "restart_replay_integrity"
+  ],
+  "forbidden_controls": [
+    "self_approve_plan",
+    "self_approve_experiment",
+    "mutate_repository",
+    "merge",
+    "deploy",
+    "spend",
+    "external_action"
+  ]
+}

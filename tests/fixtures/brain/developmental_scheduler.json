@@ -1,0 +1,24 @@
+{
+  "fixture_id": "AGENT-021-developmental-scheduler",
+  "source": "issue:103",
+  "required_cases": [
+    "due",
+    "not_due",
+    "budget_exhaustion",
+    "failure_backoff",
+    "stale_evidence_priority",
+    "regression_risk_priority",
+    "restart_reconstruction",
+    "attempted_approval_bypass"
+  ],
+  "invariants": {
+    "assessment_only": true,
+    "self_approval": false,
+    "code_mutation": false,
+    "merge": false,
+    "deploy": false,
+    "spend": false,
+    "external_action": false,
+    "durable_replay": true
+  }
+}
