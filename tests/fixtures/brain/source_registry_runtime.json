@@ -1,0 +1,22 @@
+{
+  "fixture_id": "source_registry_runtime",
+  "module_id": "MOD-017",
+  "scenario": "A registered source runs a controlled ingestion cycle, records a provenance-backed observation, routes a signal inbox item, deduplicates repeated snapshots, records health state, and can replay from a snapshot.",
+  "expected": {
+    "source_registered_event": "SOURCE_REGISTERED",
+    "ingestion_started_event": "INGESTION_RUN_STARTED",
+    "observation_event": "SOURCE_OBSERVATION_RECORDED",
+    "signal_event": "SIGNAL_INBOX_ITEM_CREATED",
+    "dedupe_event": "SOURCE_OBSERVATION_DEDUPED",
+    "health_event": "SOURCE_HEALTH_CHECK_RECORDED",
+    "manual_automation_blocked": true,
+    "paid_license_blocked": true,
+    "snapshot_replay_required": true
+  },
+  "hold_boundaries": [
+    "No live scraping or API connector is activated by this fixture.",
+    "No external commercial action is performed by the runtime.",
+    "Paid licensed sources remain HOLD until license metadata and cost controls exist.",
+    "Manual-only sources cannot start automated ingestion."
+  ]
+}

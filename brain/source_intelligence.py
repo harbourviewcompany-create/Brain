@@ -472,3 +472,487 @@ DEFAULT_INGESTION_POLICIES: tuple[IngestionPolicy, ...] = (
         ],
     ),
 )
+
+
+class IngestionRunStatus(StrEnum):
+    STARTED = "started"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+
+
+class SourceObservationStatus(StrEnum):
+    RECORDED = "recorded"
+    DUPLICATE = "duplicate"
+    REJECTED = "rejected"
+
+
+class SignalReviewStatus(StrEnum):
+    INBOX = "inbox"
+    NEEDS_EVIDENCE = "needs_evidence"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    PROMOTED_TO_OPPORTUNITY = "promoted_to_opportunity"
+    HOLD = "hold"
+
+
+class SourceHealthStatus(StrEnum):
+    HEALTHY = "healthy"
+    STALE = "stale"
+    DEGRADED = "degraded"
+    BROKEN = "broken"
+    RETIRED = "retired"
+
+
+class SourceRegistryRuntimeError(ValueError):
+    pass
+
+
+class SourceRegistryEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event_id: UUID = Field(default_factory=uuid4)
+    source_id: UUID | None = None
+    related_object_id: UUID | None = None
+    event_type: str
+    occurred_at: datetime = Field(default_factory=utcnow)
+    actor: str = "system"
+    detail: str
+
+
+class IngestionRun(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: UUID = Field(default_factory=uuid4)
+    source_id: UUID
+    access_method: AccessMethod
+    status: IngestionRunStatus = IngestionRunStatus.STARTED
+    started_at: datetime = Field(default_factory=utcnow)
+    completed_at: datetime | None = None
+    observations_created: int = Field(default=0, ge=0)
+    error_message: str | None = None
+
+
+class SourceObservation(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    observation_id: UUID = Field(default_factory=uuid4)
+    source_id: UUID
+    ingestion_run_id: UUID | None = None
+    source_url_or_path: str
+    observed_at: datetime = Field(default_factory=utcnow)
+    retrieved_at: datetime = Field(default_factory=utcnow)
+    extract_hash_or_snapshot_id: str
+    legal_access_status: LegalAccessStatus
+    signal_types: list[SignalType] = Field(min_length=1)
+    raw_summary: str
+    normalized_entities: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(min_length=1)
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    status: SourceObservationStatus = SourceObservationStatus.RECORDED
+
+    @model_validator(mode="after")
+    def validate_observation_trace(self) -> Self:
+        if not self.source_url_or_path.strip():
+            raise ValueError("source_url_or_path is mandatory observation provenance")
+        if not self.extract_hash_or_snapshot_id.strip():
+            raise ValueError("extract_hash_or_snapshot_id is mandatory observation provenance")
+        if not self.raw_summary.strip():
+            raise ValueError("raw_summary is required before signal intake")
+        return self
+
+
+class SignalInboxItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    signal_id: UUID = Field(default_factory=uuid4)
+    observation_id: UUID
+    source_id: UUID
+    title: str
+    signal_types: list[SignalType] = Field(min_length=1)
+    evidence_refs: list[str] = Field(min_length=1)
+    confidence: float = Field(ge=0, le=1)
+    review_status: SignalReviewStatus = SignalReviewStatus.INBOX
+    routed_at: datetime = Field(default_factory=utcnow)
+    downstream_use_cases: list[str] = Field(default_factory=list)
+    action_suggestions: list[str] = Field(default_factory=list)
+    reviewer: str | None = None
+    review_note: str | None = None
+
+
+class SourceHealthCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    health_check_id: UUID = Field(default_factory=uuid4)
+    source_id: UUID
+    checked_at: datetime = Field(default_factory=utcnow)
+    status: SourceHealthStatus
+    message: str
+    consecutive_failures: int = Field(default=0, ge=0)
+    next_review_at: datetime | None = None
+
+
+class SourceRegistrySnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    snapshot_id: UUID = Field(default_factory=uuid4)
+    created_at: datetime = Field(default_factory=utcnow)
+    sources: list[SourceIntelligenceRecord] = Field(default_factory=list)
+    ingestion_runs: list[IngestionRun] = Field(default_factory=list)
+    observations: list[SourceObservation] = Field(default_factory=list)
+    signal_inbox: list[SignalInboxItem] = Field(default_factory=list)
+    health_checks: list[SourceHealthCheck] = Field(default_factory=list)
+    events: list[SourceRegistryEvent] = Field(default_factory=list)
+
+
+class PersistentSourceRegistryRuntime:
+    """Deterministic MOD-017 persistence boundary for source registry and signal intake.
+
+    This runtime is intentionally connector-free. It validates lifecycle, provenance,
+    duplicate observations, signal intake, source health and replay snapshots without
+    performing live scraping, API calls, browser automation or external commercial action.
+    """
+
+    def __init__(self, snapshot: SourceRegistrySnapshot | None = None) -> None:
+        self.sources: dict[UUID, SourceIntelligenceRecord] = {}
+        self.ingestion_runs: dict[UUID, IngestionRun] = {}
+        self.observations: dict[UUID, SourceObservation] = {}
+        self.signal_inbox: dict[UUID, SignalInboxItem] = {}
+        self.health_checks: dict[UUID, SourceHealthCheck] = {}
+        self.events: list[SourceRegistryEvent] = []
+        self._observation_hash_index: dict[tuple[UUID, str], UUID] = {}
+        self._signal_by_observation: dict[UUID, UUID] = {}
+        if snapshot is not None:
+            self.load_snapshot(snapshot)
+
+    def emit_event(
+        self,
+        event_type: str,
+        detail: str,
+        *,
+        source_id: UUID | None = None,
+        related_object_id: UUID | None = None,
+        actor: str = "system",
+    ) -> SourceRegistryEvent:
+        event = SourceRegistryEvent(
+            source_id=source_id,
+            related_object_id=related_object_id,
+            event_type=event_type,
+            actor=actor,
+            detail=detail,
+        )
+        self.events.append(event)
+        return event
+
+    def register_source(
+        self, record: SourceIntelligenceRecord, *, actor: str = "system"
+    ) -> SourceIntelligenceRecord:
+        if record.id in self.sources:
+            raise SourceRegistryRuntimeError(f"source already registered: {record.id}")
+        self.sources[record.id] = record
+        self.emit_event(
+            "SOURCE_REGISTERED",
+            f"Registered source {record.source_name}",
+            source_id=record.id,
+            actor=actor,
+        )
+        return record
+
+    def update_source_lifecycle(
+        self,
+        source_id: UUID,
+        lifecycle_status: SourceLifecycleStatus,
+        *,
+        actor: str = "system",
+    ) -> SourceIntelligenceRecord:
+        source = self.require_source(source_id)
+        updated = source.model_copy(update={"lifecycle_status": lifecycle_status, "updated_at": utcnow()})
+        disposition = operational_disposition(updated)
+        if disposition in {
+            OperationalDisposition.HOLD_PROHIBITED,
+            OperationalDisposition.HOLD_TERMS_REVIEW,
+            OperationalDisposition.HOLD_PII_REVIEW,
+            OperationalDisposition.HOLD_LICENSE_REVIEW,
+        } and lifecycle_status in {SourceLifecycleStatus.ACTIVE, SourceLifecycleStatus.MONITORED}:
+            raise SourceRegistryRuntimeError(
+                f"cannot activate source with disposition {disposition}"
+            )
+        self.sources[source_id] = updated
+        self.emit_event(
+            "SOURCE_LIFECYCLE_UPDATED",
+            f"Source lifecycle set to {lifecycle_status}",
+            source_id=source_id,
+            actor=actor,
+        )
+        return updated
+
+    def start_ingestion_run(
+        self, source_id: UUID, access_method: AccessMethod, *, actor: str = "system"
+    ) -> IngestionRun:
+        source = self.require_source(source_id)
+        disposition = operational_disposition(source)
+        if disposition in {
+            OperationalDisposition.HOLD_PROHIBITED,
+            OperationalDisposition.HOLD_TERMS_REVIEW,
+            OperationalDisposition.HOLD_PII_REVIEW,
+            OperationalDisposition.HOLD_LICENSE_REVIEW,
+            OperationalDisposition.REJECT_LOW_VALUE,
+        }:
+            raise SourceRegistryRuntimeError(f"source is not eligible for ingestion: {disposition}")
+        if source.legal_access_status == LegalAccessStatus.MANUAL_ONLY and access_method != AccessMethod.MANUAL_REVIEW:
+            raise SourceRegistryRuntimeError("manual_only sources cannot start automated ingestion")
+        if access_method not in source.access_methods:
+            raise SourceRegistryRuntimeError(f"access method {access_method} is not registered for source")
+        run = IngestionRun(source_id=source_id, access_method=access_method)
+        self.ingestion_runs[run.run_id] = run
+        self.emit_event(
+            "INGESTION_RUN_STARTED",
+            f"Started ingestion run with {access_method}",
+            source_id=source_id,
+            related_object_id=run.run_id,
+            actor=actor,
+        )
+        return run
+
+    def record_observation(
+        self,
+        source_id: UUID,
+        *,
+        raw_summary: str,
+        extract_hash_or_snapshot_id: str,
+        evidence_refs: list[str],
+        ingestion_run_id: UUID | None = None,
+        signal_types: list[SignalType] | None = None,
+        normalized_entities: list[str] | None = None,
+        confidence: float = 0.5,
+        actor: str = "system",
+    ) -> SourceObservation:
+        source = self.require_source(source_id)
+        if ingestion_run_id is not None and ingestion_run_id not in self.ingestion_runs:
+            raise SourceRegistryRuntimeError(f"unknown ingestion run: {ingestion_run_id}")
+        key = (source_id, extract_hash_or_snapshot_id)
+        if key in self._observation_hash_index:
+            observation = self.observations[self._observation_hash_index[key]]
+            self.emit_event(
+                "SOURCE_OBSERVATION_DEDUPED",
+                f"Duplicate observation suppressed for hash {extract_hash_or_snapshot_id}",
+                source_id=source_id,
+                related_object_id=observation.observation_id,
+                actor=actor,
+            )
+            return observation
+        observation = SourceObservation(
+            source_id=source_id,
+            ingestion_run_id=ingestion_run_id,
+            source_url_or_path=source.url_or_access_path,
+            extract_hash_or_snapshot_id=extract_hash_or_snapshot_id,
+            legal_access_status=source.legal_access_status,
+            signal_types=signal_types or source.signal_types,
+            raw_summary=raw_summary,
+            normalized_entities=normalized_entities or [],
+            evidence_refs=evidence_refs,
+            confidence=confidence,
+        )
+        self.observations[observation.observation_id] = observation
+        self._observation_hash_index[key] = observation.observation_id
+        if ingestion_run_id is not None:
+            run = self.ingestion_runs[ingestion_run_id]
+            self.ingestion_runs[ingestion_run_id] = run.model_copy(
+                update={"observations_created": run.observations_created + 1}
+            )
+        self.emit_event(
+            "SOURCE_OBSERVATION_RECORDED",
+            "Recorded source observation with mandatory provenance",
+            source_id=source_id,
+            related_object_id=observation.observation_id,
+            actor=actor,
+        )
+        return observation
+
+    def complete_ingestion_run(
+        self,
+        run_id: UUID,
+        *,
+        status: IngestionRunStatus = IngestionRunStatus.COMPLETED,
+        error_message: str | None = None,
+        actor: str = "system",
+    ) -> IngestionRun:
+        if run_id not in self.ingestion_runs:
+            raise SourceRegistryRuntimeError(f"unknown ingestion run: {run_id}")
+        run = self.ingestion_runs[run_id]
+        completed = run.model_copy(
+            update={"status": status, "completed_at": utcnow(), "error_message": error_message}
+        )
+        self.ingestion_runs[run_id] = completed
+        self.emit_event(
+            "INGESTION_RUN_COMPLETED",
+            f"Ingestion run completed with status {status}",
+            source_id=completed.source_id,
+            related_object_id=run_id,
+            actor=actor,
+        )
+        return completed
+
+    def create_signal_from_observation(
+        self, observation_id: UUID, *, actor: str = "system"
+    ) -> SignalInboxItem:
+        if observation_id not in self.observations:
+            raise SourceRegistryRuntimeError(f"unknown observation: {observation_id}")
+        if observation_id in self._signal_by_observation:
+            return self.signal_inbox[self._signal_by_observation[observation_id]]
+        observation = self.observations[observation_id]
+        source = self.require_source(observation.source_id)
+        status = (
+            SignalReviewStatus.INBOX
+            if observation.confidence >= 0.55 and observation.evidence_refs
+            else SignalReviewStatus.NEEDS_EVIDENCE
+        )
+        signal = SignalInboxItem(
+            observation_id=observation_id,
+            source_id=observation.source_id,
+            title=f"{source.source_name}: {observation.raw_summary[:96]}",
+            signal_types=observation.signal_types,
+            evidence_refs=observation.evidence_refs,
+            confidence=observation.confidence,
+            review_status=status,
+            downstream_use_cases=source.downstream_use_cases,
+            action_suggestions=[
+                "analyst_review",
+                "evidence_viewer",
+                "opportunity_board_candidate",
+            ],
+        )
+        self.signal_inbox[signal.signal_id] = signal
+        self._signal_by_observation[observation_id] = signal.signal_id
+        self.emit_event(
+            "SIGNAL_INBOX_ITEM_CREATED",
+            f"Signal routed to {status}",
+            source_id=source.id,
+            related_object_id=signal.signal_id,
+            actor=actor,
+        )
+        return signal
+
+    def review_signal(
+        self,
+        signal_id: UUID,
+        review_status: SignalReviewStatus,
+        *,
+        reviewer: str,
+        review_note: str,
+    ) -> SignalInboxItem:
+        if signal_id not in self.signal_inbox:
+            raise SourceRegistryRuntimeError(f"unknown signal: {signal_id}")
+        if review_status not in {
+            SignalReviewStatus.APPROVED,
+            SignalReviewStatus.REJECTED,
+            SignalReviewStatus.HOLD,
+            SignalReviewStatus.PROMOTED_TO_OPPORTUNITY,
+        }:
+            raise SourceRegistryRuntimeError("review_signal requires a terminal or operator HOLD status")
+        signal = self.signal_inbox[signal_id]
+        updated = signal.model_copy(
+            update={"review_status": review_status, "reviewer": reviewer, "review_note": review_note}
+        )
+        self.signal_inbox[signal_id] = updated
+        self.emit_event(
+            "SIGNAL_REVIEW_RECORDED",
+            f"Signal reviewed as {review_status}: {review_note}",
+            source_id=updated.source_id,
+            related_object_id=signal_id,
+            actor=reviewer,
+        )
+        return updated
+
+    def record_health_check(
+        self,
+        source_id: UUID,
+        status: SourceHealthStatus,
+        message: str,
+        *,
+        consecutive_failures: int = 0,
+        next_review_at: datetime | None = None,
+        actor: str = "system",
+    ) -> SourceHealthCheck:
+        self.require_source(source_id)
+        health = SourceHealthCheck(
+            source_id=source_id,
+            status=status,
+            message=message,
+            consecutive_failures=consecutive_failures,
+            next_review_at=next_review_at,
+        )
+        self.health_checks[health.health_check_id] = health
+        if status == SourceHealthStatus.BROKEN:
+            self.sources[source_id] = self.sources[source_id].model_copy(
+                update={"lifecycle_status": SourceLifecycleStatus.BROKEN, "updated_at": utcnow()}
+            )
+        elif status == SourceHealthStatus.DEGRADED:
+            self.sources[source_id] = self.sources[source_id].model_copy(
+                update={"lifecycle_status": SourceLifecycleStatus.DEGRADED, "updated_at": utcnow()}
+            )
+        self.emit_event(
+            "SOURCE_HEALTH_CHECK_RECORDED",
+            f"Source health check recorded as {status}: {message}",
+            source_id=source_id,
+            related_object_id=health.health_check_id,
+            actor=actor,
+        )
+        return health
+
+    def dashboard(self) -> dict[str, int]:
+        return {
+            "sources": len(self.sources),
+            "ingestion_runs": len(self.ingestion_runs),
+            "observations": len(self.observations),
+            "signals": len(self.signal_inbox),
+            "events": len(self.events),
+            "health_checks": len(self.health_checks),
+            "open_signals": sum(
+                1
+                for signal in self.signal_inbox.values()
+                if signal.review_status in {SignalReviewStatus.INBOX, SignalReviewStatus.NEEDS_EVIDENCE}
+            ),
+        }
+
+    def list_signal_inbox(
+        self, review_status: SignalReviewStatus | None = None
+    ) -> list[SignalInboxItem]:
+        signals = list(self.signal_inbox.values())
+        if review_status is None:
+            return signals
+        return [signal for signal in signals if signal.review_status == review_status]
+
+    def source_events(self, source_id: UUID) -> list[SourceRegistryEvent]:
+        self.require_source(source_id)
+        return [event for event in self.events if event.source_id == source_id]
+
+    def snapshot(self) -> SourceRegistrySnapshot:
+        return SourceRegistrySnapshot(
+            sources=list(self.sources.values()),
+            ingestion_runs=list(self.ingestion_runs.values()),
+            observations=list(self.observations.values()),
+            signal_inbox=list(self.signal_inbox.values()),
+            health_checks=list(self.health_checks.values()),
+            events=self.events,
+        )
+
+    def load_snapshot(self, snapshot: SourceRegistrySnapshot) -> None:
+        self.sources = {source.id: source for source in snapshot.sources}
+        self.ingestion_runs = {run.run_id: run for run in snapshot.ingestion_runs}
+        self.observations = {observation.observation_id: observation for observation in snapshot.observations}
+        self.signal_inbox = {signal.signal_id: signal for signal in snapshot.signal_inbox}
+        self.health_checks = {health.health_check_id: health for health in snapshot.health_checks}
+        self.events = list(snapshot.events)
+        self._observation_hash_index = {
+            (observation.source_id, observation.extract_hash_or_snapshot_id): observation.observation_id
+            for observation in snapshot.observations
+        }
+        self._signal_by_observation = {
+            signal.observation_id: signal.signal_id for signal in snapshot.signal_inbox
+        }
+
+    def require_source(self, source_id: UUID) -> SourceIntelligenceRecord:
+        if source_id not in self.sources:
+            raise SourceRegistryRuntimeError(f"unknown source: {source_id}")
+        return self.sources[source_id]
