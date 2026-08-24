@@ -22,6 +22,7 @@ The Brain runtime is split into independently deployable processes:
 - Migration `013_neuro_global_workspace_proxy.sql`: NEURO-006 Global Workspace Proxy persistence authority.
 - Migration `014_cognitive_object_store.sql`: generic provenance-aware cognitive objects.
 - Migration `015_source_registry_runtime.sql`: MOD-017 persistent source-registry and signal-intake SQL target.
+- Migration `016_cognitive_organism_persistence.sql`: Cognitive Organism checkpoint persistence and audit hardening.
 
 Secrets are never committed. Runtime services receive `DATABASE_URL`, `BRAIN_API_KEY`, Temporal credentials and Neo4j credentials through deployment environment configuration or a secret manager.
 
@@ -39,7 +40,7 @@ Consequential external actions remain disabled by default. If `BRAIN_EXTERNAL_AC
 2. Cognitive tables use the repository RLS/revoke controls declared by their migrations.
 3. Backend cognitive services use privileged server-side credentials only.
 4. `PostgresBrainStore` makes PostgreSQL authoritative for beliefs, evidence, graph nodes/edges, rewires and events when `DATABASE_URL` is configured; process dictionaries are disposable projections.
-5. AGENT-019 developmental evidence, Cognitive Organism V1 persistence, NEURO-006 workspace persistence and MOD-017 source-registry tables remain separately governed from the generic cognitive-object repository.
+5. AGENT-019 developmental evidence, Cognitive Organism V1 tables/checkpoints, NEURO-006 workspace persistence and MOD-017 source-registry tables remain separately governed from the generic cognitive-object repository.
 6. `/health` reports degraded state and HTTP 503 when a configured database is unavailable.
 7. `/ready` is the deployment readiness endpoint and returns HTTP 503 when a configured database is unavailable.
 8. A configured database must never silently fall back to process-only memory.
@@ -101,13 +102,14 @@ Temporal coordinates replay-safe timers, prediction maintenance and history roll
 
 A production deployment is not GO merely because a container starts. Exact deployed-commit evidence must show:
 
-- migration integrity validation passes and migrations through 015 apply successfully;
+- migration integrity validation passes and migrations through 016 apply successfully;
 - production authentication is active and unauthenticated protected requests return 401;
 - authenticated belief create/read survives API restart;
 - `/ready` returns 503 during an induced database outage and recovers after restoration;
 - API and worker images build from the exact commit;
 - Temporal workflow test-server acceptance passes;
 - live Temporal mode, if deployed, survives worker restart without losing workflow intent;
+- Cognitive Organism checkpoint persistence/cockpit routes remain governed and non-external-actioning;
 - external actions remain disabled or explicitly approval-gated;
 - rollback/restore procedure is tested;
 - protected control, 117-row conformance, pytest and Ruff checks are green on the exact deployed commit.
