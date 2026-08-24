@@ -46,6 +46,7 @@ REQUIRED_FIXTURES = [
     "tests/fixtures/brain/outcome_reward_pain_learning.json",
     "tests/fixtures/brain/contradiction_review.json",
     "tests/fixtures/brain/acceptance_gate_go_hold.json",
+    "tests/fixtures/brain/cross_cutting_cognitive_protocol.json",
 ]
 
 REQUIRED_REPORTS = [
@@ -55,6 +56,7 @@ REQUIRED_REPORTS = [
     "reports/acceptance/AGENT-004-contradiction-review.json",
     "reports/acceptance/AGENT-005-ci-acceptance-gate.json",
     "reports/acceptance/AGENT-006-source-to-build-traceability.json",
+    "reports/acceptance/AGENT-XCUT-001-cross-cutting-cognitive-protocol.json",
     "reports/go-hold/GO-HOLD-SUMMARY.json",
 ]
 
