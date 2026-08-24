@@ -6,11 +6,13 @@ from uuid import UUID, uuid4
 
 from .attention import AttentionMarket, AttentionSignal
 from .beliefs import BeliefEngine
-from .cognitive_state import NeuromodulatorState
+from .cognitive_state import HomeostaticState, NeuromodulatorState
 from .contradiction import ContradictionEngine
 from .domain import Belief, Evidence, Observation
 from .events import BrainEvent
+from .homeostasis import HomeostasisEngine
 from .hydrate import hydrate_belief_cache
+from .metabolism import CapitalLedger, MetabolismEngine
 from .projections import default_projection_engine, incremental_checkpoint
 from .scheduler import CognitiveScheduler, CognitiveTask
 from .working_memory import WorkingMemory
@@ -61,6 +63,8 @@ class CognitiveStimulus:
     uncertainty_reduction: float = 0.5
     noise_probability: float = 0.2
     operator_burden: float = 0.0
+    capital_outcome_amount: float = 0.0
+    capital_outcome_source: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -85,6 +89,9 @@ class CognitiveCycleResult:
     executive_override_succeeded: bool | None = None
     perceived_novelty: float | None = None
     agent_trust: float | None = None
+    capital_balance: float | None = None
+    budget_pressure: float | None = None
+    capital_starving: bool | None = None
 
 
 class CognitiveCycle:
@@ -106,6 +113,9 @@ class CognitiveCycle:
         executive: ExecutiveControlService | None = None,
         perception: PerceptionService | None = None,
         control_resource: CognitiveControlResource | None = None,
+        capital_ledger: CapitalLedger | None = None,
+        metabolism: MetabolismEngine | None = None,
+        homeostasis: HomeostasisEngine | None = None,
     ) -> None:
         self.event_store = event_store
         self.checkpoint_store = checkpoint_store
@@ -132,6 +142,16 @@ class CognitiveCycle:
         self.executive = executive or ExecutiveControlService()
         self.control_resource = control_resource or CognitiveControlResource()
         self.perception = perception or self._default_perception_service()
+
+        # Capital-as-hunger metabolism is optional for backwards compatibility,
+        # but when provided it now reaches the live cognitive cycle instead of
+        # staying in isolated unit tests. A cycle tick burns capital, maps the
+        # resulting deficit into HomeostaticState.budget_pressure, and lets the
+        # HomeostasisEngine modulate scheduler-relevant neuromodulators.
+        self.capital_ledger = capital_ledger
+        self.metabolism = metabolism or MetabolismEngine()
+        self.homeostasis = homeostasis or HomeostasisEngine()
+        self.homeostatic_state = HomeostaticState()
 
     @staticmethod
     def _default_perception_service() -> PerceptionService:
@@ -185,6 +205,8 @@ class CognitiveCycle:
             ),
             event_ids,
         )
+
+        self._metabolize_capital(cycle_id, event_ids)
 
         # Circadian: advance one tick per cycle. cognitive_load is a crude
         # proxy (urgency) for now -- real load could come from scheduler
@@ -389,6 +411,8 @@ class CognitiveCycle:
             event_ids,
         )
 
+        self._feed_capital_outcome(stimulus, cycle_id, event_ids)
+
         tasks: list[CognitiveTask] = []
         if contradiction is not None:
             self._emit(
@@ -432,6 +456,22 @@ class CognitiveCycle:
                     payload={
                         "observation_id": str(observation.id),
                         "belief_id": str(updated.id),
+                    },
+                )
+            )
+        if self.capital_ledger is not None and self.capital_ledger.is_starving:
+            tasks.append(
+                CognitiveTask(
+                    name="pursue_capital_recovery",
+                    utility=0.85,
+                    urgency=1.0,
+                    novelty=0.0,
+                    uncertainty_reduction=0.2,
+                    cost=0.05,
+                    payload={
+                        "capital_ledger_id": str(self.capital_ledger.id),
+                        "balance": self.capital_ledger.balance,
+                        "survival_threshold": self.capital_ledger.survival_threshold,
                     },
                 )
             )
@@ -508,6 +548,9 @@ class CognitiveCycle:
                     "task_ids": [str(t.id) for t in selected],
                     "working_memory_size": self.working_memory.size,
                     "evicted_count": len(evicted),
+                    "capital_balance": self.capital_ledger.balance if self.capital_ledger else None,
+                    "budget_pressure": self.homeostatic_state.budget_pressure if self.capital_ledger else None,
+                    "capital_starving": self.capital_ledger.is_starving if self.capital_ledger else None,
                 },
                 correlation_id=cycle_id,
             ),
@@ -533,6 +576,78 @@ class CognitiveCycle:
             executive_override_succeeded=executive_decision.override_succeeded if executive_decision else None,
             perceived_novelty=percept.novelty,
             agent_trust=agent_model.trust if agent_model else None,
+            capital_balance=self.capital_ledger.balance if self.capital_ledger else None,
+            budget_pressure=self.homeostatic_state.budget_pressure if self.capital_ledger else None,
+            capital_starving=self.capital_ledger.is_starving if self.capital_ledger else None,
+        )
+
+    def _metabolize_capital(self, cycle_id: UUID, event_ids: list[UUID]) -> None:
+        if self.capital_ledger is None:
+            return
+        self.capital_ledger, metabolic_events = self.metabolism.metabolize(self.capital_ledger)
+        for event in metabolic_events:
+            self._emit(
+                BrainEvent(
+                    event.event_type,
+                    event.aggregate_type,
+                    event.aggregate_id,
+                    event.payload,
+                    causation_id=event.causation_id,
+                    correlation_id=cycle_id,
+                ),
+                event_ids,
+            )
+        self._refresh_homeostasis_from_capital(cycle_id, event_ids)
+
+    def _feed_capital_outcome(
+        self,
+        stimulus: CognitiveStimulus,
+        cycle_id: UUID,
+        event_ids: list[UUID],
+    ) -> None:
+        if self.capital_ledger is None or stimulus.capital_outcome_amount <= 0:
+            return
+        self.capital_ledger, event = self.metabolism.feed(
+            self.capital_ledger,
+            stimulus.capital_outcome_amount,
+            source=stimulus.capital_outcome_source or "cognitive-cycle-outcome",
+        )
+        self._emit(
+            BrainEvent(
+                event.event_type,
+                event.aggregate_type,
+                event.aggregate_id,
+                event.payload,
+                causation_id=event.causation_id,
+                correlation_id=cycle_id,
+            ),
+            event_ids,
+        )
+        self._refresh_homeostasis_from_capital(cycle_id, event_ids)
+
+    def _refresh_homeostasis_from_capital(self, cycle_id: UUID, event_ids: list[UUID]) -> None:
+        if self.capital_ledger is None:
+            return
+        budget_pressure = self.metabolism.budget_pressure(self.capital_ledger)
+        self.homeostatic_state = HomeostaticState(
+            memory_pressure=max(0.0, min(1.0, self.working_memory.size / max(1, self.working_memory.capacity))),
+            budget_pressure=budget_pressure,
+        )
+        self.modulation = self.homeostasis.regulate(self.homeostatic_state, self.modulation)
+        self._emit(
+            BrainEvent(
+                "homeostasis.budget_pressure_updated",
+                "capital_ledger",
+                self.capital_ledger.id,
+                {
+                    "budget_pressure": budget_pressure,
+                    "stress_index": self.homeostatic_state.stress_index,
+                    "balance": self.capital_ledger.balance,
+                    "is_starving": self.capital_ledger.is_starving,
+                },
+                correlation_id=cycle_id,
+            ),
+            event_ids,
         )
 
     def _resolve_belief(

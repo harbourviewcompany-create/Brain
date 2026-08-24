@@ -1,0 +1,43 @@
+{
+  "acceptance_id": "AGENT-007-capital-metabolism-cycle",
+  "issue": 130,
+  "status": "GO_FOR_REPOSITORY_IMPLEMENTATION_PENDING_CI_AND_MERGE",
+  "scope": "Wire CapitalLedger metabolism into live CognitiveCycle homeostasis and scheduling.",
+  "runtime_files": [
+    "brain/metabolism.py",
+    "brain/cognitive_state.py",
+    "brain/cycle.py"
+  ],
+  "tests": [
+    "tests/test_metabolism.py::test_capital_pressure_reaches_cognitive_cycle_at_runtime",
+    "tests/test_metabolism.py::test_starvation_dominates_action_selection_without_compounding_pressure",
+    "tests/test_metabolism.py::test_cycle_outcome_feeds_capital_ledger"
+  ],
+  "fixtures": [
+    "tests/fixtures/brain/capital_starvation_cycle.json"
+  ],
+  "traceability": [
+    "docs/spec/source-to-build-traceability.json"
+  ],
+  "implemented_controls": [
+    "CapitalLedger metabolizes during capital-enabled CognitiveCycle.process ticks",
+    "budget_pressure derived from CapitalLedger reaches HomeostaticState",
+    "HomeostaticState gives budget_pressure asymmetric hunger weighting",
+    "starvation adds pursue_capital_recovery as an internal cognitive task",
+    "operator-confirmed outcome credit feeds CapitalLedger through capital.fed event"
+  ],
+  "hard_gates": [
+    "capital.starvation can only be created by CapitalLedger metabolism",
+    "budget_pressure is derived from MetabolismEngine.budget_pressure",
+    "single-dimension starvation is no longer diluted into inert average stress",
+    "external action remains absent; the recovery task is an internal selection only",
+    "outcome credit requires explicit capital_outcome_amount on CognitiveStimulus"
+  ],
+  "go_hold": {
+    "repository_implementation": "GO_PENDING_CI_AND_MERGE",
+    "live_external_action": "HOLD",
+    "autonomous_spend": "HOLD",
+    "full_brain_completion": "HOLD"
+  },
+  "source_preservation": "No source material is deleted or narrowed. Prior isolated metabolism tests are preserved and extended into cycle-level evidence."
+}
