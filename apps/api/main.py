@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import os
 from dataclasses import asdict
 from datetime import timedelta
@@ -19,10 +20,9 @@ from brain.memory import InMemoryBrainStore
 from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
-from brain.security import ApiKeyAuthenticator, SecurityConfig
+from brain.security import SecurityConfig
 
 _security = SecurityConfig.from_env()
-_authenticator = ApiKeyAuthenticator(_security)
 
 app = FastAPI(title="Brain Runtime API", version="0.8.0")
 
@@ -41,16 +41,41 @@ app.add_middleware(
     ],
 )
 
+_API_KEY_ENV_VAR = "BRAIN_API_KEY"
 _PUBLIC_PATHS = frozenset({"/health", "/ready"})
 
 
 @app.middleware("http")
 async def brain_authentication(request: Request, call_next):
-    if request.url.path not in _PUBLIC_PATHS and not _authenticator.authorized(
-        authorization=request.headers.get("authorization"),
-        x_api_key=request.headers.get("x-brain-api-key") or request.headers.get("x-api-key"),
-    ):
-        return JSONResponse(status_code=401, content={"detail": "brain_authentication_required"})
+    if request.url.path in _PUBLIC_PATHS:
+        return await call_next(request)
+
+    configured_key = os.environ.get(_API_KEY_ENV_VAR)
+    if not configured_key:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"{_API_KEY_ENV_VAR} is not configured on this deployment; "
+                    "refusing all requests until it is set"
+                )
+            },
+        )
+
+    authorization = request.headers.get("authorization")
+    candidate = (
+        request.headers.get("x-brain-api-key")
+        or request.headers.get("x-api-key")
+        or ""
+    )
+    if authorization and authorization.lower().startswith("bearer "):
+        candidate = authorization[7:].strip()
+
+    if not candidate or not hmac.compare_digest(candidate, configured_key):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "invalid_or_missing_api_key"},
+        )
     return await call_next(request)
 
 
