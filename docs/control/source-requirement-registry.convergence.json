@@ -42,6 +42,24 @@
       "unresolved_gaps": ["production tenant-mode enablement remains deployment-specific HOLD", "live runtime-role verification remains HOLD"]
     },
     {
+      "record_id": "TRACE-CONVERGENCE-SECURE-OPERATOR",
+      "paths": ["apps/operator/secure_main.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-CONTROL", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN"],
+      "requirement_ids": ["REQ-BRAIN-APPS", "REQ-CONTROL-ENFORCEMENT", "REQ-BRAIN-OPERATOR-DASHBOARD"],
+      "owner_object": "Fail-closed tenant-aware Brain operator plane",
+      "schema": "Outer FastAPI security/readiness boundary mounting the preserved economic and Cognitive Organism operator routes; tenant-partitioned economic and organism read models",
+      "runtime_service": "apps.operator.secure_main with SecurityConfig, TenantRequestSecurity, PostgresTenantMembershipResolver, TenantScopedConnectionPool and PostgresEconomicStore",
+      "state_machine": "public liveness/readiness -> API key -> signed tenant identity -> persisted active membership -> tenant-local operator partition -> preserved operator route; any missing production database, tenant mode, authentication or membership fails closed",
+      "fixtures": ["tests/test_secure_operator.py"],
+      "tests": ["tests/test_secure_operator.py", "tests/test_tenant_runtime.py", "tests/test_economic_runtime.py", "ruff check --select E4,E7,E9,F ."],
+      "acceptance_criteria": ["health/readiness remain public", "operator routes refuse missing deployment API key", "production operator requires PostgreSQL and tenant-required mode", "signed roles come only from membership persistence", "economic and organism mutable state is partitioned per tenant", "database failure makes readiness fail closed when durable mode is configured"],
+      "audit_events": ["OPERATOR_AUTHENTICATION_ENFORCED", "OPERATOR_TENANT_CONTEXT_ESTABLISHED", "OPERATOR_TENANT_CONTEXT_DENIED", "OPERATOR_READINESS_FAILED"],
+      "source_preservation": "preserved; existing apps/operator/main.py routes and UI remain intact and are mounted behind the new boundary rather than replaced",
+      "unresolved_gaps": ["full Cognitive Organism object-graph rehydration remains HOLD", "production operator container/deployment acceptance remains pending", "live runtime-role verification remains HOLD"]
+    },
+    {
       "record_id": "TRACE-CONVERGENCE-DEVELOPMENTAL-SCHEDULER",
       "paths": ["brain/developmental/scheduler.py"],
       "classification": "APPROVED",
