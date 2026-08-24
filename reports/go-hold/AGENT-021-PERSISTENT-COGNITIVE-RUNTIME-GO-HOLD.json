@@ -1,27 +1,38 @@
 {
   "agent_id": "AGENT-021",
-  "scope": "persistent cognitive runtime convergence",
-  "status": "HOLD",
+  "scope": "persistent cognitive runtime convergence onto protected current main",
+  "status": "HOLD_PENDING_EXACT_HEAD_ACCEPTANCE",
   "go_for": [
-    "continued branch implementation",
     "exact-head protected CI",
-    "container and Temporal acceptance testing"
+    "container acceptance testing",
+    "Temporal test-server acceptance",
+    "user-authorized merge after every required gate is green"
   ],
   "hold_for": [
-    "merge",
+    "merge before exact-head acceptance",
     "production deployment",
-    "autonomous code mutation",
+    "unapproved autonomous code mutation",
     "autonomous external action",
     "literal consciousness or biological-equivalence claims"
   ],
-  "required_before_merge_consideration": [
+  "required_before_merge": [
     "Brain Control Policy passes on exact head",
     "full test and lint workflow passes on exact head",
-    "all migrations apply including migration 012",
+    "MOD-008-015 117-row conformance remains green",
+    "MOD-016 source-intelligence tests remain green",
+    "all migrations apply through migration 013",
     "API and worker images build",
-    "authenticated PostgreSQL state survives API restart",
+    "authenticated PostgreSQL belief state survives API restart",
     "database outage makes readiness fail closed",
-    "Temporal workflow acceptance passes",
-    "current main is reconciled without deleting AGENT-017 through AGENT-020 evidence"
-  ]
+    "Temporal workflow acceptance including continue-as-new passes",
+    "current protected main is still an ancestor immediately before merge"
+  ],
+  "preserved_authority": [
+    "AGENT-017 through AGENT-020",
+    "Cognitive Organism V1",
+    "MOD-008 through MOD-015",
+    "MOD-016 Capital Source Intelligence Registry",
+    "neuroscience and unknown/theory boundaries"
+  ],
+  "production_deployment_status": "HOLD"
 }
