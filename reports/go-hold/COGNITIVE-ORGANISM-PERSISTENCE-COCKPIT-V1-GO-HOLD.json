@@ -1,0 +1,22 @@
+{
+  "report_id": "COGNITIVE-ORGANISM-PERSISTENCE-COCKPIT-V1-GO-HOLD",
+  "go_hold_status": "GO_AFTER_CI_FOR_DETERMINISTIC_V1",
+  "go": [
+    "in-memory deterministic checkpoint store",
+    "PostgreSQL checkpoint adapter code path",
+    "organism checkpoint and audit endpoints",
+    "operator organism cockpit read surface",
+    "tests for persistence, API and operator cockpit"
+  ],
+  "hold": [
+    "literal consciousness claims",
+    "full runtime graph rehydration from every canonical table",
+    "production migration execution",
+    "provider-backed autonomous reasoning",
+    "live source execution",
+    "autonomous outreach",
+    "Tier 5 autonomy",
+    "irreversible external action"
+  ],
+  "reason": "This slice makes organism state inspectable and checkpointed while preserving approval gates and external-action holds."
+}
