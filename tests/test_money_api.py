@@ -1,9 +1,10 @@
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
+from tests.conftest import TEST_API_KEY
 
 
-client = TestClient(app)
+client = TestClient(app, headers={"x-api-key": TEST_API_KEY})
 
 
 def test_money_lanes_endpoint_returns_seed_lanes():
