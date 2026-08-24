@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.1",
+  "schema_version": "1.0.2",
   "module_id": "MOD-016",
   "module_name": "Capital Source Intelligence Registry",
   "status": "staged_control_layer_with_executable_primitives",
@@ -36,6 +36,16 @@
     "range": "Each score member must be an integer from 1 to 5."
   },
   "derived_fields": ["priority_score"],
+  "operational_dispositions": [
+    "GO_AUTOMATE_OR_QUEUE",
+    "GO_MANUAL_ANALYST_REVIEW",
+    "WATCH",
+    "HOLD_LICENSE_REVIEW",
+    "HOLD_TERMS_REVIEW",
+    "HOLD_PII_REVIEW",
+    "HOLD_PROHIBITED",
+    "REJECT_LOW_VALUE"
+  ],
   "mandatory_provenance_requirements": [
     "source_id",
     "source_url_or_path",
@@ -43,6 +53,12 @@
     "retrieved_at",
     "extract_hash_or_snapshot_id",
     "legal_access_status"
+  ],
+  "active_source_requirements": [
+    "jurisdiction_market_coverage",
+    "downstream_use_cases",
+    "provenance_requirements",
+    "update_frequency"
   ],
   "source_categories": [
     "government_registry",
@@ -107,7 +123,7 @@
   "legal_access_statuses": {
     "public_permitted": "May be ingested when provenance and rate controls exist.",
     "open_license": "May be ingested under license terms with attribution preserved.",
-    "paid_licensed": "Requires license metadata, cost tracking, and permitted-use controls.",
+    "paid_licensed": "Routes to HOLD_LICENSE_REVIEW until license metadata, cost tracking, and permitted-use controls exist.",
     "terms_review_required": "HOLD until reviewed.",
     "pii_sensitive": "HOLD for legal/privacy review.",
     "rate_limited": "Requires throttling, health checks, and failure monitoring.",
@@ -131,7 +147,8 @@
     "go": [
       "source record validates required fields",
       "priority score derives from nested score payload and matches formula",
-      "manual-only, terms-review, PII-sensitive, and prohibited states block automation",
+      "manual-only, paid-licensed, terms-review, PII-sensitive, and prohibited states block automation",
+      "active records require operational update frequency and provenance metadata",
       "prohibited lifecycle state routes to HOLD even if legal status is stale",
       "source clusters define false-positive controls",
       "ingestion policies preserve evidence and compliance cautions",
@@ -143,6 +160,7 @@
       "source has no downstream use case",
       "source cannot preserve mandatory provenance",
       "source action would collect prohibited or unreviewed sensitive data",
+      "paid licensed source lacks license and cost-control metadata",
       "score is asserted without formula evidence",
       "intelligence claim conflates inference with verified fact"
     ]
