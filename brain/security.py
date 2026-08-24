@@ -49,9 +49,9 @@ class ApiKeyAuthenticator:
         self.config = config
 
     def authorized(self, *, authorization: str | None, x_api_key: str | None) -> bool:
-        if not self.config.production:
-            return True
-        expected = self.config.api_key or ""
+        expected = self.config.api_key
+        if not expected:
+            return not self.config.production
         candidate = x_api_key or ""
         if authorization and authorization.lower().startswith("bearer "):
             candidate = authorization[7:].strip()
