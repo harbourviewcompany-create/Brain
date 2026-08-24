@@ -1,0 +1,351 @@
+name: Verify PR126 Release Candidate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-pr126-release-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_SHA: 2fe87ea20181ca0d4392334a845435cc62c4d60c
+  CANDIDATE_TREE: a0e5516ce839070f152322f2db360f4313d5d98a
+
+jobs:
+  exact-candidate:
+    name: Exact candidate protected checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2fe87ea20181ca0d4392334a845435cc62c4d60c
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove immutable candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+          printf 'candidate_sha=%s\ncandidate_tree=%s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" | tee exact-candidate.txt
+      - name: Install
+        run: pip install -c constraints.txt -e '.[dev]'
+      - name: Control and repository gates
+        run: |
+          python tools/validate_agent_control.py
+          python tools/validate_mod_008_015_conformance.py
+          python scripts/validate_control_layer.py
+          python scripts/validate_archive_manifest.py
+          python scripts/validate_build_ready_traceability.py
+          python tools/check_repository_hardening.py
+      - name: Focused release regression
+        run: |
+          pytest -q \
+            tests/test_edges_read_api.py \
+            tests/test_tenant_auth.py \
+            tests/test_tenant_context.py \
+            tests/test_tenant_runtime.py \
+            tests/test_tenant_auth_migration.py \
+            tests/test_tenant_scope_migration.py \
+            tests/test_tenant_scope_extended_migration.py \
+            tests/test_tenant_runtime_migration.py \
+            tests/test_secure_operator.py \
+            tests/test_developmental_scheduler.py \
+            tests/test_cognitive_protocol.py
+      - name: Full test and lint
+        run: |
+          pytest -q
+          ruff check --select E4,E7,E9,F .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr126-exact-candidate
+          path: exact-candidate.txt
+          retention-days: 7
+
+  zero-state-replay:
+    name: Zero-state and idempotent migration replay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2fe87ea20181ca0d4392334a845435cc62c4d60c
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prove immutable candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+      - name: Install migration runtime
+        run: pip install -c constraints.txt -e .
+      - name: Start clean PostgreSQL
+        run: |
+          docker run -d --name brain-pr126-zero -p 55432:5432 \
+            -e POSTGRES_USER=brain -e POSTGRES_PASSWORD=brain -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 30); do
+            docker exec brain-pr126-zero pg_isready -U brain -d brain && exit 0
+            sleep 1
+          done
+          docker logs brain-pr126-zero
+          exit 1
+      - name: Run exact Railway migration path twice
+        env:
+          DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+        run: |
+          mkdir -p evidence
+          python tools/apply_migrations.py | tee evidence/runner-first.txt
+          python tools/apply_migrations.py | tee evidence/runner-second.txt
+          grep -q 'applied 019_tenant_auth_foundation.sql' evidence/runner-first.txt
+          grep -q 'applied 020_tenant_scope_cognitive_tables.sql' evidence/runner-first.txt
+          grep -q 'applied 021_tenant_scope_extended_cognition.sql' evidence/runner-first.txt
+          grep -q 'applied 022_tenant_runtime_enforcement.sql' evidence/runner-first.txt
+          grep -q 'skip 019_tenant_auth_foundation.sql (already applied)' evidence/runner-second.txt
+          grep -q 'skip 022_tenant_runtime_enforcement.sql (already applied)' evidence/runner-second.txt
+          grep -q 'required schema verification passed' evidence/runner-second.txt
+      - name: Raw replay migrations 019 through 022
+        run: |
+          for migration in \
+            db/migrations/019_tenant_auth_foundation.sql \
+            db/migrations/020_tenant_scope_cognitive_tables.sql \
+            db/migrations/021_tenant_scope_extended_cognition.sql \
+            db/migrations/022_tenant_runtime_enforcement.sql; do
+            echo "Raw replay ${migration}" | tee -a evidence/raw-replay.txt
+            docker exec -i brain-pr126-zero psql -v ON_ERROR_STOP=1 -U brain -d brain < "$migration" >> evidence/raw-replay.txt
+          done
+      - name: Verify tenant schema and RLS shape
+        run: |
+          docker exec brain-pr126-zero psql -At -U brain -d brain -c "
+            select c.relname || '|' || c.relrowsecurity || '|' || c.relforcerowsecurity
+            from pg_class c join pg_namespace n on n.oid=c.relnamespace
+            where n.nspname='public' and c.relname in ('brain_events','graph_edges','beliefs','predictions','cognitive_organism_checkpoints')
+            order by c.relname;
+          " | tee evidence/rls-shape.txt
+          docker exec brain-pr126-zero psql -At -U brain -d brain -c "
+            select conrelid::regclass::text || '|' || conname
+            from pg_constraint
+            where contype='p' and conrelid in ('public.projection_checkpoints'::regclass,'public.cognitive_organism_checkpoints'::regclass)
+            order by 1;
+          " | tee evidence/primary-keys.txt
+          grep -q 'graph_edges|t|t' evidence/rls-shape.txt
+          grep -q 'brain_events|t|t' evidence/rls-shape.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr126-zero-state-replay
+          path: evidence/*
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: docker rm -f brain-pr126-zero >/dev/null 2>&1 || true
+
+  upgrade-compatibility:
+    name: Production-style 018 to 022 compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2fe87ea20181ca0d4392334a845435cc62c4d60c
+      - name: Prove immutable candidate
+        run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$CANDIDATE_TREE"
+      - name: Start pre-tenant PostgreSQL
+        run: |
+          mkdir -p evidence
+          docker network create brain-pr126-release
+          docker run -d --name brain-pr126-upgrade --network brain-pr126-release \
+            -e POSTGRES_USER=brain -e POSTGRES_PASSWORD=brain -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 30); do
+            docker exec brain-pr126-upgrade pg_isready -U brain -d brain && break
+            if [ "$i" = 30 ]; then docker logs brain-pr126-upgrade; exit 1; fi
+            sleep 1
+          done
+          docker exec -i brain-pr126-upgrade psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          SQL
+      - name: Apply production baseline migrations 001 through 018
+        run: |
+          for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            base=$(basename "$migration")
+            if [[ "$base" < "019_" ]]; then
+              echo "Applying baseline ${base}" | tee -a evidence/baseline-migrations.txt
+              docker exec -i brain-pr126-upgrade psql -v ON_ERROR_STOP=1 -U brain -d brain < "$migration" >> evidence/baseline-migrations.txt
+            fi
+          done
+      - name: Build exact Railway cockpit image
+        run: docker build -t brain-pr126-cockpit -f Dockerfile.railway .
+      - name: Seed and verify legacy production-shaped data before tenant migrations
+        run: |
+          docker run -d --name brain-pr126-cockpit-pre --network brain-pr126-release -p 18080:8000 \
+            -e BRAIN_API_KEY=ci-pr126-key \
+            -e BRAIN_CORS_ORIGINS=https://thebrain-sandy.vercel.app \
+            -e DATABASE_URL=postgresql://brain:brain@brain-pr126-upgrade:5432/brain \
+            brain-pr126-cockpit
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:18080/ready && break
+            if [ "$i" = 30 ]; then docker logs brain-pr126-cockpit-pre; exit 1; fi
+            sleep 1
+          done
+          test "$(curl -sS -o /tmp/pre-unauth -w '%{http_code}' http://127.0.0.1:18080/edges)" = "401"
+          source_id=11111111-1111-4111-8111-111111111111
+          target_id=22222222-2222-4222-8222-222222222222
+          edge_id=33333333-3333-4333-8333-333333333333
+          curl -fsS -X POST http://127.0.0.1:18080/edges \
+            -H 'Content-Type: application/json' -H 'X-Brain-Api-Key: ci-pr126-key' \
+            -d "{\"edge_id\":\"$edge_id\",\"source_node_id\":\"$source_id\",\"target_node_id\":\"$target_id\",\"relation\":\"pr126_release_probe\",\"weight\":0.7,\"confidence\":0.9}" > evidence/pre-edge-create.json
+          curl -fsS -X POST http://127.0.0.1:18080/signals \
+            -H 'Content-Type: application/json' -H 'X-Brain-Api-Key: ci-pr126-key' \
+            -d '{"content":"PR126 release compatibility signal","source_key":"pr126_release_probe","process_now":false}' > evidence/pre-signal-create.json
+          curl -fsS http://127.0.0.1:18080/edges -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/pre-edges.json
+          curl -fsS http://127.0.0.1:18080/signals -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/pre-signals.json
+          python - <<'PY'
+          import json
+          e=json.load(open('evidence/pre-edges.json'))
+          s=json.load(open('evidence/pre-signals.json'))
+          assert e['total'] >= 1, e
+          assert s['total'] >= 1, s
+          print(f"PRE_EDGE_TOTAL={e['total']}")
+          print(f"PRE_SIGNAL_TOTAL={s['total']}")
+          PY
+          docker rm -f brain-pr126-cockpit-pre
+      - name: Apply migrations 019 through 022 over legacy rows
+        run: |
+          for migration in \
+            db/migrations/019_tenant_auth_foundation.sql \
+            db/migrations/020_tenant_scope_cognitive_tables.sql \
+            db/migrations/021_tenant_scope_extended_cognition.sql \
+            db/migrations/022_tenant_runtime_enforcement.sql; do
+            echo "Applying upgrade $(basename "$migration")" | tee -a evidence/upgrade-migrations.txt
+            docker exec -i brain-pr126-upgrade psql -v ON_ERROR_STOP=1 -U brain -d brain < "$migration" >> evidence/upgrade-migrations.txt
+          done
+          docker exec brain-pr126-upgrade psql -At -U brain -d brain -c "select 'admin_edges|'||count(*) from public.graph_edges; select 'admin_events|'||count(*) from public.brain_events;" | tee evidence/admin-counts.txt
+      - name: Verify legacy cockpit remains compatible only under bypassing database owner
+        run: |
+          docker run -d --name brain-pr126-cockpit-owner --network brain-pr126-release -p 18081:8000 \
+            -e BRAIN_API_KEY=ci-pr126-key \
+            -e BRAIN_CORS_ORIGINS=https://thebrain-sandy.vercel.app \
+            -e DATABASE_URL=postgresql://brain:brain@brain-pr126-upgrade:5432/brain \
+            brain-pr126-cockpit
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:18081/ready && break
+            if [ "$i" = 30 ]; then docker logs brain-pr126-cockpit-owner; exit 1; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:18081/edges -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/owner-edges.json
+          curl -fsS http://127.0.0.1:18081/signals -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/owner-signals.json
+          test "$(curl -sS -o /tmp/owner-unauth -w '%{http_code}' http://127.0.0.1:18081/edges)" = "401"
+          python - <<'PY'
+          import json
+          e=json.load(open('evidence/owner-edges.json'))
+          s=json.load(open('evidence/owner-signals.json'))
+          assert e['total'] >= 1, e
+          assert s['total'] >= 1, s
+          print(f"OWNER_EDGE_TOTAL={e['total']}")
+          print(f"OWNER_SIGNAL_TOTAL={s['total']}")
+          PY
+          docker rm -f brain-pr126-cockpit-owner
+      - name: Create compliant non-owner non-BYPASSRLS runtime role
+        run: |
+          docker exec -i brain-pr126-upgrade psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role brain_runtime login password 'runtime' nosuperuser nobypassrls;
+          grant connect on database brain to brain_runtime;
+          grant usage on schema public to brain_runtime;
+          grant select, insert, update, delete on all tables in schema public to brain_runtime;
+          grant usage, select on all sequences in schema public to brain_runtime;
+          SQL
+          docker exec brain-pr126-upgrade psql -At -U brain -d brain -c "select rolname||'|'||rolsuper||'|'||rolbypassrls from pg_roles where rolname='brain_runtime'; set role brain_runtime; select 'runtime_edges|'||count(*) from public.graph_edges; select 'runtime_events|'||count(*) from public.brain_events; reset role;" | tee evidence/runtime-role.txt
+          grep -q 'brain_runtime|f|f' evidence/runtime-role.txt
+          grep -q 'runtime_edges|0' evidence/runtime-role.txt
+          grep -q 'runtime_events|0' evidence/runtime-role.txt
+      - name: Confirm production compatibility blocker under compliant runtime role
+        run: |
+          docker run -d --name brain-pr126-cockpit-runtime --network brain-pr126-release -p 18082:8000 \
+            -e BRAIN_API_KEY=ci-pr126-key \
+            -e BRAIN_CORS_ORIGINS=https://thebrain-sandy.vercel.app \
+            -e DATABASE_URL=postgresql://brain_runtime:runtime@brain-pr126-upgrade:5432/brain \
+            brain-pr126-cockpit
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:18082/ready && break
+            if [ "$i" = 30 ]; then docker logs brain-pr126-cockpit-runtime; exit 1; fi
+            sleep 1
+          done
+          test "$(curl -sS -o /tmp/runtime-unauth -w '%{http_code}' http://127.0.0.1:18082/edges)" = "401"
+          curl -fsS http://127.0.0.1:18082/edges -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/runtime-edges.json
+          curl -fsS http://127.0.0.1:18082/signals -H 'X-Brain-Api-Key: ci-pr126-key' > evidence/runtime-signals.json
+          write_status=$(curl -sS -o evidence/runtime-edge-write.json -w '%{http_code}' -X POST http://127.0.0.1:18082/edges \
+            -H 'Content-Type: application/json' -H 'X-Brain-Api-Key: ci-pr126-key' \
+            -d '{"edge_id":"44444444-4444-4444-8444-444444444444","source_node_id":"55555555-5555-4555-8555-555555555555","target_node_id":"66666666-6666-4666-8666-666666666666","relation":"runtime_write_probe","weight":0.5,"confidence":0.5}' || true)
+          python - "$write_status" <<'PY' | tee evidence/compatibility-verdict.txt
+          import json, sys
+          edges=json.load(open('evidence/runtime-edges.json'))
+          signals=json.load(open('evidence/runtime-signals.json'))
+          write_status=int(sys.argv[1])
+          assert edges['total'] == 0, edges
+          assert signals['total'] == 0, signals
+          assert write_status >= 400, write_status
+          print('PRODUCTION_BLOCKER_CONFIRMED=legacy_rows_hidden_and_unscoped_writes_denied_under_non_bypass_role')
+          print(f'RUNTIME_EDGE_TOTAL={edges["total"]}')
+          print(f'RUNTIME_SIGNAL_TOTAL={signals["total"]}')
+          print(f'RUNTIME_EDGE_WRITE_STATUS={write_status}')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr126-upgrade-compatibility
+          path: evidence/*
+          retention-days: 7
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f brain-pr126-cockpit-pre brain-pr126-cockpit-owner brain-pr126-cockpit-runtime brain-pr126-upgrade >/dev/null 2>&1 || true
+          docker network rm brain-pr126-release >/dev/null 2>&1 || true
+
+  live-baseline:
+    name: Verify current live Observatory and BFF baseline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read-only live production checks
+        run: |
+          mkdir -p evidence
+          app=https://thebrain-sandy.vercel.app
+          brain=https://brain-api-live-production.up.railway.app
+          curl --retry 4 --retry-all-errors --fail --silent --show-error "$app/api/brain/health" -o evidence/bff-health.json
+          curl --retry 4 --retry-all-errors --fail --silent --show-error "$app/api/brain/signals" -o evidence/bff-signals.json
+          curl --retry 4 --retry-all-errors --fail --silent --show-error "$app/api/brain/organism/cockpit" -o evidence/bff-organism.json
+          curl --retry 4 --retry-all-errors --fail --silent --show-error "$app/api/brain/edges" -o evidence/bff-edges.json
+          railway_health=$(curl --silent --show-error -o evidence/railway-health.json -w '%{http_code}' "$brain/health")
+          railway_edges=$(curl --silent --show-error -o evidence/railway-edges.json -w '%{http_code}' "$brain/edges")
+          railway_signals=$(curl --silent --show-error -o evidence/railway-signals.json -w '%{http_code}' "$brain/signals")
+          test "$railway_health" = 200
+          test "$railway_edges" = 401
+          test "$railway_signals" = 401
+          node - <<'NODE' | tee evidence/live-verdict.txt
+          const fs=require('fs');
+          const health=JSON.parse(fs.readFileSync('evidence/bff-health.json'));
+          const signals=JSON.parse(fs.readFileSync('evidence/bff-signals.json'));
+          const organism=JSON.parse(fs.readFileSync('evidence/bff-organism.json'));
+          const edges=JSON.parse(fs.readFileSync('evidence/bff-edges.json'));
+          if (health.status !== 'ok' || health.database !== 'connected' || health.persistence !== 'postgres') throw new Error(JSON.stringify(health));
+          if (!Array.isArray(signals.items)) throw new Error('signals contract failed');
+          if (!Array.isArray(edges.items) || edges.total !== edges.items.length) throw new Error('edges contract failed');
+          if (!organism || typeof organism !== 'object') throw new Error('organism contract failed');
+          console.log(`LIVE_BFF_HEALTH=ok`);
+          console.log(`LIVE_BFF_SIGNAL_TOTAL=${signals.total}`);
+          console.log(`LIVE_BFF_EDGE_TOTAL=${edges.total}`);
+          console.log(`LIVE_BFF_ORGANISM=ok`);
+          console.log(`DIRECT_RAILWAY_HEALTH=200`);
+          console.log(`DIRECT_RAILWAY_EDGES=401`);
+          console.log(`DIRECT_RAILWAY_SIGNALS=401`);
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr126-live-baseline
+          path: evidence/*
+          retention-days: 7
