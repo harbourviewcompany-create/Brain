@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import apps.api.tenant_app as tenant_api
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 import pytest
 
 from brain.tenant_auth import TenantRole
+from brain.tenant_context import TenantScopeViolation, trusted_tenant_context
 from brain.tenant_runtime import active_tenant_context
 from tools import apply_migrations
 from tools.live_cockpit_routes import (
@@ -16,6 +18,21 @@ from tools.live_cockpit_routes import (
 class _AllowVerifier:
     def verify(self, token: str):
         return token == "valid-vercel-token", "ok"
+
+
+class _OperatorResolver:
+    def resolve(self, identity_context):
+        assert identity_context.roles == ()
+        return trusted_tenant_context(
+            tenant_id=identity_context.tenant_id,
+            actor_id=identity_context.actor_id,
+            roles=(TenantRole.OPERATOR,),
+        )
+
+
+class _RejectResolver:
+    def resolve(self, identity_context):
+        raise TenantScopeViolation("active_tenant_membership_required")
 
 
 def test_migration_dsn_prefers_privileged_split_role(monkeypatch):
@@ -37,11 +54,10 @@ def test_migration_dsn_requires_a_connection(monkeypatch):
         apply_migrations._migration_dsn()
 
 
-def test_verified_oidc_binds_server_owned_observatory_tenant_and_strips_spoofed_headers(
-    monkeypatch,
-):
+def test_verified_oidc_uses_durable_membership_and_strips_spoofed_headers(monkeypatch):
     monkeypatch.setenv("BRAIN_API_KEY", "local-server-key")
     monkeypatch.delenv("BRAIN_OBSERVATORY_TENANT_ID", raising=False)
+    monkeypatch.setattr(tenant_api, "_membership_resolver", _OperatorResolver())
 
     inner = FastAPI()
 
@@ -85,9 +101,24 @@ def test_verified_oidc_binds_server_owned_observatory_tenant_and_strips_spoofed_
     assert active_tenant_context() is None
 
 
+def test_verified_oidc_requires_durable_observatory_membership(monkeypatch):
+    monkeypatch.setenv("BRAIN_API_KEY", "local-server-key")
+    monkeypatch.delenv("BRAIN_OBSERVATORY_TENANT_ID", raising=False)
+    monkeypatch.setattr(tenant_api, "_membership_resolver", _RejectResolver())
+
+    bridge = VercelOidcAuthBridge(FastAPI())
+    bridge.verifier = _AllowVerifier()
+    response = TestClient(bridge).get(
+        "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+    )
+    assert response.status_code == 403
+    assert response.json() == {"detail": "brain_observatory_membership_required"}
+
+
 def test_verified_oidc_fails_closed_for_invalid_server_tenant(monkeypatch):
     monkeypatch.setenv("BRAIN_API_KEY", "local-server-key")
     monkeypatch.setenv("BRAIN_OBSERVATORY_TENANT_ID", "not-a-uuid")
+    monkeypatch.setattr(tenant_api, "_membership_resolver", _OperatorResolver())
 
     inner = FastAPI()
 
