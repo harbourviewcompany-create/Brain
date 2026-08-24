@@ -114,6 +114,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
 | brain/security.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/source_intelligence.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/world_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
@@ -135,6 +136,10 @@ The developmental rows are included because those code paths exist and must be r
 ## Persistent cognitive-growth traceability note
 
 The PostgreSQL Brain store, generic cognitive-object store at migration 013, benchmark/world/memory/model/planning/telemetry/growth/security modules and sandbox are explicitly represented. Their presence and prior test evidence do not promote them to BUILD-READY until exact-head convergence CI and shared app/runtime integration evidence pass.
+
+## MOD-016 Capital Source Intelligence traceability note
+
+`brain/source_intelligence.py` is preserved from protected main MOD-016 authority with its source registry specification, machine-readable registry, fixture and tests. It remains HOLD at repository BUILD-READY level; persistent registry tables, live connectors and automated source discovery remain separate controlled work.
 
 ## Adapter traceability note
 
