@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -121,7 +121,7 @@ class OperationalDisposition(StrEnum):
 
 
 class SourceScore(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     signal_value: int = Field(ge=1, le=5)
     extraction_difficulty: int = Field(ge=1, le=5)
@@ -138,86 +138,107 @@ class SourceScore(BaseModel):
         )
 
 
+MANDATORY_PROVENANCE_REQUIREMENTS = frozenset(
+    {
+        "source_id",
+        "source_url_or_path",
+        "observed_at",
+        "retrieved_at",
+        "extract_hash_or_snapshot_id",
+        "legal_access_status",
+    }
+)
+
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
 class SourceIntelligenceRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     id: UUID = Field(default_factory=uuid4)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     source_name: str
     source_category: SourceCategory
     url_or_access_path: str
-    jurisdiction_market_coverage: list[str]
-    data_contains: list[str]
-    signal_types: list[SignalType]
+    jurisdiction_market_coverage: list[str] = Field(min_length=1)
+    data_contains: list[str] = Field(min_length=1)
+    signal_types: list[SignalType] = Field(min_length=1)
     commercial_value: str
     signal_freshness: str
     update_frequency: str
-    access_methods: list[AccessMethod]
+    access_methods: list[AccessMethod] = Field(min_length=1)
     legal_access_status: LegalAccessStatus
     noise_level: Literal["low", "medium", "high"]
-    reliability_level: Literal["official_primary", "reputable_structured", "mixed", "noisy", "unreliable"]
-    downstream_use_cases: list[str]
-    example_intelligence_questions: list[str]
+    reliability_level: Literal[
+        "official_primary", "reputable_structured", "mixed", "noisy", "unreliable"
+    ]
+    downstream_use_cases: list[str] = Field(min_length=1)
+    example_intelligence_questions: list[str] = Field(min_length=1)
     best_ingestion_method: AccessMethod
     compounding_sources_to_pair: list[str] = Field(default_factory=list)
     score: SourceScore
-    priority_score: int | None = None
+    declared_priority_score: int | None = Field(
+        default=None,
+        validation_alias="priority_score",
+        serialization_alias="declared_priority_score",
+    )
     lifecycle_status: SourceLifecycleStatus = SourceLifecycleStatus.DISCOVERED
     owner_role: str = "Research Operations / Intelligence Lead"
     review_cadence_days: int = Field(default=90, ge=1)
     provenance_requirements: list[str] = Field(
-        default_factory=lambda: [
-            "source_id",
-            "source_url_or_path",
-            "observed_at",
-            "retrieved_at",
-            "extract_hash_or_snapshot_id",
-            "legal_access_status",
-        ]
+        default_factory=lambda: sorted(MANDATORY_PROVENANCE_REQUIREMENTS)
     )
     notes_risks: list[str] = Field(default_factory=list)
 
+    @property
+    def priority_score(self) -> int:
+        return self.score.priority_score
+
     @model_validator(mode="after")
-    def materialize_priority_score(self) -> Self:
+    def validate_priority_and_provenance(self) -> Self:
         expected = self.score.priority_score
-        if self.priority_score is None:
-            self.priority_score = expected
-        if self.priority_score != expected:
+        if self.declared_priority_score is not None and self.declared_priority_score != expected:
             raise ValueError(
-                f"priority_score must equal (signal_value*3)+freshness+reliability-extraction_difficulty; expected {expected}"
+                "priority_score must equal "
+                "(signal_value*3)+freshness+reliability-extraction_difficulty; "
+                f"expected {expected}"
             )
+        missing = MANDATORY_PROVENANCE_REQUIREMENTS - set(self.provenance_requirements)
+        if missing:
+            raise ValueError(f"provenance_requirements missing mandatory keys: {sorted(missing)}")
         return self
 
 
 class SourceCluster(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     cluster_id: str
     detects: str
-    source_categories: list[SourceCategory]
-    signal_patterns: list[str]
-    false_positive_controls: list[str]
-    commercial_actions: list[str]
+    source_categories: list[SourceCategory] = Field(min_length=1)
+    signal_patterns: list[str] = Field(min_length=1)
+    false_positive_controls: list[str] = Field(min_length=1)
+    commercial_actions: list[str] = Field(min_length=1)
 
 
 class IngestionPolicy(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     source_category: SourceCategory
-    permitted_methods: list[AccessMethod]
+    permitted_methods: list[AccessMethod] = Field(min_length=1)
     default_refresh_cadence: str
-    normalization_needs: list[str]
-    deduplication_keys: list[str]
-    evidence_required: list[str]
-    failure_monitoring: list[str]
-    compliance_cautions: list[str]
+    normalization_needs: list[str] = Field(min_length=1)
+    deduplication_keys: list[str] = Field(min_length=1)
+    evidence_required: list[str] = Field(min_length=1)
+    failure_monitoring: list[str] = Field(min_length=1)
+    compliance_cautions: list[str] = Field(min_length=1)
 
 
 def registry_priority_score(
     *, signal_value: int, extraction_difficulty: int, freshness: int, reliability: int
 ) -> int:
-    """Priority score from the Source Intelligence Registry operating prompt."""
     for name, value in {
         "signal_value": signal_value,
         "extraction_difficulty": extraction_difficulty,
@@ -230,18 +251,24 @@ def registry_priority_score(
 
 
 def operational_disposition(record: SourceIntelligenceRecord) -> OperationalDisposition:
-    if record.legal_access_status == LegalAccessStatus.PROHIBITED:
+    if (
+        record.legal_access_status == LegalAccessStatus.PROHIBITED
+        or record.lifecycle_status == SourceLifecycleStatus.PROHIBITED
+    ):
         return OperationalDisposition.HOLD_PROHIBITED
     if record.legal_access_status == LegalAccessStatus.TERMS_REVIEW_REQUIRED:
         return OperationalDisposition.HOLD_TERMS_REVIEW
     if record.legal_access_status == LegalAccessStatus.PII_SENSITIVE:
         return OperationalDisposition.HOLD_PII_REVIEW
-    if record.score.signal_value <= 2 and record.priority_score is not None and record.priority_score < 10:
+    if record.legal_access_status == LegalAccessStatus.MANUAL_ONLY:
+        if record.score.signal_value >= 4:
+            return OperationalDisposition.GO_MANUAL_ANALYST_REVIEW
+        return OperationalDisposition.WATCH
+    if record.score.signal_value <= 2 and record.priority_score < 10:
         return OperationalDisposition.REJECT_LOW_VALUE
     if (
         record.score.signal_value >= 4
         and record.score.extraction_difficulty <= 3
-        and record.priority_score is not None
         and record.priority_score >= 16
     ):
         return OperationalDisposition.GO_AUTOMATE_OR_QUEUE
@@ -254,7 +281,7 @@ def rank_sources(records: list[SourceIntelligenceRecord]) -> list[SourceIntellig
     return sorted(
         records,
         key=lambda record: (
-            record.priority_score or record.score.priority_score,
+            record.priority_score,
             record.score.signal_value,
             -record.score.extraction_difficulty,
             record.source_name,
@@ -273,7 +300,10 @@ def load_registry_fixture(path: str | Path) -> list[SourceIntelligenceRecord]:
 DEFAULT_SOURCE_CLUSTERS: tuple[SourceCluster, ...] = (
     SourceCluster(
         cluster_id="company_distress_detection",
-        detects="Financial or operating pressure that may create acquisition, advisory, lending, restructuring, liquidation, or buyer/seller introduction opportunities.",
+        detects=(
+            "Financial or operating pressure that may create acquisition, advisory, lending, "
+            "restructuring, liquidation, or buyer/seller introduction opportunities."
+        ),
         source_categories=[
             SourceCategory.COURT_INSOLVENCY,
             SourceCategory.MARKETPLACE_LISTING,
@@ -325,7 +355,10 @@ DEFAULT_SOURCE_CLUSTERS: tuple[SourceCluster, ...] = (
     ),
     SourceCluster(
         cluster_id="regulatory_supply_gap",
-        detects="Regulatory shifts, shortages, compliance changes, and supply-demand gaps that can create advisory, sourcing, licensing, or distribution opportunities.",
+        detects=(
+            "Regulatory shifts, shortages, compliance changes, and supply-demand gaps that can "
+            "create advisory, sourcing, licensing, or distribution opportunities."
+        ),
         source_categories=[
             SourceCategory.REGULATORY_PORTAL,
             SourceCategory.ENFORCEMENT_RECALL,
@@ -355,32 +388,69 @@ DEFAULT_SOURCE_CLUSTERS: tuple[SourceCluster, ...] = (
 DEFAULT_INGESTION_POLICIES: tuple[IngestionPolicy, ...] = (
     IngestionPolicy(
         source_category=SourceCategory.CORPORATE_REGISTRY,
-        permitted_methods=[AccessMethod.API, AccessMethod.CSV_DOWNLOAD, AccessMethod.HTML_SCRAPE, AccessMethod.MANUAL_REVIEW],
+        permitted_methods=[
+            AccessMethod.API,
+            AccessMethod.CSV_DOWNLOAD,
+            AccessMethod.HTML_SCRAPE,
+            AccessMethod.MANUAL_REVIEW,
+        ],
         default_refresh_cadence="weekly for watched entities; monthly for broad coverage",
-        normalization_needs=["entity legal name", "registration number", "jurisdiction", "address", "officers", "status"],
+        normalization_needs=[
+            "entity legal name",
+            "registration number",
+            "jurisdiction",
+            "address",
+            "officers",
+            "status",
+        ],
         deduplication_keys=["jurisdiction", "registration_number", "legal_name"],
         evidence_required=["source snapshot", "retrieval timestamp", "entity identifier", "jurisdiction"],
         failure_monitoring=["schema drift", "rate limit", "captcha or access change", "stale records"],
-        compliance_cautions=["respect terms of use", "preserve official-source provenance", "flag personal data fields"],
+        compliance_cautions=[
+            "respect terms of use",
+            "preserve official-source provenance",
+            "flag personal data fields",
+        ],
     ),
     IngestionPolicy(
         source_category=SourceCategory.JOB_HIRING,
-        permitted_methods=[AccessMethod.API, AccessMethod.HTML_SCRAPE, AccessMethod.SEARCH_ALERT, AccessMethod.THIRD_PARTY_ENRICHMENT],
+        permitted_methods=[
+            AccessMethod.API,
+            AccessMethod.HTML_SCRAPE,
+            AccessMethod.SEARCH_ALERT,
+            AccessMethod.THIRD_PARTY_ENRICHMENT,
+        ],
         default_refresh_cadence="daily for tracked companies; weekly for discovery scans",
         normalization_needs=["company", "role", "location", "seniority", "posted_at", "closed_at"],
         deduplication_keys=["company", "role", "location", "posted_at"],
         evidence_required=["posting URL", "posting text hash", "observed_at", "role classification"],
-        failure_monitoring=["duplicate syndicated postings", "expired roles", "promoted listings", "location ambiguity"],
-        compliance_cautions=["avoid collecting applicant personal data", "separate role signal from inferred business claim"],
+        failure_monitoring=[
+            "duplicate syndicated postings",
+            "expired roles",
+            "promoted listings",
+            "location ambiguity",
+        ],
+        compliance_cautions=[
+            "avoid collecting applicant personal data",
+            "separate role signal from inferred business claim",
+        ],
     ),
     IngestionPolicy(
         source_category=SourceCategory.REGULATORY_PORTAL,
-        permitted_methods=[AccessMethod.API, AccessMethod.RSS_FEED, AccessMethod.PDF_EXTRACTION, AccessMethod.MANUAL_REVIEW],
+        permitted_methods=[
+            AccessMethod.API,
+            AccessMethod.RSS_FEED,
+            AccessMethod.PDF_EXTRACTION,
+            AccessMethod.MANUAL_REVIEW,
+        ],
         default_refresh_cadence="daily to weekly depending on regulator cadence",
         normalization_needs=["regulator", "jurisdiction", "effective date", "rule status", "affected sector"],
         deduplication_keys=["regulator", "document_id", "publication_date"],
         evidence_required=["official document link", "effective date", "rule status", "retrieval timestamp"],
         failure_monitoring=["PDF layout change", "consultation vs adopted rule confusion", "translation ambiguity"],
-        compliance_cautions=["legal interpretation is HOLD until reviewed", "preserve exact source document references"],
+        compliance_cautions=[
+            "legal interpretation is HOLD until reviewed",
+            "preserve exact source document references",
+        ],
     ),
 )
