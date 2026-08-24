@@ -85,6 +85,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/goals.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/governance.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/growth_runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/heartbeat.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/homeostasis.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/hydrate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/imagination.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -114,6 +115,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
 | brain/security.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/self_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/sensory_inbox.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/source_intelligence.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/world_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -136,6 +138,10 @@ The developmental rows are included because those code paths exist and must be r
 ## Persistent cognitive-growth traceability note
 
 The PostgreSQL Brain store, generic cognitive-object store at migration 013, benchmark/world/memory/model/planning/telemetry/growth/security modules and sandbox are explicitly represented. Their presence and prior test evidence do not promote them to BUILD-READY until exact-head convergence CI and shared app/runtime integration evidence pass.
+
+## Heartbeat perception-to-learning traceability note
+
+`brain/heartbeat.py` and `brain/sensory_inbox.py` preserve protected-main closed-loop perception→attention→evidence→belief→prediction→outcome-learning capability. The hardened API exposes `/signals`, `/tick`, and `/runner/status` while sharing AGENT-021's canonical event ledger. These modules remain HOLD at repository BUILD-READY level; a durable PostgreSQL sensory-inbox adapter and production continuous-heartbeat worker integration remain unresolved.
 
 ## MOD-016 Capital Source Intelligence traceability note
 
