@@ -17,7 +17,8 @@
     {"source_id": "SRC-V1-MONEY-SPINE", "path": "docs/revenue/V1_MONEY_SPINE.md", "label": "APPROVED"},
     {"source_id": "SRC-CAPITAL-CORTEX", "path": "docs/spec/CAPITAL_DISCOVERY_CORTEX.md", "label": "APPROVED"},
     {"source_id": "SRC-DEVELOPMENTAL", "path": "docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md", "label": "APPROVED"},
-    {"source_id": "SRC-NEUROSCIENCE", "path": "docs/neuroscience", "label": "APPROVED"}
+    {"source_id": "SRC-NEUROSCIENCE", "path": "docs/neuroscience", "label": "APPROVED"},
+    {"source_id": "SRC-CAPITAL-SOURCE-INTELLIGENCE", "path": "docs/spec/CAPITAL_SOURCE_INTELLIGENCE_REGISTRY.md", "label": "APPROVED"}
   ],
   "requirements": [
     {"requirement_id": "REQ-BRAIN-RUNTIME-MODULES", "source_ids": ["SRC-README", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-FUNCTION-MAP"], "label": "APPROVED"},
@@ -27,6 +28,7 @@
     {"requirement_id": "REQ-ARCHIVE-INGESTION", "source_ids": ["SRC-ARCHIVE-WORKFLOW"], "label": "APPROVED"},
     {"requirement_id": "REQ-V1-MONEY-SPINE", "source_ids": ["SRC-README", "SRC-BUILD-PLAN", "SRC-V1-MONEY-SPINE"], "label": "APPROVED"},
     {"requirement_id": "REQ-ECONOMIC-RUNTIME", "source_ids": ["SRC-CAPITAL-CORTEX"], "label": "APPROVED"},
+    {"requirement_id": "REQ-CAPITAL-SOURCE-INTELLIGENCE", "source_ids": ["SRC-CAPITAL-CORTEX", "SRC-CAPITAL-SOURCE-INTELLIGENCE"], "label": "APPROVED"},
     {"requirement_id": "REQ-DEVELOPMENTAL-RUNTIME", "source_ids": ["SRC-DEVELOPMENTAL"], "label": "APPROVED"},
     {"requirement_id": "REQ-NEUROSCIENCE-CONTROL-LAYER", "source_ids": ["SRC-NEUROSCIENCE", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"], "label": "APPROVED"}
   ],
@@ -138,6 +140,24 @@
       "audit_events": ["ECONOMIC_TRANSITION_RECORDED","ECONOMIC_FORMULA_RUN_RECORDED","ECONOMIC_HARD_GATE_EVALUATED","MOD_008_015_ATOMIC_CONFORMANCE_VERIFIED"],
       "source_preservation": "preserved",
       "unresolved_gaps": ["live external source connectors and real transaction execution remain approval-gated deployment work"]
+    },
+    {
+      "record_id": "TRACE-CAPITAL-SOURCE-INTELLIGENCE",
+      "paths": ["brain/source_intelligence.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-CAPITAL-CORTEX","SRC-CAPITAL-SOURCE-INTELLIGENCE"],
+      "requirement_ids": ["REQ-CAPITAL-SOURCE-INTELLIGENCE","REQ-ECONOMIC-RUNTIME"],
+      "owner_object": "MOD-016 Capital Source Intelligence Registry executable primitives",
+      "schema": "SourceIntelligenceRecord, SourceScore, SourceCluster, IngestionPolicy, SourceCategory, SignalType, LegalAccessStatus, SourceLifecycleStatus, OperationalDisposition",
+      "runtime_service": "SourceIntelligenceRegistryService, SourceTriageService, SourceClusterService, IngestionPolicyService primitives",
+      "state_machine": "discovered -> queued -> reviewed -> approved -> active/monitored/degraded/broken/retired/prohibited with legal/access HOLD gates",
+      "fixtures": ["tests/fixtures/brain/source_intelligence_registry.json"],
+      "tests": ["tests/test_source_intelligence_registry.py","python -m pytest -q","ruff check ."],
+      "acceptance_criteria": ["source records validate required fields","priority score is derived from nested score payload","manual-only and prohibited records cannot route to automation","mandatory provenance is preserved","source clusters include false-positive controls"],
+      "audit_events": ["SOURCE_INTELLIGENCE_RECORD_VALIDATED","SOURCE_INTELLIGENCE_PRIORITY_DERIVED","SOURCE_INTELLIGENCE_ACCESS_GATE_EVALUATED","SOURCE_INTELLIGENCE_TRACEABILITY_VERIFIED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["persistent registry tables, source health dashboard, signal inbox, evidence viewer, automated source discovery, and source ROI attribution remain deferred production slices"]
     },
     {
       "record_id": "TRACE-ECONOMIC-ADAPTER",
