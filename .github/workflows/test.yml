@@ -49,9 +49,13 @@ jobs:
           create role authenticated nologin;
           SQL
 
-      - name: Apply all database migrations
+      - name: Apply pre-tenant baseline migrations through 018
         run: |
           for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            version=$(basename "${migration}" | cut -d_ -f1)
+            if [ "$((10#${version}))" -gt 18 ]; then
+              continue
+            fi
             echo "Applying ${migration}"
             docker exec -i brain-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain < "${migration}"
           done
@@ -130,3 +134,162 @@ jobs:
         run: |
           docker rm -f brain-api brain-postgres >/dev/null 2>&1 || true
           docker network rm brain-ci >/dev/null 2>&1 || true
+
+  tenant-rls-integration:
+    name: Tenant RLS release gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: pip install -c constraints.txt -e '.[dev]'
+
+      - name: Create isolated Docker network
+        run: docker network create brain-tenant-ci
+
+      - name: Start PostgreSQL and constrained runtime identities
+        run: |
+          docker run -d --name brain-tenant-postgres --network brain-tenant-ci -p 55432:5432 \
+            -e POSTGRES_USER=brain \
+            -e POSTGRES_PASSWORD=brain \
+            -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 30); do
+            if docker exec brain-tenant-postgres pg_isready -U brain -d brain; then break; fi
+            if [ "${i}" = "30" ]; then docker logs brain-tenant-postgres; exit 1; fi
+            sleep 1
+          done
+          docker exec -i brain-tenant-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role brain_api_ci login password 'brain-api-ci';
+          create role brain_worker_ci login password 'brain-worker-ci';
+          SQL
+
+      - name: Build exact production baseline through migration 018
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+        run: python tools/apply_migrations.py --max-version 18
+
+      - name: Seed one pre-tenant legacy row
+        run: |
+          docker exec -i brain-tenant-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          insert into public.brain_events (
+            id, event_type, aggregate_type, aggregate_id, payload
+          ) values (
+            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa0',
+            'legacy.pre_tenant',
+            'tenant_rls_test',
+            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7',
+            '{"legacy":true}'::jsonb
+          );
+          SQL
+
+      - name: Prove tenant migrations fail closed without release gates
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55432/brain
+        run: |
+          set +e
+          python tools/apply_migrations.py >/tmp/tenant-release-denied.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/tenant-release-denied.log
+          test "${status}" -ne 0
+          grep -q 'BRAIN_TENANT_RLS_RELEASE=1' /tmp/tenant-release-denied.log
+          test "$(docker exec brain-tenant-postgres psql -At -U brain -d brain -c \"select count(*) from public.brain_schema_migrations where filename = '019_tenant_auth_foundation.sql'\")" = "0"
+
+      - name: Apply tenant migrations with explicit safe topology
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55432/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55432/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: python tools/apply_migrations.py
+
+      - name: Prove canonical migration idempotence and hashes
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55432/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55432/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: |
+          python tools/apply_migrations.py
+          python tools/verify_tenant_rls_release.py
+
+      - name: Build tenant-aware production images
+        run: |
+          docker build -t brain-api-tenant-ci -f Dockerfile .
+          docker build -t brain-worker-tenant-ci -f Dockerfile.worker .
+          docker build -t brain-cockpit-tenant-ci -f Dockerfile.railway .
+
+      - name: Verify worker requires the audited trusted-service login
+        run: |
+          docker run --rm --network brain-tenant-ci \
+            -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
+            -e BRAIN_WORKER_DATABASE_URL=postgresql://brain_worker_ci:brain-worker-ci@brain-tenant-postgres:5432/brain \
+            -e BRAIN_WORKER_MODE=verify \
+            brain-worker-tenant-ci
+
+          set +e
+          docker run --rm --network brain-tenant-ci \
+            -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
+            -e BRAIN_WORKER_MODE=verify \
+            brain-worker-tenant-ci >/tmp/unsafe-worker.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/unsafe-worker.log
+          test "${status}" -ne 0
+          grep -q 'BRAIN_WORKER_DATABASE_URL is required' /tmp/unsafe-worker.log
+
+      - name: Start Railway-compatible cockpit on tenant-aware boundary
+        run: |
+          docker run -d --name brain-tenant-cockpit --network brain-tenant-ci -p 8001:8000 \
+            -e PORT=8000 \
+            -e BRAIN_API_KEY=ci-test-key \
+            -e BRAIN_CORS_ORIGINS=http://localhost:3000 \
+            -e BRAIN_TENANT_MODE=required \
+            -e BRAIN_TENANT_CONTEXT_SECRET=ci-only-tenant-signing-fixture \
+            -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
+            brain-cockpit-tenant-ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8001/health; then break; fi
+            if [ "${i}" = "30" ]; then docker logs brain-tenant-cockpit; exit 1; fi
+            sleep 1
+          done
+
+      - name: Preserve authenticated #141 edge read through tenant boundary
+        run: |
+          tenant_id='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1'
+          actor_id='tenant-a-operator'
+          timestamp=$(date +%s)
+          signature=$(TENANT_ID="${tenant_id}" ACTOR_ID="${actor_id}" TS="${timestamp}" python - <<'PY'
+          import hashlib, hmac, os
+          message = f"{os.environ['TENANT_ID']}\n{os.environ['ACTOR_ID']}\n{os.environ['TS']}".encode()
+          print(hmac.new(b"ci-only-tenant-signing-fixture", message, hashlib.sha256).hexdigest())
+          PY
+          )
+          curl -fsS http://127.0.0.1:8001/edges \
+            -H 'X-Brain-Api-Key: ci-test-key' \
+            -H "X-Brain-Tenant-Id: ${tenant_id}" \
+            -H "X-Brain-Actor-Id: ${actor_id}" \
+            -H "X-Brain-Tenant-Timestamp: ${timestamp}" \
+            -H "X-Brain-Tenant-Signature: ${signature}" \
+            | python -c 'import json,sys; p=json.load(sys.stdin); assert p["source"] == "api"'
+
+      - name: Tenant-RLS logs on failure
+        if: failure()
+        run: |
+          docker logs brain-tenant-cockpit || true
+          docker logs brain-tenant-postgres || true
+
+      - name: Cleanup tenant-RLS environment
+        if: always()
+        run: |
+          docker rm -f brain-tenant-cockpit brain-tenant-postgres >/dev/null 2>&1 || true
+          docker network rm brain-tenant-ci >/dev/null 2>&1 || true
