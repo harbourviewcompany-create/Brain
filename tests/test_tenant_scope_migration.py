@@ -1,6 +1,6 @@
 from pathlib import Path
 
-MIGRATION = Path("db/migrations/019_tenant_scope_cognitive_tables.sql")
+MIGRATION = Path("db/migrations/020_tenant_scope_cognitive_tables.sql")
 
 
 def _sql() -> str:

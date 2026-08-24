@@ -15,7 +15,7 @@ from brain.neuro.memory_systems import (
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "docs" / "neuroscience" / "json" / "rich-memory-systems.json"
 FIXTURE = ROOT / "tests" / "fixtures" / "neuro" / "rich_memory_systems.json"
-MIGRATION = ROOT / "db" / "migrations" / "017_neuro_rich_memory_systems.sql"
+MIGRATION = ROOT / "db" / "migrations" / "018_neuro_rich_memory_systems.sql"
 
 
 def load_json(path: Path) -> dict:

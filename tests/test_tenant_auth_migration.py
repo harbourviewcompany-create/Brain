@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-MIGRATION = Path("db/migrations/018_tenant_auth_foundation.sql")
+MIGRATION = Path("db/migrations/019_tenant_auth_foundation.sql")
 
 
 def test_tenant_auth_migration_adds_required_foundation_tables():

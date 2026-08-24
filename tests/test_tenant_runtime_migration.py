@@ -1,6 +1,6 @@
 from pathlib import Path
 
-MIGRATION = Path("db/migrations/021_tenant_runtime_enforcement.sql")
+MIGRATION = Path("db/migrations/022_tenant_runtime_enforcement.sql")
 
 
 def test_membership_resolution_is_rls_scoped_to_signed_identity():

@@ -1,5 +1,5 @@
 -- Brain tenant scope extension for persistence added after the original PR 3 baseline.
--- Depends on migrations 018_tenant_auth_foundation.sql and 019_tenant_scope_cognitive_tables.sql.
+-- Depends on migrations 019_tenant_auth_foundation.sql and 020_tenant_scope_cognitive_tables.sql.
 -- System neuroscience registries remain global control surfaces; runtime cognition is tenant-scoped.
 
 do $$
@@ -109,9 +109,9 @@ create unique index if not exists memory_consolidation_events_tenant_key_unique_
   on public.memory_consolidation_events(tenant_id, event_key) where tenant_id is not null;
 
 -- These two runtime stores still use their historical natural keys as conflict targets.
--- Migration 021 changes them atomically with their adapters so no application build can
+-- Migration 022 changes them atomically with their adapters so no application build can
 -- observe a schema/runtime mismatch.
 comment on table public.cognitive_objects is
-  'Tenant-scoped by RLS in migration 020. Global (object_id, kind) key is retained only until migration 021 updates the adapter and conflict target atomically.';
+  'Tenant-scoped by RLS in migration 021. Global (object_id, kind) key is retained only until migration 022 updates the adapter and conflict target atomically.';
 comment on table public.cognitive_organism_checkpoints is
-  'Tenant-scoped by RLS in migration 020. Global checkpoint_name key is retained only until migration 021 updates the adapter and conflict target atomically.';
+  'Tenant-scoped by RLS in migration 021. Global checkpoint_name key is retained only until migration 022 updates the adapter and conflict target atomically.';

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-MIGRATION = Path("db/migrations/020_tenant_scope_extended_cognition.sql")
+MIGRATION = Path("db/migrations/021_tenant_scope_extended_cognition.sql")
 
 
 def test_extended_tenant_scope_covers_post_pr3_runtime_tables():
@@ -42,6 +42,6 @@ def test_new_natural_keys_are_partitioned_by_tenant():
 
 def test_runtime_conflict_targets_are_deferred_atomically_not_silently():
     sql = MIGRATION.read_text()
-    assert "migration 021 updates the adapter and conflict target atomically" in sql
+    assert "migration 022 updates the adapter and conflict target atomically" in sql
     assert "cognitive_objects" in sql
     assert "cognitive_organism_checkpoints" in sql

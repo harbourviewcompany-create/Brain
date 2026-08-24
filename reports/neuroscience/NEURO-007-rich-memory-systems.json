@@ -6,7 +6,7 @@
     "brain/neuro/memory_systems.py",
     "docs/neuroscience/RICH_MEMORY_SYSTEMS.md",
     "docs/neuroscience/json/rich-memory-systems.json",
-    "db/migrations/017_neuro_rich_memory_systems.sql",
+    "db/migrations/018_neuro_rich_memory_systems.sql",
     "tests/fixtures/neuro/rich_memory_systems.json",
     "tests/test_rich_memory_systems.py",
     "reports/neuroscience/NEURO-007-rich-memory-systems.json"
@@ -30,7 +30,7 @@
   "scientific_claim_check": "PASS",
   "unresolved_items": [
     "operator Memory Systems Console UI not yet implemented",
-    "production migration execution not performed",
+    "production migration execution is verified in repository CI but live production execution remains HOLD",
     "integration with perception/action/affect/self-model/immune layers remains controlled follow-on work"
   ]
 }
