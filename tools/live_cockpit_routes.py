@@ -11,8 +11,7 @@ from fastapi.responses import JSONResponse
 import apps.api.tenant_app as tenant_api
 import apps.api.main as brain_api
 from brain.attention import AttentionMarket, AttentionSignal
-from brain.tenant_auth import TenantRole
-from brain.tenant_context import trusted_tenant_context
+from brain.tenant_context import TenantScopeViolation, trusted_tenant_context
 from brain.tenant_runtime import tenant_context_scope
 from tools.vercel_oidc import VercelOidcVerifier
 
@@ -22,13 +21,13 @@ _attention_market = AttentionMarket()
 app = tenant_api.app
 
 # Stable compatibility tenant for pre-tenant production state. Migration 023
-# assigns existing tenant-owned rows to this tenant. Operators may override the
-# id explicitly, but no request header is allowed to choose it.
+# assigns existing tenant-owned rows and the Observatory service membership to
+# this tenant. No request header is allowed to choose the tenant or role.
 _DEFAULT_OBSERVATORY_TENANT_ID = UUID("7d4427c4-8b8d-4f4a-9f75-b46cedc2f126")
 _OBSERVATORY_ACTOR_ID = "brain-observatory-bff"
 
 
-def _observatory_context():
+def _observatory_identity_context():
     raw = (os.environ.get("BRAIN_OBSERVATORY_TENANT_ID") or "").strip()
     try:
         tenant_id = UUID(raw) if raw else _DEFAULT_OBSERVATORY_TENANT_ID
@@ -37,7 +36,7 @@ def _observatory_context():
     return trusted_tenant_context(
         tenant_id=tenant_id,
         actor_id=_OBSERVATORY_ACTOR_ID,
-        roles=(TenantRole.OPERATOR,),
+        roles=(),
     )
 
 
@@ -255,13 +254,12 @@ def list_acceptance_reports():
 
 
 class VercelOidcAuthBridge:
-    """Railway deployment-identity bridge with server-owned tenant context.
+    """Railway deployment-identity bridge with durable tenant membership.
 
     A verified Vercel deployment token is exchanged for the local API key and
-    bound to the configured Observatory tenant inside Railway. Neither API key
-    nor tenant identity is accepted from untrusted browser headers through this
-    bridge. Direct API-key clients continue through the normal Brain API and, in
-    tenant-required mode, must use the signed tenant membership contract.
+    bound to a server-owned tenant/actor identity. The actor's role is resolved
+    from tenant_memberships before the request runs. Neither API key, tenant, nor
+    role is accepted from untrusted browser headers through this bridge.
     """
 
     def __init__(self, inner_app) -> None:
@@ -296,11 +294,35 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
-                context = _observatory_context()
-                if context is None:
+                identity_context = _observatory_identity_context()
+                if identity_context is None:
                     response = JSONResponse(
                         status_code=503,
                         content={"detail": "brain_observatory_tenant_invalid"},
+                    )
+                    await response(scope, receive, send)
+                    return
+                if tenant_api._membership_resolver is None:
+                    response = JSONResponse(
+                        status_code=503,
+                        content={"detail": "tenant_membership_store_unavailable"},
+                    )
+                    await response(scope, receive, send)
+                    return
+
+                try:
+                    context = tenant_api._membership_resolver.resolve(identity_context)
+                except TenantScopeViolation:
+                    response = JSONResponse(
+                        status_code=403,
+                        content={"detail": "brain_observatory_membership_required"},
+                    )
+                    await response(scope, receive, send)
+                    return
+                except Exception:
+                    response = JSONResponse(
+                        status_code=503,
+                        content={"detail": "tenant_membership_lookup_failed"},
                     )
                     await response(scope, receive, send)
                     return
