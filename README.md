@@ -174,4 +174,4 @@ Run tests:
 python -m pytest -q
 ```
 
-Current verified result: 7 tests passing.
+Focused source-intelligence verification result: 12 tests passing.
