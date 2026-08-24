@@ -11,7 +11,7 @@ on:
 
 jobs:
   control-policy:
-    name: Validate Brain control policy
+    name: Brain Control Policy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
