@@ -3,8 +3,10 @@
 -- Migrations 020-022 deliberately leave historical tenant_id values nullable,
 -- but an ordinary non-owner/NOBYPASSRLS runtime cannot read or write those rows
 -- without a verified tenant context. The existing production Brain database is
--- a single pre-tenant installation, so this migration assigns all existing rows
--- in tenant-owned tables to one deterministic compatibility tenant.
+-- a single pre-tenant installation, so this migration assigns existing rows in
+-- the explicitly tenant-owned 020/021 schema to one deterministic compatibility
+-- tenant and creates the durable Observatory service membership used by the
+-- authenticated Vercel deployment-identity bridge.
 --
 -- This is a one-time ownership assignment for rows that exist when the migration
 -- runs. It does not make tenant_id NOT NULL and therefore does not remove the
@@ -23,10 +25,25 @@ insert into public.tenants (
 )
 on conflict (id) do nothing;
 
+insert into public.tenant_memberships (
+  tenant_id,
+  user_id,
+  role,
+  status
+) values (
+  '7d4427c4-8b8d-4f4a-9f75-b46cedc2f126'::uuid,
+  'brain-observatory-bff',
+  'operator',
+  'active'
+)
+on conflict (tenant_id, user_id) do nothing;
+
 do $$
 declare
   compatibility_tenant constant uuid := '7d4427c4-8b8d-4f4a-9f75-b46cedc2f126'::uuid;
   existing_slug_tenant uuid;
+  observatory_role text;
+  observatory_status text;
   r record;
 begin
   select id into existing_slug_tenant
@@ -38,9 +55,20 @@ begin
       'legacy Observatory tenant slug already belongs to a different tenant';
   end if;
 
-  -- Every table below was explicitly made tenant-owned by migrations 020/021.
-  -- Auth/control metadata is excluded; its tenant_id values are already
-  -- semantically explicit and must never be guessed by a bulk backfill.
+  select role, status into observatory_role, observatory_status
+  from public.tenant_memberships
+  where tenant_id = compatibility_tenant
+    and user_id = 'brain-observatory-bff';
+
+  if observatory_role is distinct from 'operator'
+     or observatory_status is distinct from 'active' then
+    raise exception
+      'legacy Observatory service membership conflicts with required active operator role';
+  end if;
+
+  -- The only tables considered here are those that already have tenant_id at
+  -- this point in the canonical migration order (020/021/022). Auth/control
+  -- metadata is excluded because its ownership is semantically explicit.
   -- brain_events is handled separately because its append-only trigger must
   -- remain authoritative outside this one transactional ownership migration.
   for r in
