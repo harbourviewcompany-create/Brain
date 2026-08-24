@@ -40,11 +40,13 @@ def test_continuous_cycle_emits_full_cognitive_path():
     kinds = [event.event_type for event in store.events]
     assert kinds == [
         "observation.received",
+        "perception.encoded",
         "attention.scored",
         "memory.working_stored",
         "belief.created",
         "evidence.created",
         "belief.updated",
+        "affect.appraised",
         "cognitive_task.selected",
         "cycle.completed",
     ]
@@ -80,6 +82,110 @@ def test_contradiction_creates_investigation_task():
     assert second.contradiction_detected is True
     selected = [e for e in store.events if e.event_type == "cognitive_task.selected"]
     assert any(e.payload["name"] == "investigate_contradiction" for e in selected)
+
+
+def test_contradiction_triggers_executive_arbitration_between_competing_tasks():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    first = cycle.process(
+        CognitiveStimulus(
+            content="Source says licence active",
+            source_id="source-a",
+            claim="Licence is active",
+            source_reliability=0.9,
+            supports=True,
+            belief_statement="Licence is active",
+        )
+    )
+    second = cycle.process(
+        CognitiveStimulus(
+            content="Regulator says licence revoked",
+            source_id="regulator",
+            claim="Licence was revoked",
+            source_reliability=1.0,
+            supports=False,
+            belief_id=first.belief_id,
+            contradiction_value=1.0,
+        )
+    )
+    # Two competing tasks (consolidate + investigate) means the executive
+    # layer should have actually run and reported a decision, not just
+    # left the field empty.
+    assert second.executive_override_attempted is not None
+    arbitrated = [e for e in store.events if e.event_type == "executive.arbitrated"]
+    assert len(arbitrated) == 1
+    assert arbitrated[0].payload["chosen"] in ("investigate_contradiction", "consolidate_observation")
+
+
+def test_cycle_result_reports_affect_and_perception_and_circadian_state():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    result = cycle.process(
+        CognitiveStimulus(
+            content="we saw strong growth and a big win this quarter",
+            source_id="analyst",
+            claim="Revenue grew",
+            source_reliability=0.9,
+            supports=True,
+        )
+    )
+    assert result.emotion_label is not None
+    assert result.emotion_valence is not None
+    assert result.circadian_phase == "wake"
+    assert result.perceived_novelty == 1.0  # first time this content is seen
+
+    appraised = [e for e in store.events if e.event_type == "affect.appraised"]
+    assert len(appraised) == 1
+
+
+def test_theory_of_mind_tracks_source_claims_across_cycles():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    result = cycle.process(
+        CognitiveStimulus(
+            content="Regulator confirms licence renewal",
+            source_id="regulator",
+            claim="Licence renewed",
+            source_reliability=0.95,
+            supports=True,
+        )
+    )
+    assert result.agent_trust is not None
+    agent_model = cycle.theory_of_mind.agents["regulator"]
+    assert "Licence renewed" in agent_model.attributed_beliefs
+
+
+def test_forced_sleep_reduces_encoding_via_low_control_and_urgency_can_wake_it():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    cycle.circadian.pressure.level = 0.9
+    cycle.circadian.oscillator.phase_position = 0.0
+    cycle.circadian.sleep_onset_pressure = 0.5
+    cycle.circadian.advance(ticks=0.1)
+    assert not cycle.circadian.is_awake
+
+    # A routine, non-urgent stimulus should not force a wake.
+    cycle.process(
+        CognitiveStimulus(
+            content="routine housekeeping ping",
+            source_id="system",
+            claim="heartbeat ok",
+            urgency=0.1,
+        )
+    )
+    assert not cycle.circadian.is_awake
+
+    # A highly urgent stimulus should force-wake the Brain rather than
+    # being silently processed at near-zero encoding rate.
+    cycle.process(
+        CognitiveStimulus(
+            content="critical breach detected right now",
+            source_id="system",
+            claim="breach in progress",
+            urgency=0.95,
+        )
+    )
+    assert cycle.circadian.is_awake
 
 
 def test_replay_recovers_belief_state_after_cycle():
