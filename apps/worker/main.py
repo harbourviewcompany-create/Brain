@@ -52,26 +52,6 @@ class ContinuousCognitionWorkflow:
         raise RuntimeError("continue_as_new_returned_unexpectedly")
 
 
-def build_runner():
-    from brain.adapters.cognition import CognitiveCycleRunStore, PostgresSensoryInbox
-    from brain.adapters.postgres import PostgresEventStore, ProjectionCheckpointStore
-    from brain.cycle import CognitiveCycle
-    from brain.runner import ContinuousCognitionRunner
-
-    dsn = os.environ["DATABASE_URL"]
-    event_store = PostgresEventStore(dsn)
-    checkpoint_store = ProjectionCheckpointStore(event_store.pool)
-    cycle = CognitiveCycle(event_store, checkpoint_store=checkpoint_store)
-    try:
-        loaded = cycle.hydrate_beliefs(from_checkpoint=True)
-        print(f"hydrated {loaded} beliefs from projection checkpoint")
-    except Exception as exc:  # noqa: BLE001 - startup hydration is recoverable
-        print(f"belief hydration skipped: {exc}")
-    inbox = PostgresSensoryInbox(event_store.pool)
-    runs = CognitiveCycleRunStore(event_store.pool)
-    return ContinuousCognitionRunner(cycle, inbox, runs)
-
-
 def build_learning():
     from brain.adapters.learning_store import (
         PostgresAttributionStore,
@@ -91,6 +71,33 @@ def build_learning():
         attributions=PostgresAttributionStore(event_store.pool),
         sources=PostgresSourceStore(event_store.pool),
     )
+
+
+def build_runner():
+    from brain.adapters.cognition import CognitiveCycleRunStore, PostgresSensoryInbox
+    from brain.adapters.postgres import PostgresEventStore, ProjectionCheckpointStore
+    from brain.cycle import CognitiveCycle
+    from brain.runner import ContinuousCognitionRunner
+
+    dsn = os.environ["DATABASE_URL"]
+    event_store = PostgresEventStore(dsn)
+    checkpoint_store = ProjectionCheckpointStore(event_store.pool)
+    learning = None
+    try:
+        learning = build_learning()
+    except Exception as exc:  # noqa: BLE001 - learning optional at boot
+        print(f"learning service unavailable: {exc}")
+    cycle = CognitiveCycle(
+        event_store, checkpoint_store=checkpoint_store, learning=learning
+    )
+    try:
+        loaded = cycle.hydrate_beliefs(from_checkpoint=True)
+        print(f"hydrated {loaded} beliefs from projection checkpoint")
+    except Exception as exc:  # noqa: BLE001 - startup hydration is recoverable
+        print(f"belief hydration skipped: {exc}")
+    inbox = PostgresSensoryInbox(event_store.pool)
+    runs = CognitiveCycleRunStore(event_store.pool)
+    return ContinuousCognitionRunner(cycle, inbox, runs)
 
 
 def run_forever_with_maintenance(
