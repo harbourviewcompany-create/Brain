@@ -114,6 +114,7 @@ class OperationalDisposition(StrEnum):
     GO_AUTOMATE_OR_QUEUE = "GO_AUTOMATE_OR_QUEUE"
     GO_MANUAL_ANALYST_REVIEW = "GO_MANUAL_ANALYST_REVIEW"
     WATCH = "WATCH"
+    HOLD_LICENSE_REVIEW = "HOLD_LICENSE_REVIEW"
     HOLD_TERMS_REVIEW = "HOLD_TERMS_REVIEW"
     HOLD_PII_REVIEW = "HOLD_PII_REVIEW"
     HOLD_PROHIBITED = "HOLD_PROHIBITED"
@@ -209,6 +210,21 @@ class SourceIntelligenceRecord(BaseModel):
         missing = MANDATORY_PROVENANCE_REQUIREMENTS - set(self.provenance_requirements)
         if missing:
             raise ValueError(f"provenance_requirements missing mandatory keys: {sorted(missing)}")
+        if self.lifecycle_status == SourceLifecycleStatus.ACTIVE:
+            missing_active_fields = []
+            if not self.jurisdiction_market_coverage:
+                missing_active_fields.append("jurisdiction_market_coverage")
+            if not self.downstream_use_cases:
+                missing_active_fields.append("downstream_use_cases")
+            if not self.provenance_requirements:
+                missing_active_fields.append("provenance_requirements")
+            if not self.update_frequency.strip():
+                missing_active_fields.append("update_frequency")
+            if missing_active_fields:
+                raise ValueError(
+                    "active source records require operational metadata: "
+                    f"{sorted(missing_active_fields)}"
+                )
         return self
 
 
@@ -260,6 +276,8 @@ def operational_disposition(record: SourceIntelligenceRecord) -> OperationalDisp
         return OperationalDisposition.HOLD_TERMS_REVIEW
     if record.legal_access_status == LegalAccessStatus.PII_SENSITIVE:
         return OperationalDisposition.HOLD_PII_REVIEW
+    if record.legal_access_status == LegalAccessStatus.PAID_LICENSED:
+        return OperationalDisposition.HOLD_LICENSE_REVIEW
     if record.legal_access_status == LegalAccessStatus.MANUAL_ONLY:
         if record.score.signal_value >= 4:
             return OperationalDisposition.GO_MANUAL_ANALYST_REVIEW
