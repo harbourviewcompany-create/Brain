@@ -4,7 +4,7 @@ Status: HOLD pending exact-head protected acceptance. User-authorized merge may 
 
 ## Objective
 
-Converge the previously validated persistent cognitive-growth and production-runtime substrate onto protected current main without deleting or replacing AGENT-017 through AGENT-020 developmental intelligence, Cognitive Organism V1, NEURO-006 Global Workspace Proxy, MOD-008 through MOD-015 conformance evidence, MOD-016 Capital Source Intelligence Registry, neuroscience abstractions, economic runtime, or future Brain scope.
+Converge the previously validated persistent cognitive-growth and production-runtime substrate onto protected current main without deleting or replacing AGENT-017 through AGENT-020 developmental intelligence, Cognitive Organism V1, heartbeat closed-loop cognition, NEURO-006 Global Workspace Proxy, MOD-008 through MOD-015 conformance evidence, MOD-016 Capital Source Intelligence Registry, MOD-017 Persistent Source Registry and Signal Intake Runtime, neuroscience abstractions, economic runtime, or future Brain scope.
 
 ## Preserved mainline authority
 
@@ -17,6 +17,7 @@ Converge the previously validated persistent cognitive-growth and production-run
 - NEURO-006 Global Workspace Proxy and its non-consciousness boundary.
 - 117-row MOD-008 through MOD-015 atomic conformance universe.
 - MOD-016 Capital Source Intelligence Registry runtime, specification, machine-readable registry, fixture and tests.
+- MOD-017 persistent source-registry and signal-intake runtime, specification, fixture and tests; live connectors remain HOLD.
 - Neuroscience abstraction and unknown/theory boundaries.
 
 ## Added convergence substrate
@@ -36,6 +37,7 @@ Converge the previously validated persistent cognitive-growth and production-run
 - Separate API/worker container and host definitions.
 - Temporal durable worker orchestration with test-server continue-as-new coverage.
 - Container acceptance covering the full migration chain, image builds, authentication, restart persistence and database-outage readiness.
+- MOD-017 SQL target renumbered from conflicting protected-main migration 008 to migration 015 without changing its schema semantics.
 
 ## Migration authority
 
@@ -43,6 +45,7 @@ Converge the previously validated persistent cognitive-growth and production-run
 2. `012_cognitive_organism.sql` — Cognitive Organism V1 persistence authority.
 3. `013_neuro_global_workspace_proxy.sql` — NEURO-006 Global Workspace Proxy persistence authority.
 4. `014_cognitive_object_store.sql` — generic provenance-aware cognitive object repository.
+5. `015_source_registry_runtime.sql` — MOD-017 persistent source-registry and signal-intake SQL target.
 
 The historical duplicate migration 006 pair remains the sole explicit legacy version exception.
 
@@ -50,14 +53,15 @@ The historical duplicate migration 006 pair remains the sole explicit legacy ver
 
 - Repository-wide BUILD-READY remains HOLD.
 - Production deployment, spending, outreach, transaction execution, live source automation and irreversible external action remain HOLD unless separately approved.
+- MOD-017 does not activate live scraping, browser automation, API connector execution or paid-license ingestion.
 - Literal consciousness, sentience or biological equivalence is not claimed.
 - Archive issue #52 remains BLOCKED until real binary source bytes are present.
 
 ## Remaining merge work
 
 1. Execute protected control validation on the exact current head.
-2. Execute full pytest, MOD-008–015 conformance, MOD-016 tests, NEURO-006 tests and Ruff on that same head.
-3. Prove migrations through 014, API/worker image builds, authenticated restart persistence and database-outage readiness.
+2. Execute full pytest, MOD-008–015 conformance, MOD-016, MOD-017, heartbeat, NEURO-006 and Ruff tests on that same head.
+3. Prove migrations through 015, API/worker image builds, authenticated restart persistence and database-outage readiness.
 4. Prove Temporal test-server workflow execution and continue-as-new on that exact head.
 5. Re-check protected main immediately before merge and reconcile again if it advanced.
 6. Merge only the exact green head under the user's explicit authorization.
