@@ -1,0 +1,51 @@
+{
+  "fixture_id": "capital_starvation_cycle",
+  "issue": 130,
+  "agent_task": "AGENT-007",
+  "purpose": "End-to-end fixture for capital-as-hunger reaching the live cognitive cycle.",
+  "initial_ledger": {
+    "balance": 1.0,
+    "burn_rate": 2.0,
+    "survival_threshold": 0.0,
+    "warning_threshold": 10.0
+  },
+  "cycle_tick": {
+    "stimulus": {
+      "content": "routine market scan",
+      "source_id": "system",
+      "claim": "market scan available",
+      "source_reliability": 0.8,
+      "novelty": 0.2,
+      "urgency": 0.1
+    },
+    "expected_events": [
+      "capital.metabolized",
+      "capital.starvation",
+      "homeostasis.budget_pressure_updated",
+      "cognitive_task.selected"
+    ],
+    "expected_selected_task": "pursue_capital_recovery",
+    "expected_budget_pressure": 1.0
+  },
+  "recovery_tick": {
+    "stimulus": {
+      "content": "paid outcome posted",
+      "source_id": "operator",
+      "claim": "cash received",
+      "source_reliability": 1.0,
+      "capital_outcome_amount": 20.0,
+      "capital_outcome_source": "operator-confirmed-payment"
+    },
+    "expected_events": [
+      "capital.fed",
+      "homeostasis.budget_pressure_updated"
+    ],
+    "expected_recovered_from_starvation": true
+  },
+  "hard_gates": [
+    "CapitalLedger balance changes are the only source of capital.starvation",
+    "budget_pressure reaches HomeostaticState on every capital-enabled CognitiveCycle tick",
+    "starvation can dominate scheduling without unrelated pressure compounding",
+    "outcome credit enters the ledger only through capital.fed evidence"
+  ]
+}
