@@ -20,16 +20,24 @@
     "full test and lint workflow passes on exact head",
     "MOD-008-015 117-row conformance remains green",
     "MOD-016 source-intelligence tests remain green",
-    "all migrations apply through migration 013",
+    "NEURO-006 Global Workspace Proxy tests remain green",
+    "all migrations apply through migration 014 with unique versions after the historical 006 exception",
     "API and worker images build",
     "authenticated PostgreSQL belief state survives API restart",
     "database outage makes readiness fail closed",
     "Temporal workflow acceptance including continue-as-new passes",
     "current protected main is still an ancestor immediately before merge"
   ],
+  "migration_authority": [
+    "011_developmental_evidence_ledger.sql",
+    "012_cognitive_organism.sql",
+    "013_neuro_global_workspace_proxy.sql",
+    "014_cognitive_object_store.sql"
+  ],
   "preserved_authority": [
     "AGENT-017 through AGENT-020",
     "Cognitive Organism V1",
+    "NEURO-006 Global Workspace Proxy",
     "MOD-008 through MOD-015",
     "MOD-016 Capital Source Intelligence Registry",
     "neuroscience and unknown/theory boundaries"
