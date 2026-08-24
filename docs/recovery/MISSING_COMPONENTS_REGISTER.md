@@ -1,0 +1,24 @@
+# Missing Components Register
+
+| Missing item | Family | Severity | Why it blocks |
+|---|---|---|---|
+| Brain Master Corpus | Brain-Corpus | Critical | Cannot define universe of functions/modules |
+| Brain Function Registry | Brain-Registry | Critical | Cannot update registry |
+| Source-discovery handoff | Governance | Critical | Cannot know allowed/forbidden sources |
+| Contaminated artifact audit | Governance | Critical | Cannot avoid unsafe copying |
+| Missing Components Register v2 | Governance | Critical | Cannot reconcile gaps |
+| Multi-model synthesis package | Brain-Corpus | Critical | Base package unavailable |
+| Implementation tickets | Execution | High | Cannot sequence implementation |
+| Exact schemas/state machines | Contract | High | Cannot implement data/control layer |
+| Golden fixture library | Testing | High | Cannot validate behavior |
+| Security governance appendix | Governance | High | Cannot authorize external actions |
+| Cost/budget appendix | Governance | High | Cannot implement cost controls |
+| Decision explanation schema | Explainability | High | Cannot log/justify decisions |
+| Outcome attribution model | Learning loop | High | Cannot attribute results |
+| Calibration/backtesting plan | Validation | High | Cannot validate scoring/confidence |
+| Brain Beta source package | Brain-Beta | Medium | Cannot inspect or patch simulation harness |
+| Brain Manual V2/V3 | Brain-Manual | Medium | Cannot map conceptual content |
+| Route/RLS/test/dashboard name list | Registry | Medium | Cannot add registry entries |
+| Compact forbidden-code list | Governance | Medium | Cannot enforce exact exclusions |
+| Current repo/source export | Implementation | Critical for build | Cannot inspect actual code surface |
+| Current test/build logs | Validation | High | Cannot prove runnable baseline |
