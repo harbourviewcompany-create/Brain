@@ -452,3 +452,8 @@ def daily_revenue_report(body: DailyRevenueReportRequest):
         "gaps": report.gaps,
         "report": asdict(report),
     }
+
+
+from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
+
+register_cognitive_organism_routes(app)
