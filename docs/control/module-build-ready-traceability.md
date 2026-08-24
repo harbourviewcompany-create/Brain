@@ -117,7 +117,7 @@ The twelve `brain/developmental/*` rows are included because those code paths ex
 
 ## MOD-016 source intelligence traceability note
 
-`brain/source_intelligence.py` is now represented as a controlled MOD-016 source-intelligence primitive path. It remains HOLD at the BUILD-READY matrix level because persistent registry tables, health dashboards, source ROI attribution, signal inbox integration, evidence viewer integration, and production connectors remain deferred.
+`brain/source_intelligence.py` is represented as a controlled MOD-016 source-intelligence primitive path. It remains HOLD at the BUILD-READY matrix level because persistent registry tables, health dashboards, source ROI attribution, signal inbox integration, evidence viewer integration, and production connectors remain deferred.
 
 ## Neuroscience traceability note
 
