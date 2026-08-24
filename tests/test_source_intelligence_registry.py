@@ -7,7 +7,10 @@ from brain.source_intelligence import (
     DEFAULT_SOURCE_CLUSTERS,
     LegalAccessStatus,
     OperationalDisposition,
+    SourceCategory,
+    SourceCluster,
     SourceIntelligenceRecord,
+    SourceLifecycleStatus,
     SourceScore,
     load_registry_fixture,
     operational_disposition,
@@ -55,7 +58,12 @@ def test_source_record_materializes_and_validates_priority_score() -> None:
             "downstream_use_cases": ["counterparty verification", "market movement monitoring"],
             "example_intelligence_questions": ["Which entities were newly formed in this sector?"],
             "best_ingestion_method": "api",
-            "score": {"signal_value": 5, "extraction_difficulty": 2, "freshness": 4, "reliability": 5},
+            "score": {
+                "signal_value": 5,
+                "extraction_difficulty": 2,
+                "freshness": 4,
+                "reliability": 5,
+            },
         }
     )
 
@@ -105,3 +113,78 @@ def test_default_clusters_and_ingestion_policies_are_operator_grade() -> None:
         assert policy.permitted_methods
         assert policy.evidence_required
         assert policy.compliance_cautions
+
+
+def test_manual_only_and_prohibited_lifecycle_never_auto_route() -> None:
+    base = load_registry_fixture(FIXTURE)[0]
+    manual_record = base.model_copy(update={"legal_access_status": LegalAccessStatus.MANUAL_ONLY})
+    lifecycle_prohibited_record = base.model_copy(
+        update={"lifecycle_status": SourceLifecycleStatus.PROHIBITED}
+    )
+
+    assert operational_disposition(manual_record) == OperationalDisposition.GO_MANUAL_ANALYST_REVIEW
+    assert operational_disposition(lifecycle_prohibited_record) == OperationalDisposition.HOLD_PROHIBITED
+
+
+def test_missing_mandatory_provenance_is_rejected() -> None:
+    payload = load_registry_fixture(FIXTURE)[0].model_dump(mode="json")
+    payload.pop("declared_priority_score", None)
+    payload["provenance_requirements"] = []
+
+    with pytest.raises(ValueError):
+        SourceIntelligenceRecord.model_validate(payload)
+
+
+def test_priority_score_is_derived_and_score_is_immutable() -> None:
+    record = load_registry_fixture(FIXTURE)[0]
+    assert record.priority_score == 23
+
+    with pytest.raises(Exception):
+        record.priority_score = 1  # type: ignore[misc]
+
+    with pytest.raises(Exception):
+        record.score.signal_value = 1
+
+
+def test_registry_timestamps_are_timezone_aware() -> None:
+    record = SourceIntelligenceRecord.model_validate(
+        {
+            "source_name": "Timezone registry class",
+            "source_category": "corporate_registry",
+            "url_or_access_path": "official registry",
+            "jurisdiction_market_coverage": ["global_by_jurisdiction"],
+            "data_contains": ["legal entity status"],
+            "signal_types": ["market_entry"],
+            "commercial_value": "entity verification",
+            "signal_freshness": "registry-dependent",
+            "update_frequency": "daily to monthly",
+            "access_methods": ["api"],
+            "legal_access_status": "public_permitted",
+            "noise_level": "medium",
+            "reliability_level": "official_primary",
+            "downstream_use_cases": ["counterparty verification"],
+            "example_intelligence_questions": ["Which entities were newly formed?"],
+            "best_ingestion_method": "api",
+            "score": {
+                "signal_value": 5,
+                "extraction_difficulty": 2,
+                "freshness": 4,
+                "reliability": 5,
+            },
+        }
+    )
+
+    assert record.created_at.tzinfo is not None
+    assert record.updated_at.tzinfo is not None
+
+
+def test_source_cluster_requires_false_positive_controls() -> None:
+    with pytest.raises(ValueError):
+        SourceCluster(
+            cluster_id="bad_cluster",
+            detects="unsupported promotion",
+            source_categories=[SourceCategory.NEWS_MEDIA],
+            signal_patterns=["press release only"],
+            false_positive_controls=[],
+            commercial_actions=["act"],
+        )
