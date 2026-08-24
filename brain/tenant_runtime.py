@@ -41,6 +41,98 @@ def tenant_context_scope(context: TenantContext | None) -> Iterator[None]:
         reset_active_tenant_context(token)
 
 
+@dataclass(frozen=True)
+class DatabaseRoleState:
+    role_name: str
+    is_database_owner: bool
+    is_superuser: bool
+    bypass_rls: bool
+    runtime_member: bool
+    trusted_service_member: bool
+
+
+def inspect_database_role(conn: Any) -> DatabaseRoleState:
+    """Inspect the connected PostgreSQL login without changing role state."""
+    row = conn.execute(
+        """
+        select
+          current_user,
+          r.rolsuper,
+          r.rolbypassrls,
+          d.datdba = r.oid as is_database_owner,
+          case
+            when to_regrole('brain_runtime_role') is null then false
+            else pg_has_role(current_user, 'brain_runtime_role', 'member')
+          end as runtime_member,
+          case
+            when to_regrole('brain_trusted_service_role') is null then false
+            else pg_has_role(current_user, 'brain_trusted_service_role', 'member')
+          end as trusted_service_member
+        from pg_roles r
+        join pg_database d on d.datname = current_database()
+        where r.rolname = current_user
+        """
+    ).fetchone()
+    if not row:
+        raise RuntimeError("unable to inspect current PostgreSQL role")
+    return DatabaseRoleState(
+        role_name=str(row[0]),
+        is_superuser=bool(row[1]),
+        bypass_rls=bool(row[2]),
+        is_database_owner=bool(row[3]),
+        runtime_member=bool(row[4]),
+        trusted_service_member=bool(row[5]),
+    )
+
+
+def tenant_rls_enforced(conn: Any) -> bool:
+    """Return true only when the critical tenant tables all FORCE RLS."""
+    row = conn.execute(
+        """
+        select count(*) = 4 and bool_and(c.relrowsecurity and c.relforcerowsecurity)
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public'
+          and c.relname in ('brain_events', 'beliefs', 'sensory_inbox', 'predictions')
+        """
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def require_safe_runtime_role(
+    conn: Any,
+    *,
+    require_trusted_service: bool,
+) -> DatabaseRoleState:
+    """Fail closed if a tenant-RLS runtime uses an owner/BYPASSRLS login.
+
+    API/cockpit runtimes must be ordinary ``brain_runtime_role`` members and
+    must not inherit the trusted-service bypass. The continuous worker may use
+    the separately audited trusted-service group until tenant-by-tenant worker
+    scheduling is implemented.
+    """
+    state = inspect_database_role(conn)
+    violations: list[str] = []
+    if state.is_database_owner:
+        violations.append("database_owner")
+    if state.is_superuser:
+        violations.append("superuser")
+    if state.bypass_rls:
+        violations.append("bypassrls")
+    if not state.runtime_member:
+        violations.append("missing_brain_runtime_role")
+    if require_trusted_service and not state.trusted_service_member:
+        violations.append("missing_brain_trusted_service_role")
+    if not require_trusted_service and state.trusted_service_member:
+        violations.append("unexpected_brain_trusted_service_role")
+    if violations:
+        raise RuntimeError(
+            "unsafe tenant RLS database role "
+            f"{state.role_name}: {', '.join(violations)}"
+        )
+    return state
+
+
 class TenantScopedConnectionPool:
     """Pool facade that stamps verified tenant context into each transaction.
 
