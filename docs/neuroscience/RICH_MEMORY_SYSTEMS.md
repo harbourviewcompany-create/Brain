@@ -8,6 +8,8 @@ Rich Memory Systems define the Brain control layer for encoding, retrieving, con
 
 This is not a biological-equivalence claim. It is a provenance-bound software memory architecture that distinguishes what was observed, inferred, rehearsed, imagined, dreamed, contradicted, failed or quarantined.
 
+Existing core memory modules (`brain/memory.py`, `brain/memory_systems.py`, `brain/working_memory.py`) remain preserved. This layer supplies typed neuroscience-control records and validation boundaries.
+
 ## Required memory systems
 
 - iconic
@@ -48,7 +50,7 @@ This is not a biological-equivalence claim. It is a provenance-bound software me
 
 ## Executable runtime anchor
 
-NEURO-007 adds `brain.neuro.memory_systems.RichMemorySystemService` and `RichMemoryValidationService` as the first neuroscience-layer memory runtime. Existing core memory modules remain preserved; this layer supplies typed neuroscience-control records and validation boundaries.
+NEURO-007 adds `brain.neuro.memory_systems.RichMemorySystemService` and `RichMemoryValidationService` as the first neuroscience-layer memory runtime.
 
 ## State machine
 

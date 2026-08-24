@@ -30,7 +30,8 @@
   "scientific_claim_check": "PASS",
   "unresolved_items": [
     "operator Memory Systems Console UI not yet implemented",
-    "production migration execution is verified in repository CI but live production execution remains HOLD",
-    "integration with perception/action/affect/self-model/immune layers remains controlled follow-on work"
-  ]
+    "production migration execution not performed",
+    "integration with perception/action/affect/self-model/immune layers remains future work"
+  ],
+  "migration_renumbering_note": "Protected-main NEURO-007 migration was restacked from draft PR #113 as 018 because 013 is already occupied by NEURO-006 global workspace proxy. Schema semantics are unchanged."
 }

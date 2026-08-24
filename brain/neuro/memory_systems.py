@@ -112,7 +112,8 @@ class RichMemorySystemService:
             record
             for record in self.records
             if cue in record.retrieval_cues
-            and record.lifecycle_state not in {
+            and record.lifecycle_state
+            not in {
                 MemoryLifecycleState.FORGOTTEN,
                 MemoryLifecycleState.QUARANTINED,
             }
@@ -159,7 +160,10 @@ class RichMemorySystemService:
         for record in self.records:
             if record.kind == MemorySystemKind.QUARANTINED and record.go_hold_status != "HOLD":
                 unsafe.append(record.memory_id)
-            if record.lifecycle_state == MemoryLifecycleState.QUARANTINED and not record.quarantine_reason:
+            if (
+                record.lifecycle_state == MemoryLifecycleState.QUARANTINED
+                and not record.quarantine_reason
+            ):
                 unsafe.append(record.memory_id)
             if record.retention_policy == "forget" and record.replay_required:
                 unsafe.append(record.memory_id)
@@ -167,8 +171,7 @@ class RichMemorySystemService:
 
     def _replace(self, updated: MemoryRecord) -> None:
         self.records = [
-            updated if record.memory_id == updated.memory_id else record
-            for record in self.records
+            updated if record.memory_id == updated.memory_id else record for record in self.records
         ]
 
     def _validate_record(self, record: MemoryRecord) -> None:

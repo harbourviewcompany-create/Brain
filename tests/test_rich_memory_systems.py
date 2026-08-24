@@ -32,13 +32,30 @@ def memory_record(kind: MemorySystemKind, suffix: str | None = None) -> MemoryRe
         source_refs=[f"source:{kind.value}"],
         provenance="externally sourced or internally generated with explicit trace",
         confidence=0.77,
-        retrieval_cues=[kind.value, "urgent contradiction" if kind == MemorySystemKind.CONTRADICTION else "general"],
+        retrieval_cues=[
+            kind.value,
+            "urgent contradiction" if kind == MemorySystemKind.CONTRADICTION else "general",
+        ],
         linked_workspace_frame_ids=["workspace:frame-001"],
-        retention_policy="operator_review" if kind in {MemorySystemKind.DREAM_HYPOTHESIS, MemorySystemKind.QUARANTINED} else "retain",
+        retention_policy=(
+            "operator_review"
+            if kind in {MemorySystemKind.DREAM_HYPOTHESIS, MemorySystemKind.QUARANTINED}
+            else "retain"
+        ),
         replay_required=kind in {MemorySystemKind.FAILURE, MemorySystemKind.CONTRADICTION},
-        go_hold_status="HOLD" if kind in {MemorySystemKind.DREAM_HYPOTHESIS, MemorySystemKind.QUARANTINED} else "GO",
-        quarantine_reason="source contamination risk" if kind == MemorySystemKind.QUARANTINED else None,
-        lifecycle_state=MemoryLifecycleState.QUARANTINED if kind == MemorySystemKind.QUARANTINED else MemoryLifecycleState.ENCODED,
+        go_hold_status=(
+            "HOLD"
+            if kind in {MemorySystemKind.DREAM_HYPOTHESIS, MemorySystemKind.QUARANTINED}
+            else "GO"
+        ),
+        quarantine_reason=(
+            "source contamination risk" if kind == MemorySystemKind.QUARANTINED else None
+        ),
+        lifecycle_state=(
+            MemoryLifecycleState.QUARANTINED
+            if kind == MemorySystemKind.QUARANTINED
+            else MemoryLifecycleState.ENCODED
+        ),
     )
 
 
@@ -107,7 +124,9 @@ def test_no_fabricated_memory_can_remain_go() -> None:
     record = memory_record(MemorySystemKind.SEMANTIC, "FABRICATED")
     fabricated = record.model_copy(update={"provenance": "fabricated memory payload"})
 
-    assert RichMemoryValidationService().validate_no_fabricated_memory([fabricated]) == ["MEM-FABRICATED-001"]
+    assert RichMemoryValidationService().validate_no_fabricated_memory([fabricated]) == [
+        "MEM-FABRICATED-001"
+    ]
 
 
 def test_memory_persistence_tables_exist() -> None:

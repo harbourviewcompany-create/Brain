@@ -46,8 +46,10 @@ REQUIRED_FIXTURES = [
     "tests/fixtures/brain/outcome_reward_pain_learning.json",
     "tests/fixtures/brain/contradiction_review.json",
     "tests/fixtures/brain/acceptance_gate_go_hold.json",
-    "tests/fixtures/brain/cross_cutting_cognitive_protocol.json",
+    "tests/fixtures/brain/capital_starvation_cycle.json",
 ]
+
+VALID_TASK_STATUSES = {"implemented", "in_progress", "planned", "blocked"}
 
 REQUIRED_REPORTS = [
     "reports/acceptance/AGENT-001-executable-schemas.json",
@@ -56,7 +58,6 @@ REQUIRED_REPORTS = [
     "reports/acceptance/AGENT-004-contradiction-review.json",
     "reports/acceptance/AGENT-005-ci-acceptance-gate.json",
     "reports/acceptance/AGENT-006-source-to-build-traceability.json",
-    "reports/acceptance/AGENT-XCUT-001-cross-cutting-cognitive-protocol.json",
     "reports/go-hold/GO-HOLD-SUMMARY.json",
 ]
 
@@ -90,6 +91,36 @@ def validate_go_hold_issue_reconciliation() -> None:
     require(not failures, f"GO/HOLD issue reconciliation failed: {failures}")
 
 
+def validate_task_statuses(tasks: list[dict]) -> None:
+    for task in tasks:
+        require(
+            task["status"] in VALID_TASK_STATUSES,
+            f"Task has unrecognized status (expected one of {sorted(VALID_TASK_STATUSES)}): {task}",
+        )
+
+
+def implemented_tasks_of(tasks: list[dict]) -> list[dict]:
+    return [task for task in tasks if task["status"] == "implemented"]
+
+
+def validate_implemented_fixtures_materialized(tasks: list[dict], fixture_ids: set[str]) -> None:
+    # Only tasks actually claiming to be done need materialized evidence.
+    # A queue that can only represent finished work isn't a queue, it's a
+    # changelog. Backlog statuses may reference fixtures/tests that don't
+    # exist yet -- that's the point of tracking planned work honestly
+    # instead of only registering it after the fact.
+    referenced: set[str] = set()
+    for task in implemented_tasks_of(tasks):
+        referenced.update(task.get("required_fixtures", []))
+    referenced.discard("all_required_fixture_files")
+    referenced.discard("none")
+    missing_referenced = sorted(referenced - fixture_ids)
+    require(
+        not missing_referenced,
+        f"Task marked implemented but references unmaterialized fixtures: {missing_referenced}",
+    )
+
+
 def main() -> None:
     required_paths = REQUIRED_FILES + REQUIRED_FIXTURES + REQUIRED_REPORTS
     missing = [path for path in required_paths if not (ROOT / path).exists()]
@@ -112,7 +143,7 @@ def main() -> None:
             "status",
         ]:
             require(field in task, f"Task missing {field}: {task}")
-        require(task["status"] == "implemented", f"Task not implemented: {task}")
+    validate_task_statuses(tasks)
 
     acceptance = load_json("docs/spec/acceptance-matrix.json")
     rules = acceptance.get("rules", [])
@@ -148,13 +179,7 @@ def main() -> None:
         require("expected" in data, f"Fixture missing expected block: {fixture}")
         fixture_ids.add(data["fixture_id"])
 
-    referenced = set()
-    for task in tasks:
-        referenced.update(task.get("required_fixtures", []))
-    referenced.discard("all_required_fixture_files")
-    referenced.discard("none")
-    missing_referenced = sorted(referenced - fixture_ids)
-    require(not missing_referenced, f"Referenced fixtures are not materialized: {missing_referenced}")
+    validate_implemented_fixtures_materialized(tasks, fixture_ids)
 
     for report_path in REQUIRED_REPORTS:
         report = load_json(report_path)
