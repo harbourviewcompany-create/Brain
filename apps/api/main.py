@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
 from brain.learning import LearningService
@@ -470,3 +471,6 @@ def evaluate_revenue_experiment(body: ExperimentResultRequest):
 def daily_revenue_report(body: DailyRevenueReportRequest):
     report = DailyRevenueReport(**body.model_dump())
     return {"passed": report.passed, "gaps": report.gaps, "report": asdict(report)}
+
+
+register_cognitive_organism_routes(app)
