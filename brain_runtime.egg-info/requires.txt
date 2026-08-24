@@ -1,0 +1,11 @@
+fastapi<1,>=0.116
+uvicorn[standard]<1,>=0.35
+pydantic<3,>=2.11
+psycopg[binary,pool]<4,>=3.2
+neo4j<7,>=5.28
+temporalio<2,>=1.15
+httpx<1,>=0.28
+
+[dev]
+pytest<9,>=8.4
+ruff<1,>=0.12

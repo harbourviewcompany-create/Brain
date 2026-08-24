@@ -15,6 +15,18 @@ from .projections import default_projection_engine, incremental_checkpoint
 from .scheduler import CognitiveScheduler, CognitiveTask
 from .working_memory import WorkingMemory
 
+from .affect import AffectAppraisalService, AppraisalInput
+from .circadian import CircadianClock
+from .executive import (
+    CognitiveControlResource,
+    ExecutiveControlService,
+    ResponseCandidate,
+    ResponseSource,
+)
+from .hedonic import HedonicSystem
+from .perception import Modality, PerceptionService, TextPerceptionEncoder
+from .theory_of_mind import TheoryOfMindService
+
 
 class AppendableEventStore(Protocol):
     def append(self, event: BrainEvent) -> None: ...
@@ -64,6 +76,15 @@ class CognitiveCycleResult:
     event_ids: list[UUID]
     working_memory_size: int = 0
     evicted_count: int = 0
+    # Additive: outputs of the six organs wired in below. All optional /
+    # defaulted so existing positional-safe construction is unaffected.
+    emotion_label: str | None = None
+    emotion_valence: float | None = None
+    circadian_phase: str | None = None
+    executive_override_attempted: bool | None = None
+    executive_override_succeeded: bool | None = None
+    perceived_novelty: float | None = None
+    agent_trust: float | None = None
 
 
 class CognitiveCycle:
@@ -78,6 +99,13 @@ class CognitiveCycle:
         cognitive_budget: int = 2,
         working_memory: WorkingMemory | None = None,
         working_memory_capacity: int = 7,
+        circadian: CircadianClock | None = None,
+        affect: AffectAppraisalService | None = None,
+        hedonic: HedonicSystem | None = None,
+        theory_of_mind: TheoryOfMindService | None = None,
+        executive: ExecutiveControlService | None = None,
+        perception: PerceptionService | None = None,
+        control_resource: CognitiveControlResource | None = None,
     ) -> None:
         self.event_store = event_store
         self.checkpoint_store = checkpoint_store
@@ -92,6 +120,25 @@ class CognitiveCycle:
         self._belief_cache: dict[UUID, Belief] = {}
         self._projection = default_projection_engine()
 
+        # The six organs from the gap-analysis pass. Each is optional and
+        # independently swappable/injectable (matching working_memory's
+        # existing pattern) so callers who don't care can ignore them
+        # entirely -- process() still runs and returns the same core
+        # fields it always did.
+        self.circadian = circadian or CircadianClock()
+        self.affect = affect or AffectAppraisalService()
+        self.hedonic = hedonic or HedonicSystem()
+        self.theory_of_mind = theory_of_mind or TheoryOfMindService()
+        self.executive = executive or ExecutiveControlService()
+        self.control_resource = control_resource or CognitiveControlResource()
+        self.perception = perception or self._default_perception_service()
+
+    @staticmethod
+    def _default_perception_service() -> PerceptionService:
+        service = PerceptionService()
+        service.register(TextPerceptionEncoder())
+        return service
+
     def register_belief(self, belief: Belief) -> None:
         self._belief_cache[belief.id] = belief
 
@@ -103,6 +150,17 @@ class CognitiveCycle:
             self.checkpoint_store,
             from_checkpoint=from_checkpoint,
         )
+
+    def _blend_modulation(self, source: NeuromodulatorState, weight: float) -> None:
+        """Composes a new modulator write into self.modulation instead of
+        overwriting it -- affect, hedonic, and circadian all get a say on
+        the same dials every cycle, the same weighted-blend pattern
+        HomeostasisEngine already uses for stress."""
+        for name in ("dopamine", "norepinephrine", "serotonin", "acetylcholine", "stress"):
+            current = getattr(self.modulation, name)
+            incoming = getattr(source, name)
+            setattr(self.modulation, name, (1 - weight) * current + weight * incoming)
+        self.modulation.clamp()
 
     def process(self, stimulus: CognitiveStimulus) -> CognitiveCycleResult:
         cycle_id = uuid4()
@@ -123,6 +181,36 @@ class CognitiveCycle:
                     "metadata": observation.metadata,
                     "cycle_id": str(cycle_id),
                 },
+                correlation_id=cycle_id,
+            ),
+            event_ids,
+        )
+
+        # Circadian: advance one tick per cycle. cognitive_load is a crude
+        # proxy (urgency) for now -- real load could come from scheduler
+        # queue depth later. A very urgent stimulus can force-wake the
+        # Brain mid-sleep rather than being silently dropped/delayed; when
+        # that happens we skip the normal advance() for this same tick so
+        # the still-high sleep pressure doesn't immediately re-trigger
+        # sleep onset before the urgent stimulus has even been processed.
+        if not self.circadian.is_awake and stimulus.urgency >= 0.85:
+            self.circadian.force_wake()
+        else:
+            self.circadian.advance(ticks=1.0, cognitive_load=max(0.1, stimulus.urgency))
+        self._blend_modulation(self.circadian.modulator_profile(), weight=0.15)
+
+        # Perception: turn the raw content into a structured percept with
+        # habituation-adjusted novelty. Does not override stimulus.novelty
+        # (which callers set explicitly) -- it's an independent read,
+        # emitted for observability and available to callers via the
+        # cycle result.
+        percept = self.perception.perceive(Modality.TEXT, str(observation.id), stimulus.content)
+        self._emit(
+            BrainEvent(
+                "perception.encoded",
+                "observation",
+                observation.id,
+                {"novelty": percept.novelty, "features": percept.features},
                 correlation_id=cycle_id,
             ),
             event_ids,
@@ -157,6 +245,7 @@ class CognitiveCycle:
         )
 
         salience = max(0.0, min(1.0, (attention_score + 1.0) / 6.0))
+        salience *= self.circadian.encoding_rate_multiplier()
         slot, evicted = self.working_memory.encode(
             {
                 "content": observation.content,
@@ -225,7 +314,19 @@ class CognitiveCycle:
             event_ids,
         )
 
+        # Theory of mind: track what this source has claimed, as an agent
+        # model distinct from the Brain's own belief store -- what the
+        # source believes/asserts may turn out to diverge from what the
+        # Brain itself concludes.
+        self.theory_of_mind.attribute_belief(
+            stimulus.source_id,
+            statement=stimulus.claim,
+            confidence=max(0.0, min(1.0, stimulus.source_reliability)),
+            evidence_refs=[str(observation.id)],
+        )
+
         contradiction = self.contradictions.inspect(belief, evidence, stimulus.supports)
+        prior_confidence = belief.confidence
         updated = self.beliefs.apply_evidence(belief, evidence, stimulus.supports)
         self._belief_cache[updated.id] = updated
         self._emit(
@@ -240,6 +341,48 @@ class CognitiveCycle:
                     "version": updated.version,
                     "evidence_id": str(evidence.id),
                     "supports": stimulus.supports,
+                },
+                correlation_id=cycle_id,
+            ),
+            event_ids,
+        )
+
+        # Hedonic: belief confidence moving from prior to posterior is a
+        # generic reward-prediction-error signal -- "how surprising was
+        # this update," independent of whether it was commercially good.
+        # A contradiction is registered as pain, not just negative reward,
+        # since it has its own urgency character.
+        rpe = self.hedonic.register_outcome(expected_value=prior_confidence, actual_value=updated.confidence)
+        pain = None
+        if contradiction is not None:
+            pain = self.hedonic.register_pain(intensity=contradiction.severity, source="contradiction")
+        self._blend_modulation(self.hedonic.modulator_delta(rpe, pain), weight=0.25)
+
+        # Affect: appraise this cycle's event generically (Scherer-style
+        # checks), independent of the hedonic/reward pathway above --
+        # affect cares about goal congruence/controllability/agency, not
+        # just whether the outcome was surprising.
+        appraisal = AppraisalInput(
+            goal_congruence=(1.0 if stimulus.supports else -1.0) * max(0.0, min(1.0, stimulus.source_reliability)),
+            novelty=stimulus.novelty,
+            urgency=stimulus.urgency,
+            controllability=max(0.0, 1.0 - stimulus.operator_burden),
+            certainty=max(0.0, 1.0 - stimulus.noise_probability),
+            agency="other",
+            norm_compatibility=-contradiction.severity if contradiction is not None else 0.0,
+        )
+        emotion = self.affect.appraise(appraisal)
+        self._blend_modulation(self.affect.modulator_delta(emotion), weight=0.25)
+        self._emit(
+            BrainEvent(
+                "affect.appraised",
+                "observation",
+                observation.id,
+                {
+                    "label": str(emotion.label),
+                    "valence": emotion.valence,
+                    "arousal": emotion.arousal,
+                    "mood_valence": self.affect.mood.valence,
                 },
                 correlation_id=cycle_id,
             ),
@@ -293,6 +436,47 @@ class CognitiveCycle:
                 )
             )
 
+        executive_decision = None
+        if len(tasks) >= 2:
+            # Only meaningful when there's an actual competing pair: the
+            # routine "consolidate" response (prepotent -- it fires
+            # whenever attention clears the bar) versus the goal-directed
+            # "investigate_contradiction" response. Executive control does
+            # not override scheduler.select's own priority math here --
+            # it runs alongside as an independent read on whether the
+            # Brain *could* have overridden the routine response, logged
+            # for observability rather than silently reordering tasks.
+            candidates = [
+                ResponseCandidate(
+                    action=task.name,
+                    source=ResponseSource.DELIBERATE if task.name == "investigate_contradiction" else ResponseSource.HABITUAL,
+                    prepotency=0.85 if task.name == "consolidate_observation" else 0.4,
+                    goal_alignment=0.9 if task.name == "investigate_contradiction" else 0.0,
+                    expected_value=task.utility,
+                )
+                for task in tasks
+            ]
+            self.control_resource.recover(ticks=0.5)
+            executive_decision = self.executive.arbitrate(
+                candidates, goals=None, control=self.control_resource, modulation=self.modulation,
+            )
+            self._emit(
+                BrainEvent(
+                    "executive.arbitrated",
+                    "cognitive_cycle",
+                    cycle_id,
+                    {
+                        "chosen": executive_decision.chosen.action,
+                        "conflict_magnitude": executive_decision.conflict.magnitude,
+                        "override_attempted": executive_decision.override_attempted,
+                        "override_succeeded": executive_decision.override_succeeded,
+                        "control_remaining": self.control_resource.current,
+                    },
+                    correlation_id=cycle_id,
+                ),
+                event_ids,
+            )
+
         selected = self.scheduler.select(tasks, self.modulation, self.cognitive_budget)
         for task in selected:
             self._emit(
@@ -330,6 +514,7 @@ class CognitiveCycle:
             event_ids,
         )
         self._checkpoint()
+        agent_model = self.theory_of_mind.agents.get(stimulus.source_id)
         return CognitiveCycleResult(
             cycle_id,
             observation.id,
@@ -341,6 +526,13 @@ class CognitiveCycle:
             event_ids,
             working_memory_size=self.working_memory.size,
             evicted_count=len(evicted),
+            emotion_label=str(emotion.label),
+            emotion_valence=emotion.valence,
+            circadian_phase=str(self.circadian.phase),
+            executive_override_attempted=executive_decision.override_attempted if executive_decision else None,
+            executive_override_succeeded=executive_decision.override_succeeded if executive_decision else None,
+            perceived_novelty=percept.novelty,
+            agent_trust=agent_model.trust if agent_model else None,
         )
 
     def _resolve_belief(
