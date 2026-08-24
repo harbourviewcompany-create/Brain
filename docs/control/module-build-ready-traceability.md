@@ -80,6 +80,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/global_workspace.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/goals.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/governance.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/heartbeat.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/homeostasis.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/hydrate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/imagination.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -104,6 +105,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/scheduler.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/schemas.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/self_model.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/sensory_inbox.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/source_intelligence.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
