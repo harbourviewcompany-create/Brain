@@ -7,6 +7,7 @@ from brain.tenant_context import (
     TenantContext,
     TenantScopeViolation,
     parse_tenant_context_headers,
+    trusted_tenant_context,
 )
 
 
@@ -36,9 +37,9 @@ def test_tenant_context_role_check_blocks_missing_role():
         context.require_role(TenantRole.OWNER, TenantRole.ADMIN)
 
 
-def test_service_context_can_pass_role_checks_but_keeps_tenant_identity():
+def test_trusted_service_context_can_pass_role_checks_but_keeps_tenant_identity():
     tenant_id = uuid4()
-    context = TenantContext(
+    context = trusted_tenant_context(
         tenant_id=tenant_id,
         actor_id="service:cognition",
         roles=(),
@@ -47,7 +48,7 @@ def test_service_context_can_pass_role_checks_but_keeps_tenant_identity():
 
     context.require_role(TenantRole.OWNER)
     assert context.sql_settings["brain.tenant_id"] == str(tenant_id)
-    assert context.sql_settings["brain.service_context"] == "true"
+    assert "brain.service_context" not in context.sql_settings
 
 
 def test_parse_tenant_context_headers_returns_none_when_absent():
@@ -59,17 +60,54 @@ def test_parse_tenant_context_headers_requires_tenant_and_actor_together():
         parse_tenant_context_headers({"x-brain-tenant-id": str(uuid4())})
 
 
-def test_parse_tenant_context_headers_builds_context():
+def test_parse_tenant_context_headers_builds_identity_context_without_roles():
     tenant_id = uuid4()
     context = parse_tenant_context_headers(
         {
             "x-brain-tenant-id": str(tenant_id),
             "x-brain-actor-id": "user-1",
-            "x-brain-roles": "owner,admin",
         }
     )
 
     assert context is not None
     assert context.tenant_id == tenant_id
     assert context.actor_id == "user-1"
-    assert context.roles == (TenantRole.OWNER, TenantRole.ADMIN)
+    assert context.roles == ()
+    assert context.service_context is False
+
+
+def test_parse_tenant_context_headers_rejects_untrusted_roles():
+    with pytest.raises(TenantScopeViolation, match="verified membership"):
+        parse_tenant_context_headers(
+            {
+                "x-brain-tenant-id": str(uuid4()),
+                "x-brain-actor-id": "user-1",
+                "x-brain-roles": "owner",
+            }
+        )
+
+
+def test_parse_tenant_context_headers_rejects_untrusted_service_context():
+    with pytest.raises(TenantScopeViolation, match="service context"):
+        parse_tenant_context_headers(
+            {
+                "x-brain-tenant-id": str(uuid4()),
+                "x-brain-actor-id": "service:cognition",
+                "x-brain-service-context": "true",
+            }
+        )
+
+
+def test_parse_tenant_context_headers_converts_malformed_tenant_id_to_scope_violation():
+    with pytest.raises(TenantScopeViolation, match="invalid_tenant_id"):
+        parse_tenant_context_headers(
+            {
+                "x-brain-tenant-id": "not-a-uuid",
+                "x-brain-actor-id": "user-1",
+            }
+        )
+
+
+def test_trusted_tenant_context_requires_actor_identity():
+    with pytest.raises(TenantScopeViolation, match="actor identity"):
+        trusted_tenant_context(tenant_id=uuid4(), actor_id="", roles=(TenantRole.OWNER,))
