@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -83,7 +84,9 @@ def test_runtime_blocks_unapproved_or_manual_automation_paths() -> None:
     base = active_source()
     runtime = PersistentSourceRegistryRuntime()
     paid = runtime.register_source(base.model_copy(update={"legal_access_status": LegalAccessStatus.PAID_LICENSED}))
-    manual = runtime.register_source(base.model_copy(update={"legal_access_status": LegalAccessStatus.MANUAL_ONLY}))
+    manual = runtime.register_source(
+        base.model_copy(update={"id": uuid4(), "legal_access_status": LegalAccessStatus.MANUAL_ONLY})
+    )
 
     with pytest.raises(SourceRegistryRuntimeError):
         runtime.start_ingestion_run(paid.id, paid.best_ingestion_method)
