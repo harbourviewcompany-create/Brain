@@ -73,3 +73,7 @@ Keep the previous Railway deployment available. Control plane fallback still tar
 - External actions stay permissioned (`BRAIN_EXTERNAL_ACTIONS_ENABLED=false` by default)
 - Production without `BRAIN_API_KEY` refuses startup / requests (SecurityConfig)
 - Control plane never logs the API key
+
+## Control notes
+
+This document is operator control documentation (SOURCE/APPROVED observations of live deploy + existing main API contracts). It does not mark runtime modules BUILD-READY.
