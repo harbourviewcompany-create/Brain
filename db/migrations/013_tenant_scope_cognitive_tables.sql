@@ -28,15 +28,18 @@ returns boolean
 language sql
 stable
 as $$
-  select coalesce(nullif(current_setting('brain.service_context', true), '')::boolean, false);
+  select case
+    when to_regrole('brain_trusted_service_role') is null then false
+    else pg_has_role(current_user, 'brain_trusted_service_role', 'member')
+  end;
 $$;
 
 comment on function public.current_brain_tenant_id() is
-  'Reads the tenant id supplied by the application/session for tenant-scoped Brain operations.';
+  'Reads the tenant id supplied by the verified application/session for tenant-scoped Brain operations.';
 comment on function public.current_brain_actor_id() is
-  'Reads the actor id supplied by the application/session for audit and tenant policy checks.';
+  'Reads the actor id supplied by the verified application/session for audit and tenant policy checks.';
 comment on function public.current_brain_service_context() is
-  'Reads whether the current operation is an internal service context. This is not a public bypass.';
+  'Trusted service access is derived from PostgreSQL role membership in brain_trusted_service_role; it is not controlled by request headers or user-defined session settings.';
 
 do $$
 declare
@@ -63,6 +66,11 @@ begin
     'cognitive_experiments',
     'cognitive_experiment_results',
     'projection_checkpoints',
+    'sensory_inbox',
+    'cognitive_cycle_runs',
+    'predictions',
+    'attribution_records',
+    'working_memory_snapshots',
     'money_lane_sources',
     'money_lane_search_queries',
     'revenue_signals',
@@ -90,32 +98,74 @@ begin
       'Tenant owner for Brain PR 3 isolation. Nullable until legacy/global rows are backfilled and table-specific ownership is proven.'
     );
     execute format('alter table public.%I enable row level security', t);
+    execute format('alter table public.%I force row level security', t);
 
     execute format('drop policy if exists tenant_isolation_select on public.%I', t);
     execute format(
-      'create policy tenant_isolation_select on public.%I for select using (public.current_brain_service_context() or tenant_id = public.current_brain_tenant_id())',
+      'create policy tenant_isolation_select on public.%I for select using (tenant_id = public.current_brain_tenant_id() or public.current_brain_service_context())',
       t
     );
 
     execute format('drop policy if exists tenant_isolation_insert on public.%I', t);
     execute format(
-      'create policy tenant_isolation_insert on public.%I for insert with check (public.current_brain_service_context() or tenant_id = public.current_brain_tenant_id())',
+      'create policy tenant_isolation_insert on public.%I for insert with check (tenant_id = public.current_brain_tenant_id() or public.current_brain_service_context())',
       t
     );
 
     execute format('drop policy if exists tenant_isolation_update on public.%I', t);
     execute format(
-      'create policy tenant_isolation_update on public.%I for update using (public.current_brain_service_context() or tenant_id = public.current_brain_tenant_id()) with check (public.current_brain_service_context() or tenant_id = public.current_brain_tenant_id())',
+      'create policy tenant_isolation_update on public.%I for update using (tenant_id = public.current_brain_tenant_id() or public.current_brain_service_context()) with check (tenant_id = public.current_brain_tenant_id() or public.current_brain_service_context())',
       t
     );
 
     execute format('drop policy if exists tenant_isolation_delete on public.%I', t);
     execute format(
-      'create policy tenant_isolation_delete on public.%I for delete using (public.current_brain_service_context() or tenant_id = public.current_brain_tenant_id())',
+      'create policy tenant_isolation_delete on public.%I for delete using (tenant_id = public.current_brain_tenant_id() or public.current_brain_service_context())',
       t
     );
   end loop;
 end $$;
+
+-- Tenant-scoped natural uniqueness repair for tables that already had global
+-- natural keys. Existing legacy/system rows with tenant_id is null preserve
+-- their global uniqueness, while tenant-owned rows become unique per tenant.
+alter table public.sources drop constraint if exists sources_key_key;
+create unique index if not exists sources_system_key_unique_idx
+  on public.sources(key)
+  where tenant_id is null;
+create unique index if not exists sources_tenant_key_unique_idx
+  on public.sources(tenant_id, key)
+  where tenant_id is not null;
+
+alter table public.entities drop constraint if exists entities_kind_canonical_key_key;
+create unique index if not exists entities_system_kind_key_unique_idx
+  on public.entities(kind, canonical_key)
+  where tenant_id is null;
+create unique index if not exists entities_tenant_kind_key_unique_idx
+  on public.entities(tenant_id, kind, canonical_key)
+  where tenant_id is not null;
+
+alter table public.graph_nodes drop constraint if exists graph_nodes_kind_node_key_key;
+create unique index if not exists graph_nodes_system_kind_key_unique_idx
+  on public.graph_nodes(kind, node_key)
+  where tenant_id is null;
+create unique index if not exists graph_nodes_tenant_kind_key_unique_idx
+  on public.graph_nodes(tenant_id, kind, node_key)
+  where tenant_id is not null;
+
+alter table public.daily_revenue_reports drop constraint if exists daily_revenue_reports_report_date_key;
+create unique index if not exists daily_revenue_reports_system_date_unique_idx
+  on public.daily_revenue_reports(report_date)
+  where tenant_id is null;
+create unique index if not exists daily_revenue_reports_tenant_date_unique_idx
+  on public.daily_revenue_reports(tenant_id, report_date)
+  where tenant_id is not null;
+
+-- projection_checkpoints keeps its legacy primary key in PR 3. Tenant-specific
+-- projection checkpoint identity requires a later table-specific migration
+-- because the current primary key is projection_name alone.
+comment on table public.projection_checkpoints is
+  'Tenant_id is added in PR 3, but the legacy projection_name primary key remains a tenant-breaking uniqueness constraint until a later projection-specific migration safely converts checkpoint identity.';
 
 -- The existing append-only trigger on brain_events remains authoritative.
 -- These comments document intentional PR 3 exclusions rather than silently
@@ -132,3 +182,10 @@ comment on table public.mechanistic_gaps is
   'System research/control registry table; not tenant-owned in PR 3.';
 comment on table public.neuro_acceptance_reports is
   'System acceptance/control registry table; not tenant-owned in PR 3.';
+
+-- Runtime role requirement:
+-- Backend DATABASE_URL values used by API and worker processes must connect as
+-- a non-owner, non-BYPASSRLS role constrained by these policies. Internal jobs
+-- that require cross-tenant service access must use a separately audited role
+-- granted membership in brain_trusted_service_role. No request header or custom
+-- GUC may grant service bypass.
