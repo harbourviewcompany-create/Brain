@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.2",
-  "status": "GO_for_issues_3_to_8_execution_evidence_PARTIAL_GO_cross_cutting_protocol_slice",
+  "schema_version": "1.0.3",
+  "status": "GO_for_issues_3_to_8_and_AGT_XCUT_001_bounded_slice_broader_program_partial",
   "rules": [
     {"rule_id":"ACC-001","module":"Source Registry and Schemas","ticket":"AGENT-001","test":"tests/test_schemas.py","fixture":"source_signal_evidence_belief","required_evidence":"reports/acceptance/AGENT-001-executable-schemas.json","go_hold_status":"GO"},
     {"rule_id":"ACC-002","module":"Formula Runtime","ticket":"AGENT-002","test":"tests/test_formulas.py","fixture":"formula_run_attention_reward","required_evidence":"reports/acceptance/AGENT-002-formula-runtime.json","go_hold_status":"GO"},
@@ -10,6 +10,6 @@
     {"rule_id":"ACC-006","module":"Contradiction Review","ticket":"AGENT-004","test":"tests/test_contradiction_queue.py","fixture":"contradiction_review","required_evidence":"reports/acceptance/AGENT-004-contradiction-review.json","go_hold_status":"GO"},
     {"rule_id":"ACC-007","module":"Agent Control Validation","ticket":"AGENT-005","test":"tools/validate_agent_control.py","fixture":"all_required_fixture_files","required_evidence":"reports/acceptance/AGENT-005-ci-acceptance-gate.json","go_hold_status":"GO"},
     {"rule_id":"ACC-008","module":"Source-to-Build Traceability","ticket":"AGENT-006","test":"traceability completeness validation","fixture":"none","required_evidence":"reports/acceptance/AGENT-006-source-to-build-traceability.json","go_hold_status":"GO"},
-    {"rule_id":"ACC-XCUT-001","module":"Cross-Cutting Cognitive Object Protocol","ticket":"AGENT-XCUT-001","test":"tests/test_cognitive_protocol.py","fixture":"cross_cutting_cognitive_protocol","required_evidence":"reports/acceptance/AGENT-XCUT-001-cross-cutting-cognitive-protocol.json","go_hold_status":"PARTIAL_GO","required_invariants":["provenance continuity","multidimensional epistemic state","knowledge gaps first class","cognitive affordance distinct from economic affordance","consequential projection requires approval","learning requires attribution","replay executes zero external actions","plasticity requires rollback evidence"],"hold_boundaries":["full organ-by-organ integration","PR 108/109/110 adoption","tenant persistence reconciliation","production PostgreSQL replay evidence"]}
+    {"rule_id":"ACC-XCUT-001","module":"Cross-Cutting Cognitive Object Protocol","ticket":"AGENT-XCUT-001","test":"tests/test_cognitive_protocol.py","fixture":"cross_cutting_cognitive_protocol","required_evidence":"reports/acceptance/AGENT-XCUT-001-cross-cutting-cognitive-protocol.json","go_hold_status":"GO","required_invariants":["provenance continuity","multidimensional epistemic state","historical transition records","competing conflict states preserved","knowledge gaps first class","cognitive affordance distinct from economic affordance","consequential projection requires approval","learning requires attribution","replay executes zero external actions","plasticity requires rollback evidence"],"broader_hold_boundaries":["full organ-by-organ integration","PR 108/109/110 adoption","tenant persistence reconciliation","production PostgreSQL restart replay evidence"]}
   ]
 }
