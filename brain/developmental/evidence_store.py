@@ -26,6 +26,15 @@ from .metacognitive_optimization import (
 )
 
 
+@dataclass(slots=True)
+class DevelopmentalCycleCheckpoint:
+    cycle_id: UUID
+    state: str
+    related_record_ids: list[UUID]
+    metadata: dict[str, Any]
+    id: UUID = field(default_factory=uuid4)
+
+
 RECORD_TYPES: dict[str, type[Any]] = {
     cls.__name__: cls
     for cls in (
@@ -40,6 +49,7 @@ RECORD_TYPES: dict[str, type[Any]] = {
         ExperimentRun,
         ExperimentResult,
         RollbackRecord,
+        DevelopmentalCycleCheckpoint,
     )
 }
 
@@ -203,5 +213,6 @@ class DevelopmentalReplayService:
             "unresolved_regressions": len(
                 [record for record in store.list("RegressionSignal") if not record.resolved]
             ),
+            "cycle_checkpoints": len(store.list("DevelopmentalCycleCheckpoint")),
             "persistence_authority": "evidence_only_no_mutation_merge_deploy",
         }
