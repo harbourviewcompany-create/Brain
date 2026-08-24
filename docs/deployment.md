@@ -19,7 +19,8 @@ The Brain runtime is split into independently deployable processes:
 - Event ledger: `public.brain_events`
 - Migration `011_developmental_evidence_ledger.sql`: AGENT-019 developmental evidence authority.
 - Migration `012_cognitive_organism.sql`: Cognitive Organism V1 persistence authority.
-- Migration `013_cognitive_object_store.sql`: generic provenance-aware cognitive objects.
+- Migration `013_neuro_global_workspace_proxy.sql`: NEURO-006 Global Workspace Proxy persistence authority.
+- Migration `014_cognitive_object_store.sql`: generic provenance-aware cognitive objects.
 
 Secrets are never committed. Runtime services receive `DATABASE_URL`, `BRAIN_API_KEY`, Temporal credentials and Neo4j credentials through deployment environment configuration or a secret manager.
 
@@ -37,7 +38,7 @@ Consequential external actions remain disabled by default. If `BRAIN_EXTERNAL_AC
 2. Cognitive tables use the repository RLS/revoke controls declared by their migrations.
 3. Backend cognitive services use privileged server-side credentials only.
 4. `PostgresBrainStore` makes PostgreSQL authoritative for beliefs, evidence, graph nodes/edges, rewires and events when `DATABASE_URL` is configured; process dictionaries are disposable projections.
-5. AGENT-019 developmental evidence and Cognitive Organism V1 persistence remain separate from the generic cognitive-object repository.
+5. AGENT-019 developmental evidence, Cognitive Organism V1 persistence and NEURO-006 workspace persistence remain separate from the generic cognitive-object repository.
 6. `/health` reports degraded state and HTTP 503 when a configured database is unavailable.
 7. `/ready` is the deployment readiness endpoint and returns HTTP 503 when a configured database is unavailable.
 8. A configured database must never silently fall back to process-only memory.
@@ -99,7 +100,7 @@ Temporal coordinates replay-safe timers, prediction maintenance and history roll
 
 A production deployment is not GO merely because a container starts. Exact deployed-commit evidence must show:
 
-- migration integrity validation passes and migrations through 013 apply successfully;
+- migration integrity validation passes and migrations through 014 apply successfully;
 - production authentication is active and unauthenticated protected requests return 401;
 - authenticated belief create/read survives API restart;
 - `/ready` returns 503 during an induced database outage and recovers after restoration;
