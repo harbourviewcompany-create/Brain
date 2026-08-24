@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 from brain.events import BrainEvent
@@ -60,7 +61,11 @@ def test_list_signals_reads_event_stream_not_evidence_projection(monkeypatch) ->
                 event,
             ]
 
-    monkeypatch.setattr(routes.runtime, "store", EventStreamOnlyStore())
+    monkeypatch.setattr(
+        routes.brain_api,
+        "runtime",
+        SimpleNamespace(store=EventStreamOnlyStore()),
+    )
 
     response = routes.list_signals()
 
