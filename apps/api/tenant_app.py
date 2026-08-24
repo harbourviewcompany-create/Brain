@@ -171,6 +171,21 @@ if _DATABASE_URL:
 
 @app.middleware("http")
 async def tenant_membership_boundary(request, call_next):
+    # A server-side adapter may establish a trusted tenant context only after
+    # authenticating infrastructure identity (for example the Vercel OIDC
+    # Observatory bridge). It is a contextvar, never a client-controlled header.
+    # Preserve the same write-role gate that applies to membership-resolved users.
+    established = active_tenant_context()
+    if established is not None:
+        try:
+            if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+                established.require_role(
+                    TenantRole.OWNER, TenantRole.ADMIN, TenantRole.OPERATOR
+                )
+        except TenantScopeViolation as exc:
+            return JSONResponse(status_code=403, content={"detail": str(exc)})
+        return await call_next(request)
+
     if request.url.path in {"/health", "/ready"} or tenant_security.mode == "disabled":
         return await call_next(request)
 
