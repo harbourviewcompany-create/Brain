@@ -1,0 +1,14 @@
+{
+  "fixture_id": "cognitive_organism_internal_debate",
+  "scenario": "multiple cognitive roles debate before agency routing",
+  "input": {
+    "topic": "permit-triggered buyer lane",
+    "evidence_refs": ["signal:permit", "signal:buyer_intent"],
+    "risk": 0.2
+  },
+  "expected": {
+    "minimum_arguments": 5,
+    "skeptic_present": true,
+    "verdict_present": true
+  }
+}

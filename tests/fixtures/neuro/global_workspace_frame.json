@@ -1,0 +1,19 @@
+{
+  "fixture_id": "global_workspace_frame",
+  "scenario": "competing workspace items preserve winner and suppressed alternatives without consciousness claims",
+  "expected": {
+    "winner_content_ref": "signal:urgent-contradiction",
+    "suppressed_count": 2,
+    "consumer_modules": ["belief_update", "planning", "cognitive_immune"],
+    "consciousness_claim": false,
+    "required_objects": [
+      "GlobalWorkspaceFrame",
+      "WorkspaceItem",
+      "WorkspaceCompetition",
+      "WorkspaceBroadcast",
+      "SuppressedAlternative",
+      "AttentionAccessDecision",
+      "WorkspaceTrace"
+    ]
+  }
+}

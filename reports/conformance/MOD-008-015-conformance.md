@@ -1,60 +1,71 @@
-# MOD-008 through MOD-015 Atomic Conformance Audit — Repaired State
+# MOD-008 through MOD-015 Atomic Conformance Audit — Full-Universe Repaired State
 
-**Verdict:** **GO for repository atomic conformance repair evidence**  
-**Branch:** `codex/repair-mod-008-015-conformance`  
+**Verdict:** **GO**  
+**Atomic requirement universe:** 117 mandatory requirements  
+**Result:** 117 PASS / 0 PARTIAL / 0 FAIL  
 **Governing audit:** issue #34  
-**Repair issues:** #54, #55, #56, #57, #58, #59, #60, #61, #62
+**Repair issues:** #54–#62  
+**Validated PR head:** `d56066374f42ac56fa4e35a03b24abe8b4f30abb`  
+**Merged repair commit:** `f9a43be40d3cb0e13a943cf475781b83d72ef3af`
 
 ## Decision
 
-The MOD-008 through MOD-015 audit is repaired at the repository-evidence layer. The prior HOLD report remains preserved as historical evidence, but it is superseded by this repair overlay, the executable runtime module, the fixture universe, the tests, the operator surface and the conformance validator.
+MOD-008 through MOD-015 now satisfy the repository atomic conformance gate defined by issue #34. The governing universe is the immutable 117-row baseline in `reports/conformance/baseline/MOD-008-015-conformance-c18bea9.json`; it was not replaced by the later reduced 16-row summary.
 
-This does not authorize live external action, live source activation, legal-enforceability claims, full Brain completion claims or superior-intelligence claims.
+The machine-readable validator reconstructs the effective state of all 117 original requirement IDs from the baseline and their original repair-target mappings. GO is permitted only when all 117 resolve to PASS and the gap register contains no effective non-PASS requirement IDs.
 
-## Evidence added
+The exact repair PR head passed both protected workflows: Brain Control Policy and the full test workflow, including the 117-row conformance validator, pytest and lint. `main` had no intervening commits between the PR base and merge.
 
-- `brain/economic_conformance.py`
-- `tests/test_mod_008_015_conformance_repairs.py`
-- `tests/fixtures/brain/mod_008_015_complete_fixture_universe.json`
-- `docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json`
-- `docs/spec/MOD_008_015_ATOMIC_REPAIR_IMPLEMENTATION.md`
-- `tools/validate_mod_008_015_conformance.py`
-- `reports/acceptance/MOD-008-015-atomic-repair.json`
-- `reports/go-hold/MOD-008-015-GO-HOLD.json`
+This MOD-008–015 GO does not authorize consequential external action, unrestricted source activation, legal-enforceability claims, or repository-wide BUILD-READY status.
 
-## Current result
+## Module result
 
-| Module | Verdict | Repair evidence |
-|---|---|---|
-| MOD-008 | GO | pressure evidence/time-validity transition gate |
-| MOD-009 | GO | money-path comparison and non-monetizable disposition |
-| MOD-010 | GO | liquidity preferences, counterparty interactions and liquidity graph support |
-| MOD-011 | GO | opportunity lifecycle and disposition semantics |
-| MOD-012 | GO | transaction close/loss/abandon lifecycle and fixture family |
-| MOD-013 | GO | source rights, collection policy, provenance, jurisdiction and movement/change detection |
-| MOD-014 | GO | ProfitEvent, profit normalization, causal attribution and capital lifecycle |
-| MOD-015 | GO | repeated-transaction detection, strategic-asset scoring and build-candidate gates |
+| Module | PASS | PARTIAL | FAIL | Verdict |
+|---|---:|---:|---:|---|
+| MOD-008 | 13 | 0 | 0 | GO |
+| MOD-009 | 13 | 0 | 0 | GO |
+| MOD-010 | 13 | 0 | 0 | GO |
+| MOD-011 | 14 | 0 | 0 | GO |
+| MOD-012 | 11 | 0 | 0 | GO |
+| MOD-013 | 19 | 0 | 0 | GO |
+| MOD-014 | 17 | 0 | 0 | GO |
+| MOD-015 | 17 | 0 | 0 | GO |
+| **Total** | **117** | **0** | **0** | **GO** |
+
+## Repair evidence
+
+The merged repair adds and validates:
+
+- `brain/economic_atomic_services.py` — independently traceable service boundaries for asymmetry, pressure, affordance, money-path, counterparty, liquidity, opportunity, transaction, source, attribution, capital and compounding responsibilities.
+- `brain/economic_atomic_lifecycles.py` — canonical evidence-gated pressure, counterparty, opportunity, source activation, capital and compounding lifecycle enforcement plus deterministic replay support.
+- `brain/economic_conformance.py` — existing economic conformance runtime primitives retained and exercised.
+- `tests/test_mod_008_015_atomic_service_boundaries.py` — explicit service-boundary, persistence, lifecycle, fail-closed and replay tests across MOD-008–015.
+- `tests/test_mod_008_015_conformance_repairs.py` — existing repair regression tests retained.
+- `tests/fixtures/brain/mod_008_015_complete_fixture_universe.json` — complete required scenario families.
+- `docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json` — required operator-surface evidence.
+- `tools/validate_mod_008_015_conformance.py` — full-universe validator that requires exactly 117 unique original requirement IDs and forbids GO while any effective mandatory row is non-PASS.
+- `tests/test_mod_008_015_conformance_report.py` — verifies full-universe reconstruction, repair certification coverage, module totals and gap-register consistency.
 
 ## Repair issue coverage
 
-- #54 repaired through pressure gates, money-path comparison, non-monetizable disposition and fixture coverage.
-- #55 repaired through `LiquidityPreference`, `CounterpartyInteraction`, role verification, response weighting, stale-contact policy, opportunity lifecycle and operator liquidity/kill surfaces.
-- #56 repaired through transaction close/loss/abandon transitions, source lifecycle, activation provenance, collection policy, jurisdiction cognition, movement/change detection and source mesh surface.
-- #57 repaired through `ProfitEvent`, `ProfitNormalizationService`, full causal attribution chain, capital deploy/reconcile lifecycle, repeated-transaction detection, strategic-asset scoring and compounding board.
-- #58 repaired by superseding historical aggregate GO/HOLD evidence in `MOD-008-015-conformance.json`.
-- #59 repaired by `tools/validate_mod_008_015_conformance.py` and the CI workflow update.
-- #60 repaired by `tests/fixtures/brain/mod_008_015_complete_fixture_universe.json`.
-- #61 repaired by `docs/operator-surfaces/mod-008-015-complete-operator-surfaces.json`.
-- #62 repaired by `EconomicStateMachineService` and audited transition evidence requirements.
+- **#54 / MOD-008–009:** named asymmetry/pressure/affordance/money-path boundaries, inferred pressure confidence/magnitude, activation evidence/time validity, contradiction/reverification, path comparison/ranking, expiry, non-monetizable disposition, fixtures and replay.
+- **#55 / MOD-010–011:** persistent liquidity preferences/interactions, liquidity graph, profile/matching boundaries, response-history weighting, stale-contact policy, opportunity scoring/skeptic/portfolio boundaries, canonical dispositions including BUILD_AS_ASSET, time expiry and portfolio persistence.
+- **#56 / MOD-012–013:** transaction-state/fee-protection/mandate boundaries, close/loss/abandon outcomes, source registry/rights/economics/discovery/reliability boundaries, complete source lifecycle, activation provenance/refresh policy, richer jurisdiction cognition and source-provenanced movement.
+- **#57 / MOD-014–015:** profit persistence/normalization, full causal attribution, downstream learning gates, attribution/capital lifecycle, repeated-transaction detection, productization/marketplace/business-model boundaries, resource-estimate gates and canonical compounding progression.
+- **#58:** historical aggregate and reduced-summary GO evidence explicitly superseded without deleting it.
+- **#59:** atomic conformance validation restored to the original 117-row universe.
+- **#60:** complete deterministic fixture/replay scenario universe.
+- **#61:** complete required operator-surface evidence retained.
+- **#62:** auditable lifecycle transition enforcement with evidence-gated transitions.
 
-## Permanent HOLD boundaries
+## Permanent control boundaries
 
-- HOLD for live external action without approval.
-- HOLD for live source activation without real rights review and provenance.
+- HOLD for consequential external action without required approval.
+- HOLD for source activation without rights classification, provenance and applicable policy review.
 - HOLD for legal-enforceability claims without jurisdiction-specific legal review.
-- HOLD for claiming full Brain completion.
-- HOLD for claiming superior intelligence over every existing system without external benchmark evidence.
+- MOD-008–015 GO does not imply full Brain completion or repository-wide BUILD-READY.
+- Claims of superior intelligence require separate external benchmark evidence.
 
-## Reconciliation instruction
+## Source preservation
 
-After this branch passes required CI checks and is merged, governing issues #12 through #15 and repair issues #54 through #62 may be closed as completed with this report and the acceptance report as evidence. Developmental issue-state mismatches #41 through #48 may also be closed because the repository contains AGENT-008 through AGENT-015 runtime evidence and acceptance reports.
+The original 117 atomic requirement IDs, source text, evidence dimensions, historical statuses and rationales remain preserved in the immutable baseline. The earlier aggregate GO and the later 16-row summary remain historical artifacts but are superseded as current conformance authority by the 117-row validator and current report.

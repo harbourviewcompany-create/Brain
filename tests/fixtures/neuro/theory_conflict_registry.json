@@ -1,0 +1,11 @@
+{
+  "fixture_id": "theory_conflict_registry",
+  "scenario": "competing neuroscience theories remain explicit instead of being collapsed into one implementation claim",
+  "expected": {
+    "minimum_theory_count": 3,
+    "minimum_conflict_count": 1,
+    "required_theory_ids": ["NEURO-THEORY-001", "NEURO-THEORY-002", "NEURO-THEORY-003"],
+    "competing_theories_hold": true,
+    "supported_theories_require_boundaries": true
+  }
+}

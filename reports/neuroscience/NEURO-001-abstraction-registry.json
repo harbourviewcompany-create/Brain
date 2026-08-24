@@ -1,0 +1,45 @@
+{
+  "report_id": "NEURO-001-abstraction-registry",
+  "slice_id": "NEURO-001",
+  "verdict": "GO",
+  "implemented_files": [
+    "docs/neuroscience/README.md",
+    "docs/neuroscience/NEURO_ABSTRACTION_REGISTRY.md",
+    "docs/neuroscience/json/neuro-abstraction-registry.json",
+    "brain/neuro/__init__.py",
+    "brain/neuro/abstractions.py",
+    "db/migrations/006_neuroscience_abstraction_layer.sql",
+    "tests/fixtures/neuro/neuro_abstraction_registry.json",
+    "tests/test_neuro_abstraction_registry.py",
+    "reports/neuroscience/NEURO-001-abstraction-registry.json"
+  ],
+  "tests": [
+    "test_every_abstraction_has_required_mapping_fields",
+    "test_unknown_or_disputed_mechanisms_are_not_marked_implemented",
+    "test_no_abstraction_missing_dashboard_or_acceptance_rule",
+    "test_scale_coverage_includes_molecular_cellular_circuit_system_meta",
+    "test_fixture_expected_registry_rules_match_materialized_registry"
+  ],
+  "fixtures": [
+    "tests/fixtures/neuro/neuro_abstraction_registry.json"
+  ],
+  "acceptance_evidence": [
+    "Registry contains required mapping fields.",
+    "Unknown, disputed and speculative mechanisms are not silently marked implemented.",
+    "Every abstraction has dashboard and acceptance criteria.",
+    "Scale coverage spans resource, modulation, cellular, synaptic, microcircuit, region, workspace, self-model, defense and development layers.",
+    "Source-to-build traceability and module manifest are extended additively."
+  ],
+  "unknowns_preserved": [
+    "synthetic cellular activation",
+    "global workspace proxy",
+    "developmental learning",
+    "dream function and consolidation limits"
+  ],
+  "scope_preservation_check": "PASS",
+  "scientific_claim_check": "PASS",
+  "unresolved_items": [
+    "Further slices must add dedicated brain-region, theory, unknown-mechanism, workspace, memory, perception, action, affect, self-model, immune, development, sleep and reality-boundary modules.",
+    "Tests were authored but not executed inside this ChatGPT connector session."
+  ]
+}

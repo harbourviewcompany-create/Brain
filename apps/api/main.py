@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+import hmac
 import os
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
+from brain.heartbeat import HeartbeatService
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
 from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
 
-app = FastAPI(title="Brain Runtime API", version="0.5.0")
+app = FastAPI(title="Brain Runtime API", version="0.5.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,6 +30,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Minimal API-key auth ---------------------------------------------------
+# Every route (including ones registered later by other modules that import
+# `app`, e.g. tools/live_cockpit_routes.py) is covered by this middleware
+# because it wraps the whole ASGI request pipeline, not individual routes.
+#
+# Fail-closed by design: if BRAIN_API_KEY is unset, every non-exempt request
+# is rejected with 503 rather than silently falling back to "open to
+# everyone". An unconfigured key must never be treated as "no auth required".
+_API_KEY_ENV_VAR = "BRAIN_API_KEY"
+_AUTH_EXEMPT_PATHS = {"/health"}
+
+
+@app.middleware("http")
+async def _require_api_key(request: Request, call_next):
+    if request.url.path in _AUTH_EXEMPT_PATHS:
+        return await call_next(request)
+
+    configured_key = os.environ.get(_API_KEY_ENV_VAR)
+    if not configured_key:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    f"{_API_KEY_ENV_VAR} is not configured on this deployment; "
+                    "refusing all requests until it is set"
+                )
+            },
+        )
+
+    presented_key = request.headers.get("x-api-key", "")
+    if not hmac.compare_digest(presented_key, configured_key):
+        return JSONResponse(status_code=401, content={"detail": "invalid_or_missing_api_key"})
+
+    return await call_next(request)
+
 
 _memory_store = InMemoryBrainStore()
 _learning_store = InMemoryLearningStore()
@@ -39,10 +78,12 @@ learning = LearningService(
     sources=_learning_store,
 )
 money_spine = MoneySpineService()
+# Heartbeat uses the same event store as beliefs so cycle events land in one ledger.
+heartbeat = HeartbeatService(event_store=_memory_store, learning=learning)
 
 
 def _configure_from_env() -> None:
-    global learning
+    global learning, heartbeat
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
@@ -65,6 +106,8 @@ def _configure_from_env() -> None:
         attributions=PostgresAttributionStore(event_store.pool),
         sources=PostgresSourceStore(event_store.pool),
     )
+    # Durable ledger for continuous cognition events when Postgres is configured.
+    heartbeat = HeartbeatService(event_store=event_store, learning=learning)
 
 
 _configure_from_env()
@@ -205,14 +248,91 @@ def health():
             event_count = len(learning.event_store.read_all())
     except Exception:
         pass
+    pred_store = learning.predictions if learning.predictions is not None else _learning_store
+    pred_count = len(getattr(pred_store, "predictions", {}) or {})
+    hb = heartbeat.status()
     return {
         "status": "ok",
-        "version": "0.5.0",
+        "version": "0.5.1",
         "beliefs": len(runtime.store.beliefs),
         "events": event_count,
-        "predictions": len(getattr(_learning_store, "predictions", {})),
+        "predictions": pred_count,
         "money_lanes": len(money_spine.lanes),
+        "heartbeat": {
+            "ticks": hb["ticks"],
+            "total_processed": hb["total_processed"],
+            "inbox": hb["inbox"],
+            "working_memory_size": hb["working_memory_size"],
+        },
     }
+
+
+class PerceiveRequest(BaseModel):
+    content: str
+    claim: str
+    source_key: str = "operator"
+    source_reliability: float = Field(default=0.7, ge=0, le=1)
+    supports: bool = True
+    belief_statement: str | None = None
+    belief_confidence: float = Field(default=0.5, ge=0, le=1)
+    novelty: float = Field(default=0.5, ge=0, le=1)
+    urgency: float = Field(default=0.3, ge=0, le=1)
+    commercial_upside: float = Field(default=0.0, ge=0, le=1)
+    contradiction_value: float = Field(default=0.0, ge=0, le=1)
+    uncertainty_reduction: float = Field(default=0.5, ge=0, le=1)
+    noise_probability: float = Field(default=0.2, ge=0, le=1)
+    operator_burden: float = Field(default=0.0, ge=0, le=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    process_now: bool = False
+
+
+class TickRequest(BaseModel):
+    max_items: int = Field(default=1, ge=1, le=50)
+
+
+@app.post("/signals")
+def enqueue_signal(body: PerceiveRequest):
+    """Enqueue a perception stimulus into the sensory inbox (closed-loop ingress)."""
+    item = heartbeat.perceive(
+        content=body.content,
+        claim=body.claim,
+        source_key=body.source_key,
+        source_reliability=body.source_reliability,
+        supports=body.supports,
+        belief_statement=body.belief_statement,
+        belief_confidence=body.belief_confidence,
+        novelty=body.novelty,
+        urgency=body.urgency,
+        commercial_upside=body.commercial_upside,
+        contradiction_value=body.contradiction_value,
+        uncertainty_reduction=body.uncertainty_reduction,
+        noise_probability=body.noise_probability,
+        operator_burden=body.operator_burden,
+        metadata=body.metadata,
+    )
+    tick_result = None
+    if body.process_now:
+        tick_result = heartbeat.tick(max_items=1)
+    return {
+        "id": str(item.id),
+        "source_key": item.source_key,
+        "content": item.content,
+        "claim": item.claim,
+        "status": item.status,
+        "tick": tick_result,
+    }
+
+
+@app.post("/tick")
+def run_heartbeat_tick(body: TickRequest | None = None):
+    """Advance the continuous cognition runner by one or more cycles."""
+    max_items = body.max_items if body is not None else 1
+    return heartbeat.tick(max_items=max_items)
+
+
+@app.get("/runner/status")
+def runner_status():
+    return heartbeat.status()
 
 
 @app.get("/beliefs")
@@ -414,3 +534,8 @@ def daily_revenue_report(body: DailyRevenueReportRequest):
         "gaps": report.gaps,
         "report": asdict(report),
     }
+
+
+from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
+
+register_cognitive_organism_routes(app)

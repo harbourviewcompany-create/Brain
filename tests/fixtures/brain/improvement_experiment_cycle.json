@@ -1,0 +1,20 @@
+{
+  "fixture_id": "agent-018-improvement-experiment-cycle-v1",
+  "deterministic": true,
+  "scenarios": [
+    {"id":"successful_improvement","before":{"planning":0.6,"memory":0.7},"after":{"planning":0.8,"memory":0.75},"controls":{"pytest":true},"expected":"PROMOTE"},
+    {"id":"protected_regression","before":{"planning":0.8,"memory":0.8},"after":{"planning":0.9,"memory":0.6},"controls":{"pytest":true},"expected":"HOLD"},
+    {"id":"mixed_result","before":{"planning":0.6,"style":0.8},"after":{"planning":0.7,"style":0.75},"controls":{"pytest":true},"expected":"REVISE"},
+    {"id":"failed_control_suite","before":{"planning":0.6},"after":{"planning":0.9},"controls":{"pytest":false},"expected":"REJECT"},
+    {"id":"missing_rollback","expected":"HOLD","reason":"experiment_candidate_requires_rollback_plan"},
+    {"id":"direct_mutation_attempt","expected":"HOLD","reason":"experiment_runtime_cannot_mutate_merge_or_deploy"}
+  ],
+  "invariants": [
+    "experiments require approved optimization plans",
+    "operator approval is mandatory",
+    "protected benchmark regressions block promotion",
+    "failed controls reject promotion",
+    "promotion decisions are evidence-only and non-executing",
+    "failed and rollback evidence is preserved"
+  ]
+}

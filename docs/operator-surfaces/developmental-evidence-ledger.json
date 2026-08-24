@@ -1,0 +1,11 @@
+{
+  "surface_id":"developmental-evidence-ledger-v1",
+  "issue":89,
+  "panels":[
+    {"id":"durable_counts","shows":["record_kind","snapshot_count","event_count"]},
+    {"id":"replay_integrity","shows":["last_sequence","sequence_contiguous","unknown_type_holds","identity_mismatches"]},
+    {"id":"preserved_failures","shows":["unresolved_regressions","rejected_experiments","hold_experiments"]},
+    {"id":"persistence_boundary","shows":["evidence_only","no_mutation","no_merge","no_deploy","production_migration_status"]}
+  ],
+  "write_policy":{"snapshot_upsert":true,"event_append":true,"event_update":false,"event_delete":false,"code_mutation":false,"merge":false,"deployment":false}
+}

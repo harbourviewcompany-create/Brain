@@ -159,6 +159,17 @@ Fixtures: repeated buyer matching, repeated market-entry requests, one-off non-r
 Dashboard: compounding-assets and build-candidates board.
 Acceptance: no build candidate is promoted without repeated evidence, payer evidence, and resource estimate.
 
+### MOD-016 Capital Source Intelligence Registry
+Purpose: convert source discovery from a static list into a durable commercial-intelligence source registry with scoring, ingestion controls, source lifecycle, legal/access status, compounding-source relationships, evidence requirements, and downstream opportunity/action mappings.
+Data: SourceIntelligenceRecord, SourceScore, SourceCluster, IngestionPolicy, SourceCategory, SignalType, LegalAccessStatus, SourceLifecycleStatus, OperationalDisposition.
+Services: SourceIntelligenceRegistryService, SourceTriageService, SourceClusterService, IngestionPolicyService.
+Algorithms: source priority score `(signal_value * 3) + freshness + reliability - extraction_difficulty`, legal/access HOLD routing, ranked source triage, cluster false-positive control.
+State machine: discovered -> queued -> reviewed -> approved -> active/monitored -> degraded/broken -> retired/rejected/prohibited.
+Tests: tests/test_source_intelligence_registry.py.
+Fixtures: source_intelligence_registry.
+Dashboard: Source Intelligence Registry, Source Health, Signal Inbox, Evidence Viewer, Opportunity Board.
+Acceptance: source records validate required fields, priority scores match formula, legal/access HOLD states block automation, clusters include false-positive controls, and ingestion policies preserve provenance/compliance requirements.
+
 ## Later cognitive modules
 
 Memory, dreaming, theory of mind, active inference, social cognition, strategy mutation, consciousness-adjacent layers, richer international market models, and advanced autonomous source discovery remain preserved and staged V1 to V4. Staging is not deletion.
