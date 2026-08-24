@@ -164,6 +164,47 @@ def test_capital_pressure_reaches_cognitive_cycle_at_runtime():
     assert selected_names == ["pursue_capital_recovery"]
 
 
+def test_capital_refresh_merges_budget_pressure_without_zeroing_other_dimensions():
+    store = InMemoryBrainStore()
+    ledger = CapitalLedger(
+        balance=1.0,
+        burn_rate=2.0,
+        survival_threshold=0.0,
+        warning_threshold=10.0,
+    )
+    cycle = CognitiveCycle(
+        store,
+        attention_threshold=-100,
+        capital_ledger=ledger,
+        cognitive_budget=1,
+    )
+    cycle.homeostatic_state = HomeostaticState(
+        compute_load=0.4,
+        unresolved_uncertainty=0.55,
+        operator_load=0.3,
+        graph_density_pressure=0.2,
+        budget_pressure=0.0,
+    )
+
+    cycle.process(
+        CognitiveStimulus(
+            content="routine market scan",
+            source_id="system",
+            claim="market scan available",
+            source_reliability=0.8,
+            novelty=0.2,
+            urgency=0.1,
+        )
+    )
+
+    state = cycle.homeostatic_state
+    assert state.budget_pressure == 1.0
+    assert state.compute_load == 0.4
+    assert state.unresolved_uncertainty == 0.55
+    assert state.operator_load == 0.3
+    assert state.graph_density_pressure == 0.2
+
+
 def test_cycle_outcome_feeds_capital_ledger():
     store = InMemoryBrainStore()
     ledger = CapitalLedger(
