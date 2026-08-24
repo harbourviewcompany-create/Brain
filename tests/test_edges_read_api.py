@@ -1,3 +1,5 @@
+"""Regression coverage for the authenticated durable Observatory edge read contract."""
+
 from datetime import UTC, datetime
 from uuid import uuid4
 
