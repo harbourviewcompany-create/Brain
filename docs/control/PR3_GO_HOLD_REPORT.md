@@ -145,6 +145,8 @@ These are not excluded from the Brain. They are preserved as explicit deferred s
 
 The PR body was updated to include the repository-required control sections: Control Preflight, Scope, Source Authority, GO/HOLD Status, Changed Files, Module Completion Requirements, Traceability, Tests / Validation, External Actions, Memory Writes, Acceptance Criteria, Unresolved Gaps, Source Preservation Statement, and Next Required Action.
 
+Follow-up authority-label repair: the PR body now also includes the exact SOURCE and APPROVED authority terms required by the PR-body validator.
+
 ## GO/HOLD
 
 GO for PR 3 review after CI and review-thread revalidation.
