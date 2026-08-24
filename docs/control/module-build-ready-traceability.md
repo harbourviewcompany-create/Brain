@@ -93,6 +93,8 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/runtime.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/scheduler.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/schemas.py | partial | present | partial | partial | partial | partial | partial | HOLD |
+| brain/tenant_auth.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/tenant_context.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
@@ -109,6 +111,10 @@ The twelve `brain/developmental/*` rows are included because those code paths ex
 ## Adapter traceability note
 
 `brain/adapters/developmental_evidence_store.py` is the PostgreSQL persistence boundary for AGENT-017/018 evidence. Its repository implementation is traceable, but production migration execution is environment-specific and remains HOLD until deployed and verified.
+
+## Tenant/auth traceability note
+
+`brain/tenant_auth.py` and `brain/tenant_context.py` are included because PR 2 and PR 3 introduced tenant/auth foundation code. Their rows remain HOLD because tenant-aware route and repository enforcement is still PR 4 work.
 
 ## MOD-008 through MOD-015 repair traceability note
 

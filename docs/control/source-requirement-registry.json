@@ -33,21 +33,21 @@
   "code_module_records": [
     {
       "record_id": "TRACE-BRAIN-CORE",
-      "paths": ["brain/attention.py","brain/attribution.py","brain/beliefs.py","brain/cognitive_state.py","brain/contradiction.py","brain/contradiction_queue.py","brain/curiosity.py","brain/cycle.py","brain/debate.py","brain/domain.py","brain/dreaming.py","brain/economic.py","brain/events.py","brain/experiments.py","brain/formulas.py","brain/governance.py","brain/homeostasis.py","brain/hydrate.py","brain/learning.py","brain/memory.py","brain/metabolism.py","brain/ports.py","brain/prediction.py","brain/projections.py","brain/protocol.py","brain/replay.py","brain/resources.py","brain/reward.py","brain/rewiring.py","brain/runner.py","brain/runtime.py","brain/scheduler.py","brain/schemas.py","brain/working_memory.py"],
+      "paths": ["brain/attention.py","brain/attribution.py","brain/beliefs.py","brain/cognitive_state.py","brain/contradiction.py","brain/contradiction_queue.py","brain/curiosity.py","brain/cycle.py","brain/debate.py","brain/domain.py","brain/dreaming.py","brain/economic.py","brain/events.py","brain/experiments.py","brain/formulas.py","brain/governance.py","brain/homeostasis.py","brain/hydrate.py","brain/learning.py","brain/memory.py","brain/metabolism.py","brain/ports.py","brain/prediction.py","brain/projections.py","brain/protocol.py","brain/replay.py","brain/resources.py","brain/reward.py","brain/rewiring.py","brain/runner.py","brain/runtime.py","brain/scheduler.py","brain/schemas.py","brain/tenant_auth.py","brain/tenant_context.py","brain/working_memory.py"],
       "classification": "APPROVED",
       "go_hold_status": "REVIEW",
       "source_ids": ["SRC-README","SRC-ARCHITECTURE","SRC-BUILD-PLAN","SRC-FUNCTION-MAP"],
       "requirement_ids": ["REQ-BRAIN-RUNTIME-MODULES"],
-      "owner_object": "Brain core runtime modules",
+      "owner_object": "Brain core runtime modules including tenant/auth foundation helpers",
       "schema": "minimum traceability; detailed schemas required before BUILD-READY",
       "runtime_service": "brain package",
       "state_machine": "REVIEW pending detailed state maps",
       "fixtures": ["tests"],
       "tests": ["python -m pytest -q","ruff check ."],
-      "acceptance_criteria": ["code path is traceable","no source narrowing"],
+      "acceptance_criteria": ["code path is traceable","no source narrowing","tenant/auth helpers remain REVIEW until route enforcement is complete"],
       "audit_events": ["TRACEABILITY_RECORD_VERIFIED"],
       "source_preservation": "preserved",
-      "unresolved_gaps": ["expand per-module traceability before BUILD-READY"]
+      "unresolved_gaps": ["expand per-module traceability before BUILD-READY", "tenant route enforcement remains PR 4"]
     },
     {
       "record_id": "TRACE-DEVELOPMENTAL-RUNTIME",
