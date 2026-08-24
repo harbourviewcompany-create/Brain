@@ -1,7 +1,8 @@
 {
   "report_id":"AGENT-020-governed-developmental-cycle",
   "issue":91,
-  "verdict":"GO_CANDIDATE_PENDING_PROTECTED_CI",
+  "verdict":"GO_EXACT_HEAD_VALIDATED",
+  "validated_implementation_sha":"b3721d24388285a56eb7f356295738c991ec19ed",
   "implemented_files":[
     "brain/developmental/improvement_cycle.py",
     "brain/developmental/evidence_store.py",
@@ -19,6 +20,13 @@
     "durable promotion/hold/reject/rollback evidence",
     "restart-reconstructable cycle timeline",
     "self-approval and mutation prohibition"
+  ],
+  "validation":[
+    "Brain Control Policy passed on validated implementation head",
+    "agent-control validation passed",
+    "MOD-008 through MOD-015 117-row regression gate passed",
+    "full pytest passed",
+    "lint passed"
   ],
   "hold":["self-approval","autonomous code mutation","automatic merge","deployment","spending","external action","unsupported superiority claims"]
 }
