@@ -30,7 +30,9 @@ from brain.tenant_runtime import (
     TenantServiceBundle,
     TenantServiceRegistry,
     active_tenant_context,
+    require_safe_runtime_role,
     tenant_context_scope,
+    tenant_rls_enforced,
 )
 
 try:
@@ -135,6 +137,14 @@ if _DATABASE_URL:
     if ConnectionPool is None:
         raise RuntimeError("PostgreSQL support requires project dependencies")
     _raw_pool = ConnectionPool(conninfo=_DATABASE_URL, min_size=1, max_size=20, open=True)
+    with _raw_pool.connection() as conn:
+        if tenant_rls_enforced(conn):
+            if tenant_security.mode != "required":
+                raise RuntimeError(
+                    "BRAIN_TENANT_MODE=required when tenant RLS is enforced"
+                )
+            require_safe_runtime_role(conn, require_trusted_service=False)
+
     _scoped_pool = TenantScopedConnectionPool(_raw_pool)
     _membership_resolver = PostgresTenantMembershipResolver(_scoped_pool)
 
