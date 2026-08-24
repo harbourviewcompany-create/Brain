@@ -1,4 +1,3 @@
-from datetime import timedelta
 from uuid import uuid4
 
 from brain.adapters.learning_store import InMemoryLearningStore
@@ -8,7 +7,6 @@ from brain.cycle_learning import (
     emit_predictions_for_selected_tasks,
     prediction_for_task,
 )
-from brain.domain import Outcome
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
 from brain.metabolism import CapitalLedger
@@ -114,7 +112,6 @@ def test_cycle_capital_outcome_attributes_open_prediction():
     cycle = CognitiveCycle(
         store, learning=learning, capital_ledger=ledger, attention_threshold=-10.0
     )
-    # First tick: select tasks and open predictions
     r1 = cycle.process(
         CognitiveStimulus(
             content="Pursue recovery",
@@ -126,7 +123,6 @@ def test_cycle_capital_outcome_attributes_open_prediction():
         )
     )
     assert r1.prediction_ids
-    # Second tick: capital result arrives → attribution
     r2 = cycle.process(
         CognitiveStimulus(
             content="Invoice paid",
