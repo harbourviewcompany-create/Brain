@@ -5,8 +5,12 @@ from uuid import uuid4
 import pytest
 
 from brain.adapters.cognitive_object_store import InMemoryCognitiveObjectStore
-from brain.cognitive_protocol import (
+from brain.growth_runtime import CognitiveGrowthRuntime
+from brain.protocol import (
+    CognitiveConflict,
+    CognitiveObjectEnvelope,
     CognitiveProtocolService,
+    CognitiveTransition,
     DevelopmentalPlasticityDelta,
     EpistemicState,
     KnowledgeGap,
@@ -17,7 +21,6 @@ from brain.cognitive_protocol import (
     ProvenanceEdge,
     ReplayBundle,
 )
-from brain.growth_runtime import CognitiveGrowthRuntime
 
 
 def make_gap() -> KnowledgeGap:
@@ -39,6 +42,77 @@ def test_epistemic_state_preserves_dimensions_and_clamps() -> None:
     assert state.confidence == 1.0
     assert state.uncertainty == 0.0
     assert state.contradiction == 0.7
+
+
+def test_object_envelope_requires_and_persists_provenance() -> None:
+    service = CognitiveProtocolService()
+    with pytest.raises(ValueError, match="requires provenance"):
+        CognitiveObjectEnvelope(
+            object_id="belief:b1",
+            object_kind="belief",
+            provenance_refs=[],
+            lifecycle_state="active",
+        )
+
+    envelope = service.register_envelope(
+        CognitiveObjectEnvelope(
+            object_id="belief:b1",
+            object_kind="belief",
+            provenance_refs=["evidence:e1"],
+            lifecycle_state="active",
+            epistemic_state=EpistemicState(confidence=0.6, uncertainty=0.4),
+        )
+    )
+    assert service.store.get("cognitive_object_envelope", envelope.object_id) is not None
+
+
+def test_lifecycle_transition_is_appendable_and_reversible_only_with_rollback() -> None:
+    service = CognitiveProtocolService()
+    with pytest.raises(ValueError, match="rollback"):
+        CognitiveTransition(
+            object_id="hypothesis:h1",
+            object_kind="hypothesis",
+            from_state="generated",
+            to_state="supported",
+            trigger="new evidence",
+            provenance_refs=["evidence:e1"],
+            actor="TruthMaintenanceService",
+            reversible=True,
+        )
+
+    transition = service.record_transition(
+        CognitiveTransition(
+            object_id="hypothesis:h1",
+            object_kind="hypothesis",
+            from_state="generated",
+            to_state="supported",
+            trigger="new evidence",
+            provenance_refs=["evidence:e1"],
+            actor="TruthMaintenanceService",
+            reversible=True,
+            rollback_ref="transition:rollback-1",
+        )
+    )
+    assert transition.from_state == "generated"
+    assert transition.to_state == "supported"
+    assert service.store.get("cognitive_transition", transition.id) is not None
+
+
+def test_conflicting_states_coexist_without_forced_resolution() -> None:
+    service = CognitiveProtocolService()
+    conflict = service.register_conflict(
+        CognitiveConflict(
+            conflict_class="belief_conflict",
+            competing_refs=["belief:b1", "belief:b2"],
+            evidence_refs=["evidence:e1", "evidence:e2"],
+            severity=0.8,
+            unresolved_dimensions=["causal_direction"],
+        )
+    )
+    assert conflict.competing_refs == ["belief:b1", "belief:b2"]
+    assert conflict.selected_resolution is None
+    assert conflict.lifecycle_state == "detected"
+    assert service.store.get("cognitive_conflict", conflict.id) is not None
 
 
 def test_gap_drives_domain_general_affordance_and_persists() -> None:
