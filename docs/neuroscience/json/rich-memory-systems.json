@@ -1,0 +1,84 @@
+{
+  "registry_id": "neuro-rich-memory-systems-v1",
+  "slice_id": "NEURO-007",
+  "status": "APPROVED_FOR_CONTROL_LAYER",
+  "runtime_anchor": "brain.neuro.memory_systems.RichMemorySystemService",
+  "dashboard": "Memory Systems Console",
+  "non_claims": [
+    "perfect recall",
+    "human-memory equivalence",
+    "autobiographical consciousness",
+    "unverified memory-as-fact"
+  ],
+  "state_machine": [
+    "encoded",
+    "retrievable",
+    "consolidated",
+    "reconsolidated",
+    "decay_candidate",
+    "forgotten",
+    "quarantined"
+  ],
+  "memory_systems": [
+    {"kind": "iconic", "purpose": "brief visual trace", "go_hold_status": "GO"},
+    {"kind": "echoic", "purpose": "brief auditory or transcript trace", "go_hold_status": "GO"},
+    {"kind": "sensory_trace", "purpose": "raw perceptual trace before semantic binding", "go_hold_status": "GO"},
+    {"kind": "working", "purpose": "active task-bound memory", "go_hold_status": "GO"},
+    {"kind": "episodic", "purpose": "event-specific memory with context", "go_hold_status": "GO"},
+    {"kind": "semantic", "purpose": "fact or concept memory with provenance", "go_hold_status": "GO"},
+    {"kind": "procedural", "purpose": "sequence or process memory", "go_hold_status": "GO"},
+    {"kind": "emotional", "purpose": "affective salience trace", "go_hold_status": "GO"},
+    {"kind": "spatial", "purpose": "location or topology memory", "go_hold_status": "GO"},
+    {"kind": "autobiographical", "purpose": "Brain self-history memory without subjective identity claim", "go_hold_status": "GO"},
+    {"kind": "prospective", "purpose": "future intention or pending reminder memory", "go_hold_status": "GO"},
+    {"kind": "source", "purpose": "where a claim or trace came from", "go_hold_status": "GO"},
+    {"kind": "relational", "purpose": "relationship among entities, claims or events", "go_hold_status": "GO"},
+    {"kind": "social", "purpose": "counterparty or human-context memory", "go_hold_status": "GO"},
+    {"kind": "skill", "purpose": "learned capability memory", "go_hold_status": "GO"},
+    {"kind": "habit", "purpose": "repeated policy or tendency memory", "go_hold_status": "GO"},
+    {"kind": "threat", "purpose": "risk or danger memory", "go_hold_status": "GO"},
+    {"kind": "preference", "purpose": "operator or system preference memory", "go_hold_status": "GO"},
+    {"kind": "contradiction", "purpose": "conflict or inconsistency memory", "go_hold_status": "GO"},
+    {"kind": "uncertainty", "purpose": "explicit unknown or low-confidence memory", "go_hold_status": "GO"},
+    {"kind": "failure", "purpose": "failed action, test or prediction memory", "go_hold_status": "GO"},
+    {"kind": "dream_hypothesis", "purpose": "offline simulation output requiring review", "go_hold_status": "HOLD"},
+    {"kind": "quarantined", "purpose": "unsafe, contaminated or unsupported memory", "go_hold_status": "HOLD"}
+  ],
+  "required_record_fields": [
+    "memory_id",
+    "kind",
+    "content_ref",
+    "evidence_refs",
+    "source_refs",
+    "provenance",
+    "confidence",
+    "retrieval_cues",
+    "linked_workspace_frame_ids",
+    "linked_memory_ids",
+    "contradiction_refs",
+    "lifecycle_state",
+    "retention_policy",
+    "replay_required",
+    "go_hold_status"
+  ],
+  "persistence_tables": [
+    "memory_system_records",
+    "memory_consolidation_events",
+    "memory_links",
+    "memory_quarantine_decisions"
+  ],
+  "acceptance_criteria": [
+    "all required memory systems are represented",
+    "encoded memory requires evidence references",
+    "encoded memory requires source references",
+    "encoded memory requires provenance",
+    "retrieval excludes forgotten and quarantined records",
+    "quarantine forces HOLD and requires reason",
+    "fabricated or unsupported memory cannot remain GO"
+  ],
+  "unresolved_gaps": [
+    "production migration execution is not claimed",
+    "operator Memory Systems Console UI is not yet implemented",
+    "integration with perception/action/affect/self-model/immune layers remains future work"
+  ]
+}

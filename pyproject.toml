@@ -13,6 +13,7 @@ dependencies = [
   "httpx>=0.28,<1",
   "numpy>=1.26,<3",
   "pillow>=10.0,<13",
+  "PyJWT[crypto]>=2.13,<3",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,21 @@
+{
+  "artifact": "REVENUE-EXECUTION-SPINE-V1",
+  "go": [
+    "queue approval-required revenue actions",
+    "approve revenue actions by operator id",
+    "log manual action proof after approval",
+    "schedule follow-ups",
+    "record revenue outcomes",
+    "update money lane and source scoring from outcomes"
+  ],
+  "hold": [
+    "autonomous send",
+    "autonomous spend",
+    "autonomous scraping",
+    "unapproved outreach",
+    "provider-backed autonomous reasoning",
+    "Tier 5 autonomy",
+    "full production database adapter execution"
+  ],
+  "operator_boundary": "The system queues and learns from revenue actions. It does not execute external action by itself."
+}

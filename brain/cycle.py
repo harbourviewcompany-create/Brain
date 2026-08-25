@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from .attention import AttentionMarket, AttentionSignal
 from .beliefs import BeliefEngine
-from .cognitive_state import NeuromodulatorState
+from .cognitive_state import HomeostaticState, NeuromodulatorState
 from .contradiction import ContradictionEngine
-from .domain import Belief, Evidence, Observation
+from .domain import Belief, Evidence, Observation, utcnow
 from .events import BrainEvent
+from .homeostasis import HomeostasisEngine
 from .hydrate import hydrate_belief_cache
+from .learning import (
+    LearningService,
+    attribute_capital_or_result_outcome,
+    emit_predictions_for_selected_tasks,
+)
+from .metabolism import CapitalLedger, MetabolismEngine
 from .projections import default_projection_engine, incremental_checkpoint
 from .scheduler import CognitiveScheduler, CognitiveTask
 from .working_memory import WorkingMemory
@@ -61,6 +68,9 @@ class CognitiveStimulus:
     uncertainty_reduction: float = 0.5
     noise_probability: float = 0.2
     operator_burden: float = 0.0
+    capital_outcome_amount: float = 0.0
+    capital_outcome_source: str | None = None
+    outcome_action_id: UUID | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -76,8 +86,6 @@ class CognitiveCycleResult:
     event_ids: list[UUID]
     working_memory_size: int = 0
     evicted_count: int = 0
-    # Additive: outputs of the six organs wired in below. All optional /
-    # defaulted so existing positional-safe construction is unaffected.
     emotion_label: str | None = None
     emotion_valence: float | None = None
     circadian_phase: str | None = None
@@ -85,6 +93,11 @@ class CognitiveCycleResult:
     executive_override_succeeded: bool | None = None
     perceived_novelty: float | None = None
     agent_trust: float | None = None
+    capital_balance: float | None = None
+    budget_pressure: float | None = None
+    capital_starving: bool | None = None
+    prediction_ids: list[UUID] = field(default_factory=list)
+    attribution_recorded: bool = False
 
 
 class CognitiveCycle:
@@ -106,6 +119,10 @@ class CognitiveCycle:
         executive: ExecutiveControlService | None = None,
         perception: PerceptionService | None = None,
         control_resource: CognitiveControlResource | None = None,
+        capital_ledger: CapitalLedger | None = None,
+        metabolism: MetabolismEngine | None = None,
+        homeostasis: HomeostasisEngine | None = None,
+        learning: LearningService | None = None,
     ) -> None:
         self.event_store = event_store
         self.checkpoint_store = checkpoint_store
@@ -119,12 +136,10 @@ class CognitiveCycle:
         self.working_memory = working_memory or WorkingMemory(capacity=working_memory_capacity)
         self._belief_cache: dict[UUID, Belief] = {}
         self._projection = default_projection_engine()
+        self.learning = learning
+        # action_id (task.id) -> prediction_id for outcome attribution across ticks
+        self._open_predictions_by_action: dict[UUID, UUID] = {}
 
-        # The six organs from the gap-analysis pass. Each is optional and
-        # independently swappable/injectable (matching working_memory's
-        # existing pattern) so callers who don't care can ignore them
-        # entirely -- process() still runs and returns the same core
-        # fields it always did.
         self.circadian = circadian or CircadianClock()
         self.affect = affect or AffectAppraisalService()
         self.hedonic = hedonic or HedonicSystem()
@@ -132,6 +147,11 @@ class CognitiveCycle:
         self.executive = executive or ExecutiveControlService()
         self.control_resource = control_resource or CognitiveControlResource()
         self.perception = perception or self._default_perception_service()
+
+        self.capital_ledger = capital_ledger
+        self.metabolism = metabolism or MetabolismEngine()
+        self.homeostasis = homeostasis or HomeostasisEngine()
+        self.homeostatic_state = HomeostaticState()
 
     @staticmethod
     def _default_perception_service() -> PerceptionService:
@@ -143,7 +163,6 @@ class CognitiveCycle:
         self._belief_cache[belief.id] = belief
 
     def hydrate_beliefs(self, *, from_checkpoint: bool = True) -> int:
-        """Load beliefs into process cache from checkpoint or event replay."""
         return hydrate_belief_cache(
             self._belief_cache,
             self.event_store,
@@ -152,10 +171,6 @@ class CognitiveCycle:
         )
 
     def _blend_modulation(self, source: NeuromodulatorState, weight: float) -> None:
-        """Composes a new modulator write into self.modulation instead of
-        overwriting it -- affect, hedonic, and circadian all get a say on
-        the same dials every cycle, the same weighted-blend pattern
-        HomeostasisEngine already uses for stress."""
         for name in ("dopamine", "norepinephrine", "serotonin", "acetylcholine", "stress"):
             current = getattr(self.modulation, name)
             incoming = getattr(source, name)
@@ -165,6 +180,8 @@ class CognitiveCycle:
     def process(self, stimulus: CognitiveStimulus) -> CognitiveCycleResult:
         cycle_id = uuid4()
         event_ids: list[UUID] = []
+        attribution_recorded = False
+        prediction_ids: list[UUID] = []
         observation = Observation(
             content=stimulus.content,
             source_id=stimulus.source_id,
@@ -186,24 +203,14 @@ class CognitiveCycle:
             event_ids,
         )
 
-        # Circadian: advance one tick per cycle. cognitive_load is a crude
-        # proxy (urgency) for now -- real load could come from scheduler
-        # queue depth later. A very urgent stimulus can force-wake the
-        # Brain mid-sleep rather than being silently dropped/delayed; when
-        # that happens we skip the normal advance() for this same tick so
-        # the still-high sleep pressure doesn't immediately re-trigger
-        # sleep onset before the urgent stimulus has even been processed.
+        self._metabolize_capital(cycle_id, event_ids)
+
         if not self.circadian.is_awake and stimulus.urgency >= 0.85:
             self.circadian.force_wake()
         else:
             self.circadian.advance(ticks=1.0, cognitive_load=max(0.1, stimulus.urgency))
         self._blend_modulation(self.circadian.modulator_profile(), weight=0.15)
 
-        # Perception: turn the raw content into a structured percept with
-        # habituation-adjusted novelty. Does not override stimulus.novelty
-        # (which callers set explicitly) -- it's an independent read,
-        # emitted for observability and available to callers via the
-        # cycle result.
         percept = self.perception.perceive(Modality.TEXT, str(observation.id), stimulus.content)
         self._emit(
             BrainEvent(
@@ -314,10 +321,6 @@ class CognitiveCycle:
             event_ids,
         )
 
-        # Theory of mind: track what this source has claimed, as an agent
-        # model distinct from the Brain's own belief store -- what the
-        # source believes/asserts may turn out to diverge from what the
-        # Brain itself concludes.
         self.theory_of_mind.attribute_belief(
             stimulus.source_id,
             statement=stimulus.claim,
@@ -347,23 +350,17 @@ class CognitiveCycle:
             event_ids,
         )
 
-        # Hedonic: belief confidence moving from prior to posterior is a
-        # generic reward-prediction-error signal -- "how surprising was
-        # this update," independent of whether it was commercially good.
-        # A contradiction is registered as pain, not just negative reward,
-        # since it has its own urgency character.
-        rpe = self.hedonic.register_outcome(expected_value=prior_confidence, actual_value=updated.confidence)
+        rpe = self.hedonic.register_outcome(
+            expected_value=prior_confidence, actual_value=updated.confidence
+        )
         pain = None
         if contradiction is not None:
             pain = self.hedonic.register_pain(intensity=contradiction.severity, source="contradiction")
         self._blend_modulation(self.hedonic.modulator_delta(rpe, pain), weight=0.25)
 
-        # Affect: appraise this cycle's event generically (Scherer-style
-        # checks), independent of the hedonic/reward pathway above --
-        # affect cares about goal congruence/controllability/agency, not
-        # just whether the outcome was surprising.
         appraisal = AppraisalInput(
-            goal_congruence=(1.0 if stimulus.supports else -1.0) * max(0.0, min(1.0, stimulus.source_reliability)),
+            goal_congruence=(1.0 if stimulus.supports else -1.0)
+            * max(0.0, min(1.0, stimulus.source_reliability)),
             novelty=stimulus.novelty,
             urgency=stimulus.urgency,
             controllability=max(0.0, 1.0 - stimulus.operator_burden),
@@ -388,6 +385,8 @@ class CognitiveCycle:
             ),
             event_ids,
         )
+
+        attribution_recorded = self._feed_capital_outcome(stimulus, cycle_id, event_ids)
 
         tasks: list[CognitiveTask] = []
         if contradiction is not None:
@@ -435,21 +434,31 @@ class CognitiveCycle:
                     },
                 )
             )
+        if self.capital_ledger is not None and self.capital_ledger.is_starving:
+            tasks.append(
+                CognitiveTask(
+                    name="pursue_capital_recovery",
+                    utility=0.85,
+                    urgency=1.0,
+                    novelty=0.0,
+                    uncertainty_reduction=0.2,
+                    cost=0.05,
+                    payload={
+                        "capital_ledger_id": str(self.capital_ledger.id),
+                        "balance": self.capital_ledger.balance,
+                        "survival_threshold": self.capital_ledger.survival_threshold,
+                    },
+                )
+            )
 
         executive_decision = None
         if len(tasks) >= 2:
-            # Only meaningful when there's an actual competing pair: the
-            # routine "consolidate" response (prepotent -- it fires
-            # whenever attention clears the bar) versus the goal-directed
-            # "investigate_contradiction" response. Executive control does
-            # not override scheduler.select's own priority math here --
-            # it runs alongside as an independent read on whether the
-            # Brain *could* have overridden the routine response, logged
-            # for observability rather than silently reordering tasks.
             candidates = [
                 ResponseCandidate(
                     action=task.name,
-                    source=ResponseSource.DELIBERATE if task.name == "investigate_contradiction" else ResponseSource.HABITUAL,
+                    source=ResponseSource.DELIBERATE
+                    if task.name == "investigate_contradiction"
+                    else ResponseSource.HABITUAL,
                     prepotency=0.85 if task.name == "consolidate_observation" else 0.4,
                     goal_alignment=0.9 if task.name == "investigate_contradiction" else 0.0,
                     expected_value=task.utility,
@@ -458,7 +467,7 @@ class CognitiveCycle:
             ]
             self.control_resource.recover(ticks=0.5)
             executive_decision = self.executive.arbitrate(
-                candidates, goals=None, control=self.control_resource, modulation=self.modulation,
+                candidates, goals=None, control=self.control_resource, modulation=self.modulation
             )
             self._emit(
                 BrainEvent(
@@ -494,6 +503,18 @@ class CognitiveCycle:
                 event_ids,
             )
 
+        # Close the learning loop: selected tasks become open predictions.
+        if self.learning is not None and selected:
+            mapping = emit_predictions_for_selected_tasks(
+                self.learning,
+                selected,
+                belief_id=updated.id,
+                cycle_id=cycle_id,
+                source_id=stimulus.source_id,
+            )
+            self._open_predictions_by_action.update(mapping)
+            prediction_ids = list(mapping.values())
+
         self._emit(
             BrainEvent(
                 "cycle.completed",
@@ -506,8 +527,16 @@ class CognitiveCycle:
                     "attention_score": attention_score,
                     "contradiction_detected": contradiction is not None,
                     "task_ids": [str(t.id) for t in selected],
+                    "prediction_ids": [str(p) for p in prediction_ids],
                     "working_memory_size": self.working_memory.size,
                     "evicted_count": len(evicted),
+                    "capital_balance": self.capital_ledger.balance if self.capital_ledger else None,
+                    "budget_pressure": self.homeostatic_state.budget_pressure
+                    if self.capital_ledger
+                    else None,
+                    "capital_starving": self.capital_ledger.is_starving
+                    if self.capital_ledger
+                    else None,
                 },
                 correlation_id=cycle_id,
             ),
@@ -529,10 +558,122 @@ class CognitiveCycle:
             emotion_label=str(emotion.label),
             emotion_valence=emotion.valence,
             circadian_phase=str(self.circadian.phase),
-            executive_override_attempted=executive_decision.override_attempted if executive_decision else None,
-            executive_override_succeeded=executive_decision.override_succeeded if executive_decision else None,
+            executive_override_attempted=executive_decision.override_attempted
+            if executive_decision
+            else None,
+            executive_override_succeeded=executive_decision.override_succeeded
+            if executive_decision
+            else None,
             perceived_novelty=percept.novelty,
             agent_trust=agent_model.trust if agent_model else None,
+            capital_balance=self.capital_ledger.balance if self.capital_ledger else None,
+            budget_pressure=self.homeostatic_state.budget_pressure if self.capital_ledger else None,
+            capital_starving=self.capital_ledger.is_starving if self.capital_ledger else None,
+            prediction_ids=prediction_ids,
+            attribution_recorded=attribution_recorded,
+        )
+
+    def _metabolize_capital(self, cycle_id: UUID, event_ids: list[UUID]) -> None:
+        if self.capital_ledger is None:
+            return
+        self.capital_ledger, metabolic_events = self.metabolism.metabolize(self.capital_ledger)
+        for event in metabolic_events:
+            self._emit(
+                BrainEvent(
+                    event.event_type,
+                    event.aggregate_type,
+                    event.aggregate_id,
+                    event.payload,
+                    causation_id=event.causation_id,
+                    correlation_id=cycle_id,
+                ),
+                event_ids,
+            )
+        self._refresh_homeostasis_from_capital(cycle_id, event_ids)
+
+    def _feed_capital_outcome(
+        self,
+        stimulus: CognitiveStimulus,
+        cycle_id: UUID,
+        event_ids: list[UUID],
+    ) -> bool:
+        """Credit capital ledger and attribute open predictions when value arrives."""
+        if stimulus.capital_outcome_amount <= 0:
+            return False
+
+        if self.capital_ledger is not None:
+            self.capital_ledger, event = self.metabolism.feed(
+                self.capital_ledger,
+                stimulus.capital_outcome_amount,
+                source=stimulus.capital_outcome_source or "cognitive-cycle-outcome",
+            )
+            self._emit(
+                BrainEvent(
+                    event.event_type,
+                    event.aggregate_type,
+                    event.aggregate_id,
+                    event.payload,
+                    causation_id=event.causation_id,
+                    correlation_id=cycle_id,
+                ),
+                event_ids,
+            )
+            self._refresh_homeostasis_from_capital(cycle_id, event_ids)
+
+        if self.learning is None:
+            return False
+
+        # Prefer explicit outcome_action_id; else attribute against the oldest open prediction.
+        action_id = stimulus.outcome_action_id
+        if action_id is None and self._open_predictions_by_action:
+            action_id = next(iter(self._open_predictions_by_action.keys()))
+        if action_id is None:
+            action_id = uuid4()
+
+        try:
+            attribute_capital_or_result_outcome(
+                self.learning,
+                action_id=action_id,
+                value_created=float(stimulus.capital_outcome_amount),
+                open_by_action=self._open_predictions_by_action,
+                source_keys=[stimulus.capital_outcome_source or stimulus.source_id],
+            )
+            # Drop resolved mapping entry if present
+            self._open_predictions_by_action.pop(action_id, None)
+            return True
+        except Exception:
+            # Attribution failures must not abort cognition; ledger already credited.
+            return False
+
+    def _refresh_homeostasis_from_capital(self, cycle_id: UUID, event_ids: list[UUID]) -> None:
+        if self.capital_ledger is None:
+            return
+        budget_pressure = self.metabolism.budget_pressure(self.capital_ledger)
+        memory_pressure = max(
+            0.0,
+            min(1.0, self.working_memory.size / max(1, self.working_memory.capacity)),
+        )
+        self.homeostatic_state = replace(
+            self.homeostatic_state,
+            memory_pressure=memory_pressure,
+            budget_pressure=budget_pressure,
+            updated_at=utcnow(),
+        )
+        self.modulation = self.homeostasis.regulate(self.homeostatic_state, self.modulation)
+        self._emit(
+            BrainEvent(
+                "homeostasis.budget_pressure_updated",
+                "capital_ledger",
+                self.capital_ledger.id,
+                {
+                    "budget_pressure": budget_pressure,
+                    "stress_index": self.homeostatic_state.stress_index,
+                    "balance": self.capital_ledger.balance,
+                    "is_starving": self.capital_ledger.is_starving,
+                },
+                correlation_id=cycle_id,
+            ),
+            event_ids,
         )
 
     def _resolve_belief(

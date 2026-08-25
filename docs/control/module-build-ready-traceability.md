@@ -101,6 +101,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/money_spine.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/motor.py | partial | present | partial | partial | present | missing | partial | HOLD |
 | brain/neuro/abstractions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/neuro/memory_systems.py | partial | partial | partial | missing | partial | partial | partial | HOLD |
 | brain/neuro/multiscale.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/neuro/regions.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/observability.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
@@ -140,7 +141,7 @@ The `brain/developmental/*` rows are included because those code paths exist and
 
 ## Source preservation statement
 
-This matrix merges rows independently added on `main` (Cognitive Organism modules, MOD-016 source intelligence, control-plane wiring, and related additions) with rows added by the affect/executive/circadian/theory-of-mind/hedonic/sensorimotor cognitive-extension work, taking the union of both sets across repeated merges rather than one side overwriting the other. No source material is deleted, narrowed, or reinterpreted by these merges. No runtime module is marked BUILD-READY by this matrix. Unknowns remain visible as `missing`, `partial`, or `HOLD`.
+This matrix merges rows independently added on `main` (Cognitive Organism modules, MOD-016 source intelligence, control-plane wiring, and related additions) with rows added by the affect/executive/circadian/theory-of-mind/hedonic/sensorimotor cognitive-extension work, taking the union of both sets across repeated merges rather than one side overwriting the other. NEURO-007 adds `brain/neuro/memory_systems.py` as HOLD without deleting or narrowing existing rows. No source material is deleted, narrowed, or reinterpreted by these merges. No runtime module is marked BUILD-READY by this matrix. Unknowns remain visible as `missing`, `partial`, or `HOLD`.
 
 ## Next expansion required
 

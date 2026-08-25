@@ -1,0 +1,33 @@
+{
+  "artifact": "REVENUE-EXECUTION-SPINE-V1",
+  "status": "GO_AFTER_CI",
+  "scope": "deterministic approval-gated revenue execution queue",
+  "implemented": [
+    "RevenueExecutionSpine runtime",
+    "approval-required revenue action queue",
+    "operator approval transition",
+    "manual action proof logging",
+    "follow-up scheduling",
+    "outcome ledger",
+    "source score and lane priority learning update",
+    "revenue execution persistence schema"
+  ],
+  "acceptance_criteria": [
+    "actionable signals queue approval-required actions",
+    "manual action logging is blocked before approval",
+    "follow-ups require approved or logged actions",
+    "outcomes update source scores and lane priority",
+    "snapshot exposes revenue, due follow-ups, action states and autonomy boundary"
+  ],
+  "tests": [
+    "tests/test_revenue_execution_spine.py"
+  ],
+  "hold_boundaries": [
+    "no autonomous outreach",
+    "no live scraping",
+    "no spending",
+    "no irreversible external action",
+    "no Tier 5 autonomy",
+    "no literal consciousness claim"
+  ]
+}

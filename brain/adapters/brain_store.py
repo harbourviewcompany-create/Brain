@@ -42,9 +42,14 @@ class PostgresBrainStore(InMemoryBrainStore):
         if self._owns_pool:
             self.pool.close()
 
-    def database_healthy(self) -> bool:
+    def database_healthy(self, *, timeout: float = 3.0) -> bool:
+        # Explicit timeout matters: without it, pool.connection() falls back
+        # to the pool's own default (30s), so a genuine DB outage would hang
+        # this check -- and therefore /health and /ready -- for 30s instead
+        # of failing fast. Confirmed by testing with Postgres actually
+        # stopped: unbounded ~30s vs ~3s with this timeout.
         try:
-            with self.pool.connection() as conn:
+            with self.pool.connection(timeout=timeout) as conn:
                 row = conn.execute("select 1").fetchone()
                 return bool(row and row[0] == 1)
         except Exception:

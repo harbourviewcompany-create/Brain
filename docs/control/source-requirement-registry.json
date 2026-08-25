@@ -720,6 +720,7 @@
       "record_id": "TRACE-NEUROSCIENCE-RUNTIME",
       "paths": [
         "brain/neuro/abstractions.py",
+        "brain/neuro/memory_systems.py",
         "brain/neuro/multiscale.py",
         "brain/neuro/regions.py"
       ],
@@ -733,10 +734,10 @@
       "requirement_ids": [
         "REQ-NEUROSCIENCE-CONTROL-LAYER"
       ],
-      "owner_object": "NEURO-001 through NEURO-005 neuroscience control-layer runtime modules",
-      "schema": "NeuroAbstraction, BrainRegionFunction, CognitionScaleLayer, UnknownMechanismRecord, NeuroscienceTheory, TheoryConflict",
-      "runtime_service": "brain.neuro registry and validation services",
-      "state_machine": "neuroscience abstraction -> software mapping -> unknown/theory boundary -> GO/HOLD validation",
+      "owner_object": "NEURO-001 through NEURO-007 neuroscience control-layer runtime modules",
+      "schema": "NeuroAbstraction, BrainRegionFunction, CognitionScaleLayer, UnknownMechanismRecord, NeuroscienceTheory, TheoryConflict, MemoryRecord, MemorySystemKind, MemoryLifecycleState, MemoryConsolidationEvent",
+      "runtime_service": "brain.neuro registry and validation services plus RichMemorySystemService",
+      "state_machine": "neuroscience abstraction -> software mapping -> workspace/memory control -> unknown/theory boundary -> GO/HOLD validation",
       "fixtures": [
         "tests/fixtures/neuro"
       ],
@@ -745,21 +746,25 @@
         "tests/test_brain_region_mapping.py",
         "tests/test_multiscale_cognition_stack.py",
         "tests/test_unknown_mechanism_registry.py",
-        "tests/test_theory_conflict_registry.py"
+        "tests/test_theory_conflict_registry.py",
+        "tests/test_rich_memory_systems.py"
       ],
       "acceptance_criteria": [
         "neuroscience abstractions preserve unknowns",
         "brain-region mappings avoid biological equivalence claims",
         "multi-scale stack covers L0 through L11",
         "unknown mechanisms remain HOLD",
-        "theory conflicts remain explicit"
+        "theory conflicts remain explicit",
+        "rich memory records require provenance",
+        "quarantined memory remains HOLD"
       ],
       "audit_events": [
         "NEURO_ABSTRACTION_VALIDATED",
         "NEURO_REGION_MAP_VALIDATED",
         "NEURO_MULTISCALE_STACK_VALIDATED",
         "NEURO_UNKNOWN_BOUNDARY_VALIDATED",
-        "NEURO_THEORY_CONFLICT_VALIDATED"
+        "NEURO_THEORY_CONFLICT_VALIDATED",
+        "RICH_MEMORY_VALIDATED"
       ],
       "source_preservation": "preserved",
       "unresolved_gaps": [

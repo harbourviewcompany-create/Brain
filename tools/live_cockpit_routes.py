@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import logging
+import os
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from fastapi.responses import JSONResponse
+
+import apps.api.main as brain_api
 from apps.api.main import app, runtime, _learning_store
+from brain.attention import AttentionMarket, AttentionSignal
+from tools.vercel_oidc import VercelOidcVerifier
+
+
+_logger = logging.getLogger(__name__)
+_attention_market = AttentionMarket()
 
 
 def _iso(value: Any | None) -> str:
@@ -23,33 +34,108 @@ def _list_response(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"items": items, "total": len(items), "source": "api"}
 
 
+def _number(payload: dict[str, Any], key: str, default: float = 0.0) -> float:
+    try:
+        return float(payload.get(key, default) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _signal_item_from_event(event: Any) -> dict[str, Any]:
+    """Build the compatibility Signal shape from a durable signal.enqueued event."""
+    event_payload = dict(getattr(event, "payload", {}) or {})
+    signal_payload = dict(event_payload.get("payload") or {})
+
+    commercial_upside = _number(signal_payload, "commercial_upside")
+    novelty = _number(signal_payload, "novelty", 0.5)
+    urgency = _number(signal_payload, "urgency")
+    contradiction_value = _number(signal_payload, "contradiction_value")
+    source_quality = _number(signal_payload, "source_reliability", 0.5)
+    uncertainty_reduction = _number(signal_payload, "uncertainty_reduction", 0.5)
+    noise_probability = _number(signal_payload, "noise_probability", 0.2)
+    operator_burden = _number(signal_payload, "operator_burden")
+    attention_score = _attention_market.score(
+        AttentionSignal(
+            commercial_upside=commercial_upside,
+            novelty=novelty,
+            urgency=urgency,
+            contradiction_value=contradiction_value,
+            source_quality=source_quality,
+            uncertainty_reduction=uncertainty_reduction,
+            noise_probability=noise_probability,
+            operator_burden=operator_burden,
+        )
+    )
+
+    occurred_at = getattr(event, "occurred_at", None)
+    metadata = dict(signal_payload.get("metadata") or {})
+    metadata.update(
+        {
+            "content": str(event_payload.get("content") or ""),
+            "claim": str(event_payload.get("claim") or ""),
+            "source_key": str(event_payload.get("source_key") or "unknown"),
+        }
+    )
+
+    return {
+        "id": str(getattr(event, "aggregate_id")),
+        "created_at": _iso(occurred_at),
+        "updated_at": _iso(occurred_at),
+        "source_id": str(event_payload.get("source_key") or "unknown"),
+        "evidence_ids": [],
+        "novelty": novelty,
+        "urgency": urgency,
+        "commercial_upside": commercial_upside,
+        "attention_score": attention_score,
+        "formula_run_id": None,
+        "metadata": metadata,
+    }
+
+
+def _edge_item(edge: Any) -> dict[str, Any]:
+    updated_at = getattr(edge, "updated_at", None)
+    return {
+        "id": str(edge.id),
+        "source": str(edge.source),
+        "target": str(edge.target),
+        "source_node_id": str(edge.source),
+        "target_node_id": str(edge.target),
+        "relation": str(edge.relation),
+        "weight": float(edge.weight),
+        "confidence": float(edge.confidence),
+        "created_at": _iso(updated_at),
+        "updated_at": _iso(updated_at),
+    }
+
+
 @app.get("/signals")
 def list_signals():
-    """Live attention-market read model derived from stored evidence.
+    """Read signals from the canonical durable signal.enqueued event stream.
 
-    The Brain does not yet have a dedicated persistent Signal service. This
-    endpoint exposes real evidence as live attention signals instead of returning
-    cockpit fixture data.
+    In production ``runtime.store.read_all()`` is backed by PostgresBrainStore and
+    therefore reads public.brain_events. This deliberately avoids the disposable
+    in-process ``runtime.store.evidence`` projection that can lag durable writes.
     """
-    items: list[dict[str, Any]] = []
-    for evidence in runtime.store.evidence.values():
-        reliability = float(getattr(evidence, "reliability", 0.5) or 0.5)
-        metadata = getattr(evidence, "metadata", {}) or {}
-        items.append(
-            {
-                "id": _stable_uuid("signal", str(evidence.id)),
-                "created_at": _iso(getattr(evidence, "created_at", None)),
-                "updated_at": _iso(getattr(evidence, "created_at", None)),
-                "source_id": str(evidence.source_id),
-                "evidence_ids": [str(evidence.id)],
-                "novelty": reliability,
-                "urgency": float(metadata.get("urgency", 0.0) or 0.0),
-                "commercial_upside": float(metadata.get("commercial_upside", 0.0) or 0.0),
-                "attention_score": reliability,
-                "formula_run_id": None,
-            }
-        )
-    items.sort(key=lambda item: item["attention_score"], reverse=True)
+    items = [
+        _signal_item_from_event(event)
+        for event in runtime.store.read_all()
+        if getattr(event, "event_type", None) == "signal.enqueued"
+    ]
+    items.sort(key=lambda item: item["created_at"], reverse=True)
+    return _list_response(items)
+
+
+@app.get("/edges")
+def list_edges():
+    """Read graph edges from the configured learning edge store.
+
+    Production resolves ``brain_api.learning.edges`` to ``PostgresEdgeStore`` so
+    this reads ``public.graph_edges`` durably. Local/test mode uses the matching
+    in-memory store implementation. The existing POST /edges contract is owned by
+    apps.api.main and remains unchanged.
+    """
+    edge_store = brain_api.learning.edges or brain_api._learning_store
+    items = [_edge_item(edge) for edge in edge_store.list_edges()]
     return _list_response(items)
 
 
@@ -150,3 +236,60 @@ def list_formula_runs():
 @app.get("/acceptance-reports")
 def list_acceptance_reports():
     return _list_response([])
+
+
+class VercelOidcAuthBridge:
+    """ASGI wrapper for the Railway-only deployment identity path.
+
+    The wrapped FastAPI application and its existing authentication middleware
+    remain unchanged. A valid Vercel deployment token is verified outside the
+    FastAPI middleware stack and exchanged only inside Railway for the local
+    BRAIN_API_KEY already stored in this service.
+    """
+
+    def __init__(self, inner_app) -> None:
+        self.inner_app = inner_app
+        self.verifier = VercelOidcVerifier.from_env()
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http":
+            await self.inner_app(scope, receive, send)
+            return
+
+        headers = list(scope.get("headers", []))
+        authorization = next(
+            (
+                value.decode("latin-1")
+                for name, value in headers
+                if name.lower() == b"authorization"
+            ),
+            "",
+        )
+
+        if authorization.lower().startswith("bearer "):
+            token = authorization[7:].strip()
+            verified, reason = self.verifier.verify(token)
+            if verified:
+                local_key = (os.environ.get("BRAIN_API_KEY") or "").strip()
+                if not local_key:
+                    response = JSONResponse(
+                        status_code=503,
+                        content={"detail": "brain_local_api_key_not_configured"},
+                    )
+                    await response(scope, receive, send)
+                    return
+
+                blocked = {b"authorization", b"x-api-key", b"x-brain-api-key"}
+                scope = dict(scope)
+                scope["headers"] = [
+                    (name, value) for name, value in headers if name.lower() not in blocked
+                ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
+            elif reason != "vercel_oidc_not_configured":
+                _logger.info("vercel_oidc_auth_rejected reason=%s", reason)
+
+        await self.inner_app(scope, receive, send)
+
+
+# Uvicorn imports this module-level name. Cockpit routes remain registered on the
+# original FastAPI object above; only the Railway entrypoint is wrapped.
+app = VercelOidcAuthBridge(app)

@@ -69,15 +69,20 @@ class HomeostaticState:
 
     @property
     def stress_index(self) -> float:
-        values = (
-            self.compute_load,
-            self.unresolved_uncertainty,
-            self.memory_pressure,
-            self.operator_load,
-            self.budget_pressure,
-            self.graph_density_pressure,
+        # Capital pressure is hunger, not another equal dashboard signal.
+        # A starving ledger must be able to dominate attention and scheduling
+        # without needing artificial uncertainty/operator-load compounding.
+        budget_weight = 12.0
+        weighted_sum = (
+            self.compute_load
+            + self.unresolved_uncertainty
+            + self.memory_pressure
+            + self.operator_load
+            + self.graph_density_pressure
+            + (self.budget_pressure * budget_weight)
         )
-        return max(0.0, min(1.0, sum(values) / len(values)))
+        total_weight = 5.0 + budget_weight
+        return max(0.0, min(1.0, weighted_sum / total_weight))
 
 
 @dataclass(slots=True)

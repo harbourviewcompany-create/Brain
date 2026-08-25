@@ -33,4 +33,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/ready', timeout=4).read()" || exit 1
 
-CMD ["sh", "-c", "uvicorn apps.api.main:app --host 0.0.0.0 --port ${PORT}"]
+# tenant_app preserves legacy single-tenant behavior when BRAIN_TENANT_MODE=disabled
+# and installs signed membership/RLS enforcement when tenant mode is enabled.
+CMD ["sh", "-c", "uvicorn apps.api.tenant_app:app --host 0.0.0.0 --port ${PORT}"]
