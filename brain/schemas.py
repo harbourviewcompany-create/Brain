@@ -210,6 +210,98 @@ class AcceptanceReport(BrainSchema):
     unresolved_items: list[str] = Field(default_factory=list)
 
 
+# --- Cognitive-extension objects (affect, executive, circadian, theory of
+# mind, hedonic, sensorimotor). Wire-format mirrors of the runtime
+# dataclasses in brain/affect.py, brain/executive.py, brain/circadian.py,
+# brain/theory_of_mind.py, brain/hedonic.py, brain/perception.py, and
+# brain/motor.py -- the dataclasses remain the hot-path runtime
+# representation; these are the validated schemas for anything crossing a
+# process/storage/API boundary, matching how Belief/Signal/Outcome above
+# mirror brain/domain.py's dataclasses.
+
+
+class EmotionalStateSchema(BrainSchema):
+    valence: float = Field(ge=-1.0, le=1.0)
+    arousal: float = Field(ge=0.0, le=1.0)
+    dominance: float = Field(ge=0.0, le=1.0)
+    label: Literal[
+        "joy", "interest", "relief", "pride", "fear", "anger", "frustration",
+        "sadness", "disgust", "surprise", "boredom", "neutral",
+    ]
+    intensity: float = Field(ge=0.0, le=1.0)
+
+
+class MoodSchema(BrainSchema):
+    valence: float = Field(ge=-1.0, le=1.0)
+    arousal_baseline: float = Field(ge=0.0, le=1.0)
+    momentum: float = Field(ge=0.0, le=1.0)
+
+
+class ResponseCandidateSchema(BrainSchema):
+    action: str
+    source: Literal["habitual", "deliberate"]
+    prepotency: float = Field(ge=0.0, le=1.0)
+    goal_alignment: float = Field(ge=-1.0, le=1.0)
+    expected_value: float
+
+
+class ExecutiveDecisionSchema(BrainSchema):
+    chosen_action: str
+    conflict_magnitude: float = Field(ge=0.0, le=1.0)
+    override_attempted: bool
+    override_succeeded: bool
+    control_cost: float = Field(ge=0.0)
+    effective_control: float = Field(ge=0.0, le=1.0)
+
+
+class CircadianStateSchema(BrainSchema):
+    phase: Literal["wake", "nrem", "rem"]
+    pressure_ratio: float = Field(ge=0.0, le=1.0)
+    oscillator_wake_drive: float = Field(ge=0.0, le=1.0)
+    cycles_completed_this_sleep: int = Field(ge=0)
+
+
+class AttributedBeliefSchema(BrainSchema):
+    agent_id: str
+    statement: str
+    believed_confidence: float = Field(ge=0.0, le=1.0)
+    evidence_refs: list[str]
+
+
+class AgentPredictionRecordSchema(BrainSchema):
+    agent_id: str
+    predicted_action: str
+    actual_action: str | None = None
+    correct: bool | None = None
+
+
+class RewardPredictionErrorSchema(BrainSchema):
+    expected_value: float
+    actual_value: float
+
+
+class PainSignalSchema(BrainSchema):
+    intensity: float = Field(ge=0.0, le=1.0)
+    source: str
+    withdrawal_urgency: float = Field(ge=0.0, le=1.0)
+
+
+class PerceptSchema(BrainSchema):
+    modality: Literal["text", "numeric", "structured", "image", "audio"]
+    raw_ref: str
+    features: dict[str, float]
+    novelty: float = Field(ge=0.0, le=1.0)
+
+
+class MotorExecutionResultSchema(BrainSchema):
+    action_description: str
+    effector_name: str
+    expected_outcome: float
+    actual_outcome: float
+    succeeded: bool
+    error: float
+
+
 CANONICAL_SCHEMAS: dict[str, type[BrainSchema]] = {
     "Source": Source,
     "Sensor": Sensor,
@@ -232,6 +324,17 @@ CANONICAL_SCHEMAS: dict[str, type[BrainSchema]] = {
     "FormulaRun": FormulaRun,
     "DecisionExplanation": DecisionExplanation,
     "AcceptanceReport": AcceptanceReport,
+    "EmotionalState": EmotionalStateSchema,
+    "Mood": MoodSchema,
+    "ResponseCandidate": ResponseCandidateSchema,
+    "ExecutiveDecision": ExecutiveDecisionSchema,
+    "CircadianState": CircadianStateSchema,
+    "AttributedBelief": AttributedBeliefSchema,
+    "AgentPredictionRecord": AgentPredictionRecordSchema,
+    "RewardPredictionError": RewardPredictionErrorSchema,
+    "PainSignal": PainSignalSchema,
+    "Percept": PerceptSchema,
+    "MotorExecutionResult": MotorExecutionResultSchema,
 }
 
 
