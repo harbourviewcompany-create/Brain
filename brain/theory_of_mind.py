@@ -196,7 +196,13 @@ class TheoryOfMindService:
         predicted, and update trust accordingly. Trust moves slowly
         (exponential blend) so one surprising observation doesn't erase an
         otherwise-reliable model, matching how real social trust updates.
+
+        A record can only be resolved once -- resolving it a second time
+        would apply a second trust update for a single real-world outcome,
+        silently double-counting it.
         """
+        if record.correct is not None:
+            raise ValueError("prediction_record_already_resolved")
         model = self.get_or_create(agent_id)
         record.actual_action = actual_action
         record.correct = actual_action == record.predicted_action

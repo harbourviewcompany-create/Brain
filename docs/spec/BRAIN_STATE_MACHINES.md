@@ -112,3 +112,51 @@ Hard gates:
 ## Required transition record
 
 Every transition must include trigger, required evidence, formula run if scored, actor, timestamp, audit event, and acceptance test reference. Economic transitions persist in `public.economic_transitions`; economic score traces persist in `public.economic_formula_runs`.
+
+## Cognitive-extension state machines
+
+Domain-neutral (no commercial/opportunity fields), unlike the MOD-008 through MOD-015 machines above. Runtime enforcement lives in `brain/circadian.py`, `brain/executive.py`, `brain/theory_of_mind.py`, and `brain/motor.py`; schemas are registered under "Cognitive-extension objects" in `docs/spec/BRAIN_SCHEMA_REGISTRY.md`.
+
+### Circadian phase state machine
+
+Allowed states: `wake -> nrem -> rem -> nrem -> ... -> wake`, cycling NREM/REM while sleep pressure remains above `wake_threshold_pressure`, with `wake` re-entered either when pressure dissipates below threshold or via an explicit `force_wake` override.
+
+Hard gates:
+- sleep onset (`wake -> nrem`) requires both `pressure.ratio >= sleep_onset_pressure` AND `oscillator.wake_drive < 0.5` -- pressure alone or circadian phase alone is insufficient, matching real sleep-onset-latency behavior;
+- `force_wake` is the only transition that can move directly from `nrem` or `rem` to `wake` without pressure having dissipated; it leaves residual pressure rather than clearing it, so an urgent-stimulus wake does not silently reset accumulated sleep debt;
+- `encoding_rate_multiplier()`, `consolidation_rate_multiplier()`, and `dream_rate_multiplier()` are phase-gated outputs, not independently settable state -- they follow the phase, not the other way around.
+
+Blocked transitions: `nrem -> wake` without either pressure dissipation or `force_wake`; `rem -> nrem` before `ultradian_period_ticks` has elapsed in the current stage (except via the pressure-dissipation exit).
+
+### Executive control-resource state machine
+
+Allowed states for `CognitiveControlResource`: `full -> partially_depleted -> depleted -> partially_depleted -> full`, a continuous resource (not discrete states) that only moves toward depletion via `spend()` and toward recovery via `recover()`.
+
+Hard gates:
+- `arbitrate()` may only return `override_succeeded=True` when `control.current >= cost` was true at spend time -- override success is never asserted independent of an actual resource check;
+- a failed override attempt still spends whatever resource remained (`spend(control.current)`), so a failed override is never free; this is what produces the honest impulsive-choice fallback rather than a system that always claims control "would have" worked;
+- `current` is clamped to `[0, capacity]`; recovery cannot exceed capacity and depletion cannot go negative.
+
+Blocked transitions: `override_succeeded=True` while `control_cost > control.current` at time of check; `current` outside `[0, capacity]`.
+
+### Theory-of-mind prediction-record state machine
+
+Allowed states: `predicted -> resolved(correct)` or `predicted -> resolved(incorrect)`, one-way, per `PredictionRecord`.
+
+Hard gates:
+- `resolve_prediction()` is the only transition out of `predicted`; a record cannot be resolved twice or resolved before `record_prediction()` created it;
+- agent `trust` updates only through the slow exponential blend in `resolve_prediction()` (`blend = 0.2`), never set directly from a single observation -- this is a deliberate hard gate against one surprising result overwriting an otherwise-reliable track record;
+- `AttributedBelief` records require `evidence_refs` (enforced at construction in `attribute_belief()`); an unevidenced belief attribution cannot be created.
+
+Blocked transitions: resolving a `PredictionRecord` with no prior `predicted_action`; setting `AgentModel.trust` directly from a single prediction outcome without the blend.
+
+### Motor execution state machine
+
+Allowed states: `governance_pending -> {blocked | approved} -> executed -> calibrated`, per `MotorExecutionService.execute()` call.
+
+Hard gates:
+- an action never reaches the effector (`executed`) unless `GovernanceGovernor.evaluate()` returned `allowed=True` first -- `governance_pending -> executed` directly is not a reachable transition;
+- `calibrated` (the `MotorCalibration.update()` step) only runs after `executed` produces a real `actual_outcome` from the effector -- calibration is never applied to a predicted-but-unexecuted action;
+- per-effector calibration gain is clamped to `[0.1, 3.0]` and per-trial step is clamped to `max_step`, so no single execution result can move calibration outside bounds or by more than the configured step.
+
+Blocked transitions: `blocked -> executed` (governance block is terminal for that action); `executed` without a prior `allowed=True` governance decision.
