@@ -22,6 +22,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from .domain import utcnow
+from .events import BrainEvent
 
 
 @dataclass(slots=True)
@@ -196,7 +197,13 @@ class TheoryOfMindService:
         predicted, and update trust accordingly. Trust moves slowly
         (exponential blend) so one surprising observation doesn't erase an
         otherwise-reliable model, matching how real social trust updates.
+
+        A record can only be resolved once -- resolving it a second time
+        would apply a second trust update for a single real-world outcome,
+        silently double-counting it.
         """
+        if record.correct is not None:
+            raise ValueError("prediction_record_already_resolved")
         model = self.get_or_create(agent_id)
         record.actual_action = actual_action
         record.correct = actual_action == record.predicted_action
@@ -212,3 +219,27 @@ def _token_overlap(a: str, b: str) -> float:
     if not tokens_a or not tokens_b:
         return 0.0
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
+
+
+def attributed_belief_to_event(
+    belief: AttributedBelief,
+    *,
+    agent_id: str,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``TheoryOfMindService.attribute_belief`` directly, outside
+    ``CognitiveCycle``."""
+    return BrainEvent(
+        "theory_of_mind.belief_attributed",
+        aggregate_type,
+        aggregate_id,
+        {
+            "agent_id": agent_id,
+            "statement": belief.statement,
+            "confidence": belief.believed_confidence,
+        },
+        correlation_id=correlation_id,
+    )

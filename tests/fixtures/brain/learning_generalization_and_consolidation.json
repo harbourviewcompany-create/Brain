@@ -1,0 +1,61 @@
+{
+  "fixture_id": "learning_generalization_and_consolidation",
+  "issue": null,
+  "agent_task": "AGENT-022",
+  "scenario": "A single real outcome on one pathway (1) partially transfers credit to a structurally similar but never-tested pathway instead of only updating the exact edge tested, (2) is later replayed during offline consolidation at a reduced rate rather than being forgotten once the cycle ends, and (3) the learning rate itself rises after a run of volatile prediction error and relaxes back toward baseline after a run of accurate ones.",
+  "purpose": "Prove point-update learning has been replaced with something that generalizes, consolidates, and adapts its own rate -- the three gaps identified as separating 'a system that updates numbers' from 'a system that learns like a brain'.",
+  "generalization": {
+    "input": {
+      "cited_edge": {"relation": "supports", "shared_node": "source", "confidence": 0.6},
+      "candidate_edge": {"relation": "supports", "shared_node": "source", "confidence": 0.6, "never_directly_tested": true},
+      "unrelated_edge": {"relation": "contradicts", "shared_node": "none"}
+    },
+    "expected": {
+      "candidate_edge_weight_change": "positive, strictly smaller than the direct update",
+      "unrelated_edge_weight_change": 0.0,
+      "similarity_threshold_respected": true,
+      "max_neighbors_respected": true
+    }
+  },
+  "consolidation": {
+    "input": {
+      "recorded_outcomes": 5,
+      "max_replays": 2,
+      "replay_rate_scale": 0.4
+    },
+    "expected": {
+      "replayed_are_most_salient": true,
+      "consolidation_rate_equals_base_rate_times_scale": true,
+      "base_rate_restored_after_consolidation": true,
+      "consolidation_delta_smaller_than_a_waking_delta": true
+    }
+  },
+  "meta_plasticity": {
+    "input": {
+      "base_rate": 0.08,
+      "min_rate": 0.02,
+      "max_rate": 0.24,
+      "volatility_window": 20
+    },
+    "expected": {
+      "rate_with_no_history": 0.08,
+      "rate_after_volatile_errors": "> base_rate",
+      "rate_after_consistently_accurate_predictions": "== base_rate",
+      "rate_never_uses_its_own_outcome_to_set_its_own_update": true,
+      "rate_bounded_by_min_and_max": true
+    }
+  },
+  "expected": {
+    "generalization_engine_created": true,
+    "consolidation_engine_created": true,
+    "meta_plasticity_property_created": true,
+    "backward_compatible_with_no_candidate_edges_or_history": true,
+    "external_action_created": false
+  },
+  "hard_gates": [
+    "no edge weight change happens outside RewiringEngine's bounded reinforce/weaken",
+    "generalization only propagates to edges sharing relation type and an endpoint",
+    "consolidation only replays real recorded Outcomes, never a fabricated one",
+    "meta-plasticity rate for a given update is drawn from error history strictly prior to that update"
+  ]
+}

@@ -13,19 +13,33 @@ scoring already implemented in ``brain/attention.py``).
 This module is deliberately modality-pluggable rather than claiming to
 solve vision or audio: ``PerceptionEncoder`` is the interface, and this
 file ships concrete encoders for the modalities that don't require an
-external model (text, numeric/sensor streams). Wiring in a real vision or
-audio model later means implementing one more ``PerceptionEncoder``, not
-changing this architecture.
+external model (text, numeric/sensor streams, and image/audio via
+classical signal-processing features). Wiring in a deep-learning-based
+vision or audio model later means implementing one more
+``PerceptionEncoder``, not changing this architecture.
+
+The image/audio encoders here are deliberately scoped to early-
+sensory-cortex-style feature extraction (luminance/edge statistics for
+vision, amplitude/frequency statistics for audio) rather than semantic
+understanding -- this is an honest analog of what V1/A1 actually compute
+before higher visual/auditory areas get involved, not a substitute for a
+real object/scene/speech recognition model. No network access or model
+weights required; numpy and Pillow's decoders are the only dependencies.
 """
 
 from __future__ import annotations
 
+import wave
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+import numpy as np
+from PIL import Image
+
 from .domain import utcnow
+from .events import BrainEvent
 
 
 class Modality(StrEnum):
@@ -131,6 +145,105 @@ class NumericPerceptionEncoder(PerceptionEncoder):
         return (round(features["z_score"], 1),)
 
 
+class ImagePerceptionEncoder(PerceptionEncoder):
+    """Early-visual-cortex-style feature extraction: luminance and edge
+    statistics, not object recognition. ``content`` is a filesystem path
+    to an image file (any format Pillow can decode)."""
+
+    modality = Modality.IMAGE
+
+    def encode(self, raw_ref: str, content: str) -> dict[str, float]:
+        with Image.open(content) as img:
+            width, height = img.size
+            gray = np.asarray(img.convert("L"), dtype=np.float64)
+            rgb = np.asarray(img.convert("RGB"), dtype=np.float64)
+
+        brightness_mean = float(gray.mean())
+        brightness_std = float(gray.std())
+
+        # Crude gradient-magnitude edge density -- the same first
+        # derivative that simple-cell receptive fields in V1 compute,
+        # not a full Sobel/Canny pipeline.
+        grad_y = np.abs(np.diff(gray, axis=0))
+        grad_x = np.abs(np.diff(gray, axis=1))
+        edge_density = float((grad_y.mean() + grad_x.mean()) / 2.0)
+
+        color_variance = float(rgb.std(axis=(0, 1)).mean())
+
+        return {
+            "width": float(width),
+            "height": float(height),
+            "aspect_ratio": float(width) / float(height) if height else 0.0,
+            "brightness_mean": brightness_mean,
+            "brightness_std": brightness_std,
+            "edge_density": edge_density,
+            "color_variance": color_variance,
+        }
+
+    def similarity_key(self, features: dict[str, float]) -> tuple:
+        return (round(features["brightness_mean"] / 10) * 10, round(features["edge_density"] / 5) * 5)
+
+
+class AudioPerceptionEncoder(PerceptionEncoder):
+    """Early-auditory-cortex-style feature extraction: amplitude and
+    frequency statistics, not speech/sound recognition. ``content`` is a
+    filesystem path to a mono or stereo PCM WAV file."""
+
+    modality = Modality.AUDIO
+
+    def encode(self, raw_ref: str, content: str) -> dict[str, float]:
+        with wave.open(content, "rb") as wf:
+            n_frames = wf.getnframes()
+            sample_rate = wf.getframerate()
+            n_channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
+            raw = wf.readframes(n_frames)
+
+        dtype = {1: np.int8, 2: np.int16, 4: np.int32}.get(sample_width, np.int16)
+        samples = np.frombuffer(raw, dtype=dtype).astype(np.float64)
+        if n_channels > 1:
+            samples = samples.reshape(-1, n_channels).mean(axis=1)
+
+        max_amplitude = float(np.iinfo(dtype).max)
+        normalized = samples / max_amplitude if max_amplitude else samples
+
+        rms_amplitude = float(np.sqrt(np.mean(normalized**2))) if normalized.size else 0.0
+
+        # Zero-crossing rate: a cheap, classical proxy for dominant
+        # frequency/pitch, the same signal early auditory processing is
+        # sensitive to before any tonotopic frequency decomposition.
+        signs = np.sign(normalized)
+        signs[signs == 0] = 1
+        zero_crossings = np.count_nonzero(np.diff(signs))
+        zero_crossing_rate = float(zero_crossings) / len(normalized) if len(normalized) > 1 else 0.0
+
+        # Spectral centroid via a plain FFT -- the "brightness" of the
+        # sound, mirroring the tonotopic (frequency-to-place) map in A1
+        # at a coarse, single-number level.
+        spectral_centroid = 0.0
+        if normalized.size > 1:
+            spectrum = np.abs(np.fft.rfft(normalized))
+            freqs = np.fft.rfftfreq(len(normalized), d=1.0 / sample_rate)
+            total_energy = spectrum.sum()
+            if total_energy > 0:
+                spectral_centroid = float((freqs * spectrum).sum() / total_energy)
+
+        duration_seconds = float(n_frames) / sample_rate if sample_rate else 0.0
+
+        return {
+            "duration_seconds": duration_seconds,
+            "rms_amplitude": rms_amplitude,
+            "zero_crossing_rate": zero_crossing_rate,
+            "spectral_centroid": spectral_centroid,
+        }
+
+    def similarity_key(self, features: dict[str, float]) -> tuple:
+        return (
+            round(features["spectral_centroid"] / 100) * 100,
+            round(features["rms_amplitude"], 1),
+        )
+
+
 @dataclass
 class PerceptionService:
     """Runs content through the right encoder and applies habituation:
@@ -171,3 +284,21 @@ class PerceptionService:
             self._habituation[key] = max(0.0, self._habituation[key] - self.recovery_rate * ticks)
             if self._habituation[key] <= 0.0:
                 del self._habituation[key]
+
+
+def percept_to_event(
+    percept: Percept,
+    *,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``PerceptionService.perceive`` directly, outside ``CognitiveCycle``."""
+    return BrainEvent(
+        "perception.encoded",
+        aggregate_type,
+        aggregate_id,
+        {"modality": str(percept.modality), "novelty": percept.novelty, "features": percept.features},
+        correlation_id=correlation_id,
+    )

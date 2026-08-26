@@ -20,11 +20,15 @@ lucky good outcome should.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Callable
 from uuid import UUID, uuid4
 
+import httpx
+
 from .domain import CandidateAction, utcnow
+from .events import BrainEvent
 from .governance import GovernanceDecision, GovernanceGovernor
 
 
@@ -87,6 +91,82 @@ is the only place real-world side effects happen -- everything else in
 this module is prediction/comparison/adaptation."""
 
 
+class MissingEffectorCredentialsError(RuntimeError):
+    """Raised when an HttpEffector is called but its configured
+    credential environment variable is unset. Deliberately loud rather
+    than silently sending an unauthenticated request or silently no-op'ing
+    -- a motor command that can't actually execute should fail visibly,
+    not report a fabricated outcome."""
+
+
+class HttpEffector:
+    """A real, wireable ``Effector``: POSTs the action to a configured
+    HTTP endpoint and extracts a numeric outcome from the JSON response.
+
+    This is intentionally vendor-neutral -- point ``endpoint_url`` at
+    Resend, a Slack webhook, an internal API, whatever the deployment
+    actually has credentials for. Nothing in ``brain/motor.py`` should
+    hardcode a specific vendor; that decision belongs to whoever wires
+    this up in a given deployment, not to this module.
+
+    Credentials are read from an environment variable *by name*, resolved
+    at call time rather than construction time, so rotating a secret
+    doesn't require restarting the process and so no credential is ever
+    held in a dataclass field where it could leak into logs/repr.
+
+    ``transport`` is an optional ``httpx`` transport override purely for
+    testing (``httpx.MockTransport``) -- production callers leave it
+    unset and get real network I/O.
+    """
+
+    def __init__(
+        self,
+        endpoint_url: str,
+        *,
+        api_key_env_var: str | None = None,
+        timeout_seconds: float = 10.0,
+        response_outcome_field: str = "outcome",
+        transport: object | None = None,
+    ) -> None:
+        self.endpoint_url = endpoint_url
+        self.api_key_env_var = api_key_env_var
+        self.timeout_seconds = timeout_seconds
+        self.response_outcome_field = response_outcome_field
+        self._transport = transport
+
+    def __call__(self, action: CandidateAction, expected_outcome: float) -> float:
+        headers: dict[str, str] = {}
+        if self.api_key_env_var:
+            api_key = os.environ.get(self.api_key_env_var)
+            if not api_key:
+                raise MissingEffectorCredentialsError(
+                    f"environment variable {self.api_key_env_var!r} is not set"
+                )
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        payload = {
+            "action_id": str(action.id),
+            "action_description": action.description,
+            "expected_outcome": expected_outcome,
+        }
+
+        client_kwargs: dict[str, object] = {"timeout": self.timeout_seconds}
+        if self._transport is not None:
+            client_kwargs["transport"] = self._transport
+
+        with httpx.Client(**client_kwargs) as client:
+            response = client.post(self.endpoint_url, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+
+        if self.response_outcome_field in data:
+            return float(data[self.response_outcome_field])
+        # The endpoint's response contract doesn't include a numeric
+        # outcome field -- treat a successful HTTP response as a binary
+        # "it happened" outcome rather than fabricating a magnitude.
+        return 1.0
+
+
 @dataclass
 class MotorExecutionService:
     """Wires governance approval -> calibrated prediction -> execution ->
@@ -141,3 +221,33 @@ class MotorExecutionService:
             self.history.pop(0)
 
         return decision, result
+
+
+def motor_execution_result_to_event(
+    result: MotorExecutionResult,
+    *,
+    effector_name: str,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Audit-event constructor for a completed ``MotorExecutionResult``.
+    Not currently called by anything -- ``MotorExecutionService`` is not
+    yet wired into ``CognitiveCycle`` at all (it has no default effector
+    to safely call automatically), so this exists for whoever wires a
+    concrete ``Effector`` into a cycle or standalone workflow next, per
+    ``docs/spec/BRAIN_STATE_MACHINES.md``'s motor-execution state
+    machine."""
+    return BrainEvent(
+        "motor.executed",
+        aggregate_type,
+        aggregate_id,
+        {
+            "effector_name": effector_name,
+            "expected_outcome": result.prediction.expected_outcome,
+            "actual_outcome": result.actual_outcome,
+            "succeeded": result.succeeded,
+            "error": result.error,
+        },
+        correlation_id=correlation_id,
+    )

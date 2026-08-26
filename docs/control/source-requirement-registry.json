@@ -180,6 +180,7 @@
         "brain/events.py",
         "brain/experiments.py",
         "brain/formulas.py",
+        "brain/generalization.py",
         "brain/governance.py",
         "brain/heartbeat.py",
         "brain/homeostasis.py",
@@ -918,11 +919,12 @@
         "REQ-BRAIN-RUNTIME-MODULES"
       ],
       "owner_object": "Brain cognitive-extension modules (affect, executive control, circadian, hedonic, sensorimotor, theory of mind)",
-      "schema": "minimum traceability; dataclasses defined in-module, detailed JSON schemas required before BUILD-READY",
+      "schema": "present: brain/schemas.py CANONICAL_SCHEMAS (EmotionalState, Mood, ResponseCandidate, ExecutiveDecision, CircadianState, AttributedBelief, AgentPredictionRecord, RewardPredictionError, PainSignal, Percept, MotorExecutionResult); also docs/spec/schema-registry.json and docs/spec/BRAIN_SCHEMA_REGISTRY.md 'Cognitive-extension objects'",
       "runtime_service": "brain package; wired into brain/cycle.py CognitiveCycle.process()",
-      "state_machine": "REVIEW pending detailed state maps (circadian.py has an explicit WAKE/NREM/REM phase enum; others are stateless services over caller-supplied state)",
+      "state_machine": "present: docs/spec/BRAIN_STATE_MACHINES.md 'Cognitive-extension state machines' (circadian phase, executive control-resource, theory-of-mind prediction-record, motor execution), enforced by tests/test_cognitive_extension_state_machine_gates.py",
       "fixtures": [
-        "tests"
+        "tests",
+        "tests/test_perception_image_audio.py synthetic image/audio fixtures"
       ],
       "tests": [
         "python -m pytest -q",
@@ -932,15 +934,28 @@
         "code path is traceable",
         "no source narrowing",
         "each module has passing unit tests",
-        "wiring into CognitiveCycle is additive and does not alter existing computed values under default (non-injected) configuration"
+        "wiring into CognitiveCycle is additive and does not alter existing computed values under default (non-injected) configuration",
+        "each module has a registered pydantic schema mirror in brain/schemas.py",
+        "stateful modules have a documented, test-enforced state machine",
+        "perception supports image and audio modalities via classical signal-processing features (no external model dependency)",
+        "motor execution has at least one concrete, real (non-stub) Effector implementation, testable without live credentials or network access",
+        "each of the seven modules has a standalone to_event() audit-event constructor usable outside CognitiveCycle, and CognitiveCycle itself uses the same shared constructors rather than duplicating payload construction"
       ],
       "audit_events": [
-        "TRACEABILITY_RECORD_VERIFIED"
+        "circadian.phase_changed",
+        "circadian.forced_wake",
+        "theory_of_mind.belief_attributed",
+        "hedonic.outcome_registered",
+        "hedonic.pain_registered",
+        "affect.appraised",
+        "executive.arbitrated",
+        "perception.encoded",
+        "motor.executed"
       ],
       "source_preservation": "preserved",
       "unresolved_gaps": [
-        "expand per-module traceability (formal schemas, state machines, audit event wiring) before BUILD-READY",
-        "brain/motor.py has no real-world effector wired in yet (perception/motor grounding for vision/audio modalities and outbound actuators remains PROPOSAL-stage)"
+        "brain/motor.py's HttpEffector is real and generic but not pointed at a specific production endpoint/vendor -- that wiring (which service, which credentials) is a deployment decision, not made here",
+        "brain/perception.py's image/audio encoders are classical-DSP (luminance/edge/frequency statistics), matching early V1/A1-style processing, not deep-learning semantic understanding (object/scene/speech recognition) -- upgrading to a real vision/audio model remains a deliberate product/infra decision requiring an external model/API choice"
       ]
     }
   ]

@@ -11,6 +11,8 @@ dependencies = [
   "neo4j>=5.28,<7",
   "temporalio>=1.15,<2",
   "httpx>=0.28,<1",
+  "numpy>=1.26,<3",
+  "pillow>=10.0,<13",
   "PyJWT[crypto]>=2.13,<3",
 ]
 

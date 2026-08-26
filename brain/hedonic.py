@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 from .cognitive_state import NeuromodulatorState
 from .domain import utcnow
+from .events import BrainEvent
 
 
 @dataclass(slots=True)
@@ -164,3 +165,40 @@ class HedonicSystem:
             pain_component = sum(p.intensity for p in window_p) / len(window_p)
         tone = reward_component - pain_component
         return max(-1.0, min(1.0, tone))
+
+
+def reward_prediction_error_to_event(
+    rpe: RewardPredictionError,
+    *,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``HedonicSystem.register_outcome`` directly, outside
+    ``CognitiveCycle``."""
+    return BrainEvent(
+        "hedonic.outcome_registered",
+        aggregate_type,
+        aggregate_id,
+        {"expected_value": rpe.expected_value, "actual_value": rpe.actual_value, "delta": rpe.delta},
+        correlation_id=correlation_id,
+    )
+
+
+def pain_signal_to_event(
+    pain: PainSignal,
+    *,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``HedonicSystem.register_pain`` directly, outside ``CognitiveCycle``."""
+    return BrainEvent(
+        "hedonic.pain_registered",
+        aggregate_type,
+        aggregate_id,
+        {"intensity": pain.intensity, "source": pain.source, "withdrawal_urgency": pain.withdrawal_urgency},
+        correlation_id=correlation_id,
+    )

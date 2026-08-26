@@ -68,6 +68,24 @@ Current executable/control slice:
 
 These objects convert a source list into a scored registry with downstream commercial use cases, evidence/provenance requirements, extraction difficulty, legal/access status, update policy, and compounding-source relationships.
 
+## Cognitive-extension objects
+
+Current executable slice (mirrors `brain/schemas.py:CANONICAL_SCHEMAS`, runtime dataclasses live in `brain/affect.py`, `brain/executive.py`, `brain/circadian.py`, `brain/theory_of_mind.py`, `brain/hedonic.py`, `brain/perception.py`, `brain/motor.py`):
+
+- EmotionalState
+- Mood
+- ResponseCandidate
+- ExecutiveDecision
+- CircadianState
+- AttributedBelief
+- AgentPredictionRecord
+- RewardPredictionError
+- PainSignal
+- Percept
+- MotorExecutionResult
+
+These are domain-neutral (no commercial/opportunity fields), unlike most objects above. State transitions for CircadianState and the executive control-resource lifecycle are documented in `docs/spec/BRAIN_STATE_MACHINES.md`.
+
 ## Economic enum registries
 
 ### EconomicAsymmetry.kind

@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 from .cognitive_state import CognitiveDrive, NeuromodulatorState
 from .domain import utcnow
+from .events import BrainEvent
 
 
 class ResponseSource(StrEnum):
@@ -218,3 +219,37 @@ class ExecutiveControlService:
             control_cost=spent,
             effective_control=effective_control,
         )
+
+
+def executive_decision_to_event(
+    decision: ExecutiveDecision,
+    *,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+    control_remaining: float | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``ExecutiveControlService`` directly, outside ``CognitiveCycle``.
+
+    ``control_remaining`` is optional context from the caller's
+    ``CognitiveControlResource.current`` after this decision -- passed in
+    rather than assumed available since the resource is caller-owned, not
+    part of ``ExecutiveDecision`` itself.
+    """
+    payload = {
+        "chosen": decision.chosen.action,
+        "conflict_magnitude": decision.conflict.magnitude,
+        "override_attempted": decision.override_attempted,
+        "override_succeeded": decision.override_succeeded,
+        "control_cost": decision.control_cost,
+    }
+    if control_remaining is not None:
+        payload["control_remaining"] = control_remaining
+    return BrainEvent(
+        "executive.arbitrated",
+        aggregate_type,
+        aggregate_id,
+        payload,
+        correlation_id=correlation_id,
+    )
