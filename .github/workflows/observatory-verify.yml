@@ -69,6 +69,12 @@ jobs:
         env:
           BRAIN_API_URL: https://thebrain-sandy.vercel.app/api/brain
           BRAIN_API_KEY: ci-visual-evidence-proxy
+          # The Observatory now requires a signed operator session on every
+          # route. These are CI-only fixtures, like BRAIN_API_KEY above; without
+          # them the app fails closed and this step would screenshot the login
+          # page instead of the cockpit.
+          OBSERVATORY_ACCESS_KEY: ci-visual-evidence-operator-key
+          OBSERVATORY_SESSION_SECRET: ci-visual-evidence-session-secret
         run: |
           set -euo pipefail
           mkdir -p evidence
@@ -76,9 +82,12 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid" >/dev/null 2>&1 || true' EXIT
 
+          # /login is the readiness signal: it is the one route reachable
+          # without a session, so it proves the server is serving without
+          # depending on authentication or on the upstream Brain being up.
           ready=0
           for attempt in $(seq 1 40); do
-            if curl --fail --silent http://127.0.0.1:3000/api/brain/health >/tmp/local-health.json; then
+            if curl --fail --silent http://127.0.0.1:3000/login >/dev/null; then
               ready=1
               break
             fi
@@ -89,17 +98,26 @@ jobs:
             exit 1
           fi
 
+          # Sign in through the real login route and hand the resulting session
+          # to Playwright. This also proves the operator auth path works end to
+          # end on every run.
+          node scripts/ci-operator-storage-state.mjs \
+            http://127.0.0.1:3000 \
+            /tmp/brain-operator-state.json
+
           npx --yes playwright@1.55.0 install --with-deps chromium
           npx --yes playwright@1.55.0 screenshot \
             --browser chromium \
             --viewport-size="1440,1000" \
             --wait-for-timeout=10000 \
+            --load-storage=/tmp/brain-operator-state.json \
             http://127.0.0.1:3000 \
             evidence/brain-observatory-desktop.png
           npx --yes playwright@1.55.0 screenshot \
             --browser chromium \
             --viewport-size="390,844" \
             --wait-for-timeout=10000 \
+            --load-storage=/tmp/brain-operator-state.json \
             http://127.0.0.1:3000 \
             evidence/brain-observatory-mobile.png
 
