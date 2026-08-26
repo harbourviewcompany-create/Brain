@@ -73,3 +73,9 @@ Neo4j, Temporal and object storage are checked through their native clients.
 This repository work changes no production credentials, services, database
 state, tenant assignment or deployment. Managed-service rollout remains a
 separate deployment decision.
+
+## Merge gate
+
+Repository integration requires the protected control-policy and test checks to
+pass on the exact final pull-request head. Passing repository CI does not imply
+that managed production infrastructure has been configured or verified.
