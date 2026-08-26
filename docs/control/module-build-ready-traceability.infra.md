@@ -20,3 +20,5 @@ PostgreSQL remains authoritative. Tenant/RLS enforcement from PR #144 is
 preserved. Real-time dual writes, production managed-service rollout and
 evidence-byte routing are explicitly retained as HOLD rather than being
 silently claimed complete.
+
+<!-- ci-retrigger: 2026-08-26T16:17Z exact-head protected checks -->
