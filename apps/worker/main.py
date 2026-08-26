@@ -30,7 +30,7 @@ _verified_worker_dsn: str | None = None
 
 
 def worker_database_url() -> str:
-    """Validate worker DSN topology; require dedicated trusted-service login under RLS."""
+    """Return the worker DSN after validating the tenant-RLS role topology."""
     global _verified_worker_dsn
     if _verified_worker_dsn is not None:
         return _verified_worker_dsn
@@ -40,16 +40,13 @@ def worker_database_url() -> str:
     if not dsn:
         raise RuntimeError("DATABASE_URL or BRAIN_WORKER_DATABASE_URL is required")
 
-    if _HAS_TENANT:
-        import psycopg
-
-        with psycopg.connect(dsn, autocommit=True) as conn:
-            if tenant_rls_enforced(conn):
-                if not dedicated_dsn:
-                    raise RuntimeError(
-                        "BRAIN_WORKER_DATABASE_URL is required when tenant RLS is enforced"
-                    )
-                require_safe_runtime_role(conn, require_trusted_service=True)
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        if tenant_rls_enforced(conn):
+            if not dedicated_dsn:
+                raise RuntimeError(
+                    "BRAIN_WORKER_DATABASE_URL is required when tenant RLS is enforced"
+                )
+            require_safe_runtime_role(conn, require_trusted_service=True)
 
     _verified_worker_dsn = dsn
     return dsn
