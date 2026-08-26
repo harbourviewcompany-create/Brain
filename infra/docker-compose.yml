@@ -1,7 +1,5 @@
 # Local Brain infrastructure stack.
-# Production uses managed services (Supabase, Neo4j Aura, Temporal Cloud, S3).
-# Start: docker compose -f infra/docker-compose.yml up -d
-# Migrate: DATABASE_URL=postgresql://brain:brain@localhost:5432/brain python -m tools.apply_migrations
+# Production uses managed services (Postgres/Supabase, Neo4j Aura, Temporal Cloud, S3).
 
 services:
   postgres:
@@ -35,8 +33,6 @@ services:
       retries: 12
       start_period: 20s
 
-  # Temporal auto-setup shares local Postgres (temporal / temporal_visibility DBs).
-  # For Temporal Cloud: stop these services and set TEMPORAL_ADDRESS / TEMPORAL_NAMESPACE.
   temporal:
     image: temporalio/auto-setup:1.27.2
     depends_on:
@@ -70,18 +66,29 @@ services:
       MINIO_ROOT_PASSWORD: brainminiopass
     ports: ["9000:9000", "9001:9001"]
     volumes: ["brain_minio:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   minio-init:
     image: minio/mc:RELEASE.2025-04-16T18-13-26Z
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     entrypoint: >
-      /bin/sh -c "
-      sleep 5;
-      mc alias set local http://minio:9000 brainminio brainminiopass;
-      mc mb --ignore-existing local/brain-artifacts;
-      exit 0;
-      "
+      /bin/sh -ec '
+      for i in $$(seq 1 20); do
+        if mc alias set local http://minio:9000 brainminio brainminiopass; then
+          mc mb --ignore-existing local/brain-artifacts;
+          exit 0;
+        fi;
+        sleep 2;
+      done;
+      echo "MinIO initialization failed" >&2;
+      exit 1;
+      '
 
 volumes:
   brain_pg:

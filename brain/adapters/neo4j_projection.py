@@ -1,8 +1,8 @@
-"""Neo4j projection writer for the Brain associative topology.
+"""Tenant-scoped rebuildable Neo4j projection for Brain graph topology.
 
-PostgreSQL remains the canonical ledger. Neo4j is a rebuildable materialization
-used for graph algorithms and operator exploration. Every mutation here must
-originate from a ledger-backed node/edge write or an explicit rebuild command.
+PostgreSQL is authoritative. Neo4j is a derived materialization. Projection
+operations always include an explicit tenant scope so a rebuild cannot delete
+or collide with another tenant's graph.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from ..domain import Edge, Node
 
 try:
     from neo4j import GraphDatabase
-except ImportError:  # pragma: no cover - optional until deps installed
+except ImportError:  # pragma: no cover
     GraphDatabase = None  # type: ignore[misc,assignment]
 
 
@@ -28,20 +28,24 @@ class Neo4jConfig:
     database: str = "neo4j"
 
     @classmethod
-    def from_env(cls) -> Neo4jConfig | None:
+    def from_env(cls) -> "Neo4jConfig | None":
         uri = os.environ.get("NEO4J_URI", "").strip()
         if not uri:
             return None
+        user = os.environ.get("NEO4J_USER", "neo4j").strip()
+        password = os.environ.get("NEO4J_PASSWORD", "")
+        if not user or not password:
+            raise RuntimeError("NEO4J_USER and NEO4J_PASSWORD are required when NEO4J_URI is set")
         return cls(
             uri=uri,
-            user=os.environ.get("NEO4J_USER", "neo4j"),
-            password=os.environ.get("NEO4J_PASSWORD", ""),
+            user=user,
+            password=password,
             database=os.environ.get("NEO4J_DATABASE", "neo4j"),
         )
 
 
 class Neo4jProjection:
-    """Write-through / rebuild projection of Brain nodes and edges into Neo4j."""
+    """Tenant-scoped derived projection of canonical PostgreSQL graph rows."""
 
     def __init__(self, config: Neo4jConfig, *, driver: Any | None = None) -> None:
         if GraphDatabase is None and driver is None:
@@ -63,86 +67,124 @@ class Neo4jProjection:
         except Exception:
             return False
 
+    @staticmethod
+    def _scope(scope: UUID | str) -> str:
+        value = str(scope).strip()
+        if not value:
+            raise ValueError("tenant scope is required")
+        return value
+
+    @staticmethod
+    def _projection_id(scope: str, object_id: UUID) -> str:
+        return f"{scope}:{object_id}"
+
     def ensure_constraints(self) -> None:
-        statements = (
-            "CREATE CONSTRAINT brain_node_id IF NOT EXISTS "
-            "FOR (n:BrainNode) REQUIRE n.id IS UNIQUE",
+        statement = (
+            "CREATE CONSTRAINT brain_node_projection_id IF NOT EXISTS "
+            "FOR (n:BrainNode) REQUIRE n.projection_id IS UNIQUE"
         )
         with self.driver.session(database=self.config.database) as session:
-            for stmt in statements:
-                try:
-                    session.run(stmt)
-                except Exception:
-                    pass
+            session.run(statement).consume()
 
-    def upsert_node(self, node: Node) -> None:
+    def upsert_node(self, node: Node, *, scope: UUID | str) -> None:
+        tenant_scope = self._scope(scope)
+        projection_id = self._projection_id(tenant_scope, node.id)
         props = {
+            "projection_id": projection_id,
+            "tenant_scope": tenant_scope,
             "id": str(node.id),
             "kind": node.kind,
             "key": node.key,
             **{f"p_{k}": _neo4j_value(v) for k, v in (node.properties or {}).items()},
         }
-        cypher = """
-        MERGE (n:BrainNode {id: $id})
-        SET n.kind = $kind,
-            n.key = $key,
-            n += $props
-        """
         with self.driver.session(database=self.config.database) as session:
             session.run(
-                cypher,
-                id=str(node.id),
-                kind=node.kind,
-                key=node.key,
+                """
+                MERGE (n:BrainNode {projection_id: $projection_id})
+                SET n = $props
+                """,
+                projection_id=projection_id,
                 props=props,
-            )
+            ).consume()
 
-    def upsert_edge(self, edge: Edge) -> None:
-        cypher = """
-        MERGE (s:BrainNode {id: $source})
-        MERGE (t:BrainNode {id: $target})
-        MERGE (s)-[r:BRAIN_REL {id: $id}]->(t)
-        SET r.relation = $relation,
-            r.weight = $weight,
-            r.confidence = $confidence,
-            r.evidence_ids = $evidence_ids,
-            r.updated_at = $updated_at
-        """
+    def upsert_edge(self, edge: Edge, *, scope: UUID | str) -> None:
+        tenant_scope = self._scope(scope)
+        projection_id = self._projection_id(tenant_scope, edge.id)
+        source_projection_id = self._projection_id(tenant_scope, edge.source)
+        target_projection_id = self._projection_id(tenant_scope, edge.target)
+        props = {
+            "projection_id": projection_id,
+            "tenant_scope": tenant_scope,
+            "id": str(edge.id),
+            "relation": edge.relation,
+            "weight": float(edge.weight),
+            "confidence": float(edge.confidence),
+            "evidence_ids": [str(x) for x in edge.evidence_ids],
+            "updated_at": edge.updated_at.isoformat() if edge.updated_at else None,
+        }
         with self.driver.session(database=self.config.database) as session:
             session.run(
-                cypher,
-                id=str(edge.id),
-                source=str(edge.source),
-                target=str(edge.target),
-                relation=edge.relation,
-                weight=float(edge.weight),
-                confidence=float(edge.confidence),
-                evidence_ids=[str(x) for x in edge.evidence_ids],
-                updated_at=edge.updated_at.isoformat() if edge.updated_at else None,
-            )
+                """
+                MATCH ()-[old:BRAIN_REL {projection_id: $projection_id}]->()
+                DELETE old
+                """,
+                projection_id=projection_id,
+            ).consume()
+            session.run(
+                """
+                MERGE (s:BrainNode {projection_id: $source_projection_id})
+                ON CREATE SET s.tenant_scope = $tenant_scope, s.id = $source_id
+                MERGE (t:BrainNode {projection_id: $target_projection_id})
+                ON CREATE SET t.tenant_scope = $tenant_scope, t.id = $target_id
+                CREATE (s)-[r:BRAIN_REL]->(t)
+                SET r = $props
+                """,
+                source_projection_id=source_projection_id,
+                target_projection_id=target_projection_id,
+                tenant_scope=tenant_scope,
+                source_id=str(edge.source),
+                target_id=str(edge.target),
+                props=props,
+            ).consume()
 
-    def delete_edge(self, edge_id: UUID) -> None:
+    def delete_edge(self, edge_id: UUID, *, scope: UUID | str) -> None:
+        tenant_scope = self._scope(scope)
+        projection_id = self._projection_id(tenant_scope, edge_id)
         with self.driver.session(database=self.config.database) as session:
             session.run(
-                "MATCH ()-[r:BRAIN_REL {id: $id}]->() DELETE r",
-                id=str(edge_id),
-            )
+                "MATCH ()-[r:BRAIN_REL {projection_id: $projection_id}]->() DELETE r",
+                projection_id=projection_id,
+            ).consume()
 
-    def rebuild(self, nodes: Iterable[Node], edges: Iterable[Edge]) -> dict[str, int]:
-        """Destroy and rebuild the Brain projection from canonical Postgres state."""
+    def rebuild(
+        self,
+        nodes: Iterable[Node],
+        edges: Iterable[Edge],
+        *,
+        scope: UUID | str,
+    ) -> dict[str, int]:
+        """Replace exactly one tenant projection from canonical PostgreSQL state."""
+        tenant_scope = self._scope(scope)
         node_list = list(nodes)
         edge_list = list(edges)
         with self.driver.session(database=self.config.database) as session:
-            session.run("MATCH (n:BrainNode) DETACH DELETE n")
+            session.run(
+                "MATCH (n:BrainNode {tenant_scope: $tenant_scope}) DETACH DELETE n",
+                tenant_scope=tenant_scope,
+            ).consume()
+            session.run(
+                "MATCH ()-[r:BRAIN_REL {tenant_scope: $tenant_scope}]->() DELETE r",
+                tenant_scope=tenant_scope,
+            ).consume()
         self.ensure_constraints()
         for node in node_list:
-            self.upsert_node(node)
+            self.upsert_node(node, scope=tenant_scope)
         for edge in edge_list:
-            self.upsert_edge(edge)
+            self.upsert_edge(edge, scope=tenant_scope)
         return {"nodes": len(node_list), "edges": len(edge_list)}
 
     @classmethod
-    def from_env(cls) -> Neo4jProjection | None:
+    def from_env(cls) -> "Neo4jProjection | None":
         config = Neo4jConfig.from_env()
         if config is None:
             return None
@@ -157,6 +199,8 @@ def _neo4j_value(value: Any) -> Any:
         return str(value)
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple, set)):
         return [_neo4j_value(v) for v in value]
+    if isinstance(value, dict):
+        return str(value)
     return str(value)

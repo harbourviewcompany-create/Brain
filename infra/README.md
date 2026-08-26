@@ -1,80 +1,75 @@
-# Brain local & cloud infrastructure
+# Brain infrastructure adapters
 
-This stack wires the five production backends the Brain architecture requires:
+PostgreSQL remains the canonical state and event ledger. This package adds
+operational adapters for Neo4j, Temporal and S3-compatible object storage
+without weakening the tenant/RLS boundary merged in PR #144.
 
-| Concern | Local (docker compose) | Production |
-|--------|-------------------------|------------|
-| Canonical ledger | Postgres + pgvector | **Supabase / PostgreSQL** |
-| Graph projection | Neo4j | **Neo4j AuraDB** |
-| Durable workflows | Temporal auto-setup | **Temporal Cloud** |
-| Object storage | MinIO (S3 API) | **AWS S3 / R2 / GCS** |
-| Cognition workers | `python -m apps.worker.main` | Railway / Fly / ECS worker image |
-
-PostgreSQL is always canonical. Neo4j is rebuildable. Temporal owns long-lived cognition intent. Object storage holds immutable evidence bytes; Postgres holds keys and metadata.
-
-## Quick start (local)
+## Local stack
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d
-python -m venv .venv && source .venv/bin/activate
-pip install -e '.[dev]'
-cp .env.example .env
-set -a && source .env && set +a
 python -m tools.apply_migrations
 python scripts/infra_healthcheck.py
-uvicorn apps.api.main:app --reload
-# separate terminal
-python -m apps.worker.main
 ```
 
-Local ports:
+The local stack provides PostgreSQL/pgvector, Neo4j, Temporal, Temporal UI and
+MinIO. `minio-init` retries until MinIO is healthy and fails the compose job if
+bucket creation cannot be completed.
 
-- Postgres `5432`
-- Neo4j browser `7474`, bolt `7687`
-- Temporal gRPC `7233`, UI `8088`
-- MinIO API `9000`, console `9001`
+## Neo4j
 
-## Cloud wiring
+Neo4j is a **derived, rebuildable projection**, not an authoritative write
+store. Projection identity is namespaced by tenant and rebuilds require
+`BRAIN_NEO4J_REBUILD_TENANT_ID`; the implementation never performs a global
+`MATCH (n) DETACH DELETE n`.
 
-### Supabase / Postgres
+```bash
+BRAIN_NEO4J_REBUILD_TENANT_ID=<tenant-uuid> \
+BRAIN_WORKER_DATABASE_URL=<trusted-worker-dsn> \
+python scripts/rebuild_neo4j_projection.py
+```
 
-1. Create a project; copy the connection string (prefer direct for migrations, pooler for app).
-2. Set `DATABASE_URL`.
-3. Run `python -m tools.apply_migrations`.
-4. Confirm `/ready` returns 200.
+Node upserts replace the complete derived property set so removed PostgreSQL
+properties cannot remain stale. Edge upserts first remove the prior logical
+projection edge before recreating it with the current endpoints.
 
-### Neo4j Aura
+Real-time dual writes are intentionally not used: a PostgreSQL commit must
+never be reported as failed merely because a derived Neo4j write failed.
+Automated projection scheduling/outbox delivery remains HOLD.
 
-1. Create an AuraDB instance; copy the `neo4j+s://…` URI and credentials.
-2. Set `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`.
-3. Keep `NEO4J_PROJECTION_ENABLED=true`.
-4. Rebuild after cutover: `python scripts/rebuild_neo4j_projection.py` or `POST /admin/rebuild-neo4j`.
+## Temporal
 
-### Temporal Cloud
+The existing cognition worker remains unchanged except for connection
+configuration. `TEMPORAL_API_KEY` is passed to the Temporal SDK and enables TLS
+automatically; `TEMPORAL_TLS=true` supports TLS endpoints using another
+credential mechanism. Infrastructure health uses the authenticated Temporal
+SDK health RPC rather than a raw TCP-port probe.
 
-1. Create a namespace; note gRPC endpoint and auth.
-2. Set `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, and `TEMPORAL_API_KEY` (TLS is enabled when the key is set).
-3. Deploy the worker image (`Dockerfile.worker`).
-4. Leave local `temporal` / `temporal-ui` compose services stopped.
+## Object storage
 
-### Object storage
+`S3ObjectStorage` supports MinIO, S3 and compatible services. Default keys are
+content-addressed. Explicit keys are write-once: a repeated upload with the same
+SHA-256 is idempotent, while a different digest at the same key fails. File
+uploads are streamed from a file handle rather than loaded entirely into
+memory. Standard AWS credential-provider behavior is retained when custom
+`OBJECT_STORAGE_*` credentials are not configured; temporary custom
+credentials may include `OBJECT_STORAGE_SESSION_TOKEN`.
 
-**MinIO (local)** is pre-configured in `.env.example`.
+The adapter is available for evidence/artifact integration. Existing canonical
+evidence persistence is not silently redirected in this PR; wiring specific
+evidence byte classes to object storage remains an explicit follow-up HOLD.
 
-**AWS S3:** set `OBJECT_STORAGE_BUCKET` and region; leave `OBJECT_STORAGE_ENDPOINT` empty; use `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`.
+## Health
 
-**Cloudflare R2:** set `OBJECT_STORAGE_ENDPOINT` to the R2 S3 API URL and use R2 access keys.
+```bash
+python scripts/infra_healthcheck.py
+```
 
-## Worker modes
+Only configured services participate in `all_configured_healthy`. PostgreSQL,
+Neo4j, Temporal and object storage are checked through their native clients.
 
-| `BRAIN_WORKER_MODE` | Behavior |
-|--------------------|----------|
-| `temporal` (or any mode with `TEMPORAL_ADDRESS` set) | Temporal worker + continuous cognition workflow |
-| `cognition` | Local continuous cycle without Temporal |
-| `maintenance` | Prediction maintenance loop only |
+## Production boundary
 
-## Invariants
-
-- History is append-only in Postgres (`brain_events`).
-- Neo4j may be wiped and rebuilt from Postgres.
-- External actions remain approval-gated (`BRAIN_EXTERNAL_ACTIONS_ENABLED=false` by default).
+This repository work changes no production credentials, services, database
+state, tenant assignment or deployment. Managed-service rollout remains a
+separate deployment decision.

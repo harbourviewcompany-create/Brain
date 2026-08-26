@@ -292,13 +292,6 @@ def _database_ready() -> tuple[bool, str]:
 def health():
     database_ok, database_status = _database_ready()
     hb = heartbeat.status()
-    infra: dict = {}
-    try:
-        from brain.adapters.infra_health import infrastructure_status
-
-        infra = infrastructure_status()
-    except Exception as exc:  # pragma: no cover - defensive
-        infra = {"error": str(exc)[:200]}
     payload = {
         "status": "ok" if database_ok else "degraded",
         "version": "0.8.1",
@@ -312,24 +305,10 @@ def health():
             "inbox": hb["inbox"],
             "working_memory_size": hb["working_memory_size"],
         },
-        "infrastructure": infra,
     }
     if not database_ok:
         return JSONResponse(status_code=503, content=payload)
     return payload
-
-
-@app.post("/admin/rebuild-neo4j")
-def rebuild_neo4j():
-    """Rebuild Neo4j associative projection from canonical Postgres graph state."""
-    rebuild = getattr(_brain_store, "rebuild_neo4j_projection", None)
-    if rebuild is None:
-        raise HTTPException(status_code=503, detail="neo4j_projection_unavailable")
-    try:
-        result = rebuild()
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=str(exc)[:300]) from exc
-    return {"status": "ok", **result}
 
 
 @app.get("/ready")

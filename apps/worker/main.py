@@ -59,13 +59,7 @@ _verified_worker_dsn: str | None = None
 
 
 def worker_database_url() -> str:
-    """Return the worker DSN after validating the tenant-RLS role topology.
-
-    Before tenant RLS is installed, the historical DATABASE_URL remains a valid
-    compatibility path. Once forced RLS is active, the worker must use a
-    dedicated constrained login that is a member of the audited PostgreSQL
-    ``brain_trusted_service_role``; the ordinary API runtime login is rejected.
-    """
+    """Return the worker DSN after validating the tenant-RLS role topology."""
     global _verified_worker_dsn
     if _verified_worker_dsn is not None:
         return _verified_worker_dsn
@@ -120,7 +114,7 @@ def build_runner():
     learning = None
     try:
         learning = build_learning()
-    except Exception as exc:  # noqa: BLE001 - learning optional at boot
+    except Exception as exc:
         print(f"learning service unavailable: {exc}")
     cycle = CognitiveCycle(
         event_store, checkpoint_store=checkpoint_store, learning=learning
@@ -128,7 +122,7 @@ def build_runner():
     try:
         loaded = cycle.hydrate_beliefs(from_checkpoint=True)
         print(f"hydrated {loaded} beliefs from projection checkpoint")
-    except Exception as exc:  # noqa: BLE001 - startup hydration is recoverable
+    except Exception as exc:
         print(f"belief hydration skipped: {exc}")
     inbox = PostgresSensoryInbox(event_store.pool)
     runs = CognitiveCycleRunStore(event_store.pool)
@@ -191,13 +185,15 @@ async def run_temporal_worker() -> None:
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
     task_queue = os.environ.get("BRAIN_TEMPORAL_TASK_QUEUE", "brain-cognition")
     workflow_id = os.environ.get("BRAIN_TEMPORAL_WORKFLOW_ID", "brain-continuous-cognition")
-    connect_kwargs: dict = {"namespace": namespace}
-    api_key = os.environ.get("TEMPORAL_API_KEY", "").strip()
-    if api_key:
-        # Temporal Cloud: TLS + API key authentication
-        connect_kwargs["api_key"] = api_key
-        connect_kwargs["tls"] = True
-    client = await Client.connect(address, **connect_kwargs)
+    api_key = os.environ.get("TEMPORAL_API_KEY", "").strip() or None
+    tls_env = os.environ.get("TEMPORAL_TLS", "").strip().lower()
+    tls = api_key is not None or tls_env in {"1", "true", "yes", "on"}
+    client = await Client.connect(
+        address,
+        namespace=namespace,
+        api_key=api_key,
+        tls=tls,
+    )
     if os.environ.get("BRAIN_TEMPORAL_AUTOSTART", "true").lower() == "true":
         try:
             await client.start_workflow(

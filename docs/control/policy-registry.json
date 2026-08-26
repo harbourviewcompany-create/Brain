@@ -3,8 +3,21 @@
   "status": "APPROVED_FOR_CONTROL_ENFORCEMENT",
   "purpose": "Machine-readable enforcement registry for Brain build-control documents, templates, validators, traceability records, archive workflow checks, and repository hardening audits.",
   "root_principle": "Tyler defines The Brain. Agents preserve, structure, implement, test, and report. Agents do not narrow scope or discard supplied material.",
-  "source_authority_labels": ["SOURCE", "APPROVED", "PROPOSAL", "SPECULATIVE", "REVIEW-ONLY", "BLOCKED", "BUILD-READY"],
-  "go_hold_statuses": ["GO", "HOLD", "REVIEW", "BLOCKED"],
+  "source_authority_labels": [
+    "SOURCE",
+    "APPROVED",
+    "PROPOSAL",
+    "SPECULATIVE",
+    "REVIEW-ONLY",
+    "BLOCKED",
+    "BUILD-READY"
+  ],
+  "go_hold_statuses": [
+    "GO",
+    "HOLD",
+    "REVIEW",
+    "BLOCKED"
+  ],
   "required_control_files": [
     "docs/control/README.md",
     "docs/control/brain-build-rules.md",
@@ -23,7 +36,9 @@
     "docs/control/source-requirement-registry.convergence.json",
     "docs/control/module-build-ready-traceability.schema.json",
     "docs/control/module-build-ready-traceability.md",
-    "docs/control/module-build-ready-traceability.pr126.md"
+    "docs/control/module-build-ready-traceability.pr126.md",
+    "docs/control/source-requirement-registry.infra.json",
+    "docs/control/module-build-ready-traceability.infra.md"
   ],
   "required_templates": [
     ".github/pull_request_template.md",
@@ -70,8 +85,20 @@
     "audit events",
     "GO/HOLD status"
   ],
-  "memory_write_required_fields": ["source", "confidence", "scope", "decay/supersession policy", "audit trace"],
-  "external_action_required_fields": ["approval gate", "target system", "risk assessment", "rollback plan", "verification evidence"],
+  "memory_write_required_fields": [
+    "source",
+    "confidence",
+    "scope",
+    "decay/supersession policy",
+    "audit trace"
+  ],
+  "external_action_required_fields": [
+    "approval gate",
+    "target system",
+    "risk assessment",
+    "rollback plan",
+    "verification evidence"
+  ],
   "archive_policy": {
     "manifest_path": "docs/archive/archive_manifest.json",
     "allow_pending_assets": true,
@@ -83,12 +110,24 @@
   "traceability_policy": {
     "schema_path": "docs/control/source-requirement-registry.schema.json",
     "registry_path": "docs/control/source-requirement-registry.json",
-    "canonical_registry_extensions": ["docs/control/source-requirement-registry.convergence.json"],
+    "canonical_registry_extensions": [
+      "docs/control/source-requirement-registry.convergence.json",
+      "docs/control/source-requirement-registry.infra.json"
+    ],
     "module_build_ready_schema_path": "docs/control/module-build-ready-traceability.schema.json",
     "module_build_ready_matrix_path": "docs/control/module-build-ready-traceability.md",
-    "canonical_module_matrix_extensions": ["docs/control/module-build-ready-traceability.pr126.md"],
-    "enforced_code_roots": ["apps", "brain", "scripts"],
-    "excluded_filenames": ["__init__.py"],
+    "canonical_module_matrix_extensions": [
+      "docs/control/module-build-ready-traceability.pr126.md",
+      "docs/control/module-build-ready-traceability.infra.md"
+    ],
+    "enforced_code_roots": [
+      "apps",
+      "brain",
+      "scripts"
+    ],
+    "excluded_filenames": [
+      "__init__.py"
+    ],
     "fail_on_missing_code_traceability": true,
     "fail_on_false_build_ready_claims": true
   },
@@ -101,8 +140,14 @@
     "audit_script": "tools/check_repository_hardening.py",
     "audit_workflow": ".github/workflows/repository-hardening.yml",
     "ruleset_target": ".github/rulesets/main-required-checks.ruleset.json",
-    "tracked_blockers": ["#51", "#52"],
-    "required_main_checks": ["Brain Control Policy", "test"],
+    "tracked_blockers": [
+      "#51",
+      "#52"
+    ],
+    "required_main_checks": [
+      "Brain Control Policy",
+      "test"
+    ],
     "required_archive_state": "real file bytes present and hash-verified by docs/archive/archive_manifest.json"
   },
   "forbidden_behaviors": [

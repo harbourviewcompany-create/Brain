@@ -33,10 +33,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/adapters/cognitive_object_store.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/adapters/developmental_evidence_store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/adapters/economic_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
-| brain/adapters/infra_health.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/adapters/learning_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
-| brain/adapters/neo4j_projection.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/adapters/object_storage.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/adapters/postgres.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/affect.py | partial | present | partial | missing | present | missing | present | HOLD |
 | brain/agency.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -131,9 +128,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/theory_of_mind.py | partial | present | partial | partial | present | missing | present | HOLD |
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/world_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
-| scripts/infra_healthcheck.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
-| scripts/rebuild_neo4j_projection.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_build_ready_traceability.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_control_layer.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
@@ -152,4 +147,3 @@ This matrix merges rows independently added on `main` (Cognitive Organism module
 ## Next expansion required
 
 For each module, replace `partial` and `missing` with source-backed evidence paths only after the repo contains the corresponding owner object, schema, runtime service, state machine, fixtures, tests, acceptance criteria, audit events, and GO/HOLD report.
-
