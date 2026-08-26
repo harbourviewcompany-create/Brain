@@ -52,5 +52,11 @@ def test_runner_claims_processes_and_completes_stimulus():
 
 
 def test_runner_returns_false_when_idle():
-    runner = ContinuousCognitionRunner(CognitiveCycle(InMemoryBrainStore()), Inbox(None), Runs())
+    # Endogenous mind is opt-in for this unit: empty inbox must report idle.
+    runner = ContinuousCognitionRunner(
+        CognitiveCycle(InMemoryBrainStore()),
+        Inbox(None),
+        Runs(),
+        enable_endogenous=False,
+    )
     assert runner.run_once() is False
