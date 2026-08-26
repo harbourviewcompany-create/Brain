@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Iterable
-from uuid import uuid4
 
 from .curiosity import CuriosityEngine
 from .domain import Belief, BeliefState

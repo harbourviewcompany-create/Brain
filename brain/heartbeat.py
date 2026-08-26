@@ -5,10 +5,9 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from threading import Lock
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from .cycle import CognitiveCycle, CognitiveCycleResult
-from .domain import Outcome
 from .endogenous import seed_foundational_beliefs
 from .events import BrainEvent
 from .learning import LearningService

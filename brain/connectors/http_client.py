@@ -91,9 +91,8 @@ class HttpClient:
                 )
         except urllib.error.HTTPError as exc:
             duration_ms = (time.perf_counter() - started) * 1000.0
-            body = b""
             try:
-                body = exc.read(self.max_bytes)
+                exc.read(self.max_bytes)
             except Exception:
                 pass
             raise HttpClientError(

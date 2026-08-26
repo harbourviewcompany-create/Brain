@@ -10,7 +10,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
@@ -19,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from brain.heartbeat import build_default_heartbeat
-from brain.endogenous import ENDOGENOUS_SOURCE_KEY
+from brain.heartbeat import build_default_heartbeat  # noqa: E402
+from brain.endogenous import ENDOGENOUS_SOURCE_KEY  # noqa: E402
 
 
 def main() -> int:

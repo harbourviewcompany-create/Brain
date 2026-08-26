@@ -1,10 +1,14 @@
 """Reasoning port for endogenous cognition."""
 from __future__ import annotations
-import json, os, re, urllib.error, urllib.request
+
+import json
+import os
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Protocol
-from uuid import UUID, uuid4
-from .model_cortex import ModelCortexRouter, ModelOutput, ModelProfile, ModelRoute
+
+from .model_cortex import ModelCortexRouter, ModelProfile
 
 @dataclass(slots=True)
 class ReasonRequest:

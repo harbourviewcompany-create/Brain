@@ -17,9 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from brain.connectors import IngestService
-from brain.connectors.protocol import AccessDisposition
-from brain.heartbeat import build_default_heartbeat
+from brain.connectors import IngestService  # noqa: E402
+from brain.connectors.protocol import AccessDisposition  # noqa: E402
+from brain.heartbeat import build_default_heartbeat  # noqa: E402
 
 
 def main() -> int:
