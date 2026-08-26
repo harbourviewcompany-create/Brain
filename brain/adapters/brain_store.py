@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 from uuid import UUID
 
@@ -17,8 +16,6 @@ from ..domain import Belief, BeliefState, Edge, Evidence, Node, RewireEvent, Rew
 from ..memory import InMemoryBrainStore
 from .postgres import PostgresEventStore
 
-logger = logging.getLogger(__name__)
-
 
 def _json(value: Any) -> Any:
     return Jsonb(value) if Jsonb is not None else value
@@ -30,9 +27,6 @@ class PostgresBrainStore(InMemoryBrainStore):
     The in-memory dictionaries are disposable projections used by the existing
     runtime interface. PostgreSQL remains authoritative and the projection is
     rebuilt at startup, so process restarts do not erase beliefs or graph state.
-
-    When NEO4J_URI is set, graph node/edge writes are also projected to Neo4j.
-    Neo4j remains rebuildable; Postgres stays canonical.
     """
 
     def __init__(self, dsn: str, *, pool: ConnectionPool | None = None) -> None:
@@ -42,26 +36,9 @@ class PostgresBrainStore(InMemoryBrainStore):
         self._owns_pool = pool is None
         self.pool = pool or ConnectionPool(conninfo=dsn, min_size=1, max_size=10, open=True)
         self.event_store = PostgresEventStore(dsn, pool=self.pool)
-        self._neo4j = None
-        try:
-            from .neo4j_projection import Neo4jProjection
-
-            self._neo4j = Neo4jProjection.from_env()
-            if self._neo4j is not None:
-                self._neo4j.ensure_constraints()
-        except Exception as exc:
-            # Graph projection is optional; Postgres remains canonical.
-            logger.warning("Neo4j projection disabled at startup: %s", exc)
-            self._neo4j = None
         self.hydrate()
 
     def close(self) -> None:
-        if getattr(self, "_neo4j", None) is not None:
-            try:
-                self._neo4j.close()
-            except Exception:
-                pass
-            self._neo4j = None
         if self._owns_pool:
             self.pool.close()
 
@@ -279,14 +256,6 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().upsert_node(node)
-        if self._neo4j is not None:
-            try:
-                self._neo4j.upsert_node(node)
-            except Exception as exc:
-                logger.warning(
-                    "Neo4j node projection failed (Postgres remains canonical): %s",
-                    exc,
-                )
 
     def upsert_edge(self, edge: Edge) -> None:
         with self.pool.connection() as conn:
@@ -317,14 +286,6 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().upsert_edge(edge)
-        if self._neo4j is not None:
-            try:
-                self._neo4j.upsert_edge(edge)
-            except Exception as exc:
-                logger.warning(
-                    "Neo4j edge projection failed (Postgres remains canonical): %s",
-                    exc,
-                )
 
     def log_rewire(self, event: RewireEvent) -> None:
         with self.pool.connection() as conn:
@@ -348,14 +309,3 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().log_rewire(event)
-
-    def rebuild_neo4j_projection(self) -> dict[str, int]:
-        """Rebuild Neo4j from canonical Postgres graph tables.
-
-        Always re-hydrates in-memory node/edge projections from Postgres first so
-        the rebuild is not limited to whatever was loaded at process start.
-        """
-        if self._neo4j is None:
-            raise RuntimeError("Neo4j projection is not configured (set NEO4J_URI)")
-        self.hydrate()
-        return self._neo4j.rebuild(self.nodes.values(), self.edges.values())
