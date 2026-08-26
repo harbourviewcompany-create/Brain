@@ -198,6 +198,7 @@ class ContinuousCognitionRunner:
         operator_time_cost: float = 0.0,
         source_keys: list[str] | None = None,
         action_id=None,
+        prediction_id=None,
     ) -> Any:
         if self.learning is None:
             return None
@@ -207,10 +208,15 @@ class ContinuousCognitionRunner:
             prediction_accuracy=prediction_accuracy,
             operator_time_cost=operator_time_cost,
             source_keys=list(source_keys or [ENDOGENOUS_SOURCE_KEY]),
+            prediction_id=prediction_id if prediction_id is not None else None,
         )
         try:
             if hasattr(self.learning, "record_outcome"):
-                result = self.learning.record_outcome(outcome)
+                result = self.learning.record_outcome(
+                    outcome,
+                    prediction_id=prediction_id,
+                    source_keys=list(source_keys or [ENDOGENOUS_SOURCE_KEY]),
+                )
             elif hasattr(self.learning, "inject_outcome"):
                 result = self.learning.inject_outcome(outcome)
             else:
