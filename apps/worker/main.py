@@ -191,7 +191,13 @@ async def run_temporal_worker() -> None:
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
     task_queue = os.environ.get("BRAIN_TEMPORAL_TASK_QUEUE", "brain-cognition")
     workflow_id = os.environ.get("BRAIN_TEMPORAL_WORKFLOW_ID", "brain-continuous-cognition")
-    client = await Client.connect(address, namespace=namespace)
+    connect_kwargs: dict = {"namespace": namespace}
+    api_key = os.environ.get("TEMPORAL_API_KEY", "").strip()
+    if api_key:
+        # Temporal Cloud: TLS + API key authentication
+        connect_kwargs["api_key"] = api_key
+        connect_kwargs["tls"] = True
+    client = await Client.connect(address, **connect_kwargs)
     if os.environ.get("BRAIN_TEMPORAL_AUTOSTART", "true").lower() == "true":
         try:
             await client.start_workflow(
