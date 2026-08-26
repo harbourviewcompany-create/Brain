@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 from .cognitive_state import NeuromodulatorState
 from .domain import utcnow
+from .events import BrainEvent
 
 
 class DiscreteEmotion(StrEnum):
@@ -242,3 +243,39 @@ class AffectAppraisalService:
         of-memory effect (arousal matters more than valence sign here).
         """
         return 0.4 * emotion.arousal * (0.5 + 0.5 * abs(emotion.valence))
+
+
+def emotional_state_to_event(
+    emotion: EmotionalState,
+    *,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+    mood_valence: float | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``AffectAppraisalService`` directly, outside ``CognitiveCycle``'s own
+    wiring (which builds the equivalent event inline). Kept as a plain
+    function rather than a service method since it only needs the already-
+    produced ``EmotionalState``, not any service state.
+
+    ``mood_valence`` is optional context from the caller's
+    ``AffectAppraisalService.mood`` -- Mood is a separate, slower-moving
+    concept from the momentary EmotionalState (see this module's docstring),
+    so it's passed in rather than assumed available.
+    """
+    payload = {
+        "label": str(emotion.label),
+        "valence": emotion.valence,
+        "arousal": emotion.arousal,
+        "intensity": emotion.intensity,
+    }
+    if mood_valence is not None:
+        payload["mood_valence"] = mood_valence
+    return BrainEvent(
+        "affect.appraised",
+        aggregate_type,
+        aggregate_id,
+        payload,
+        correlation_id=correlation_id,
+    )

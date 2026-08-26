@@ -22,17 +22,18 @@ from .projections import default_projection_engine, incremental_checkpoint
 from .scheduler import CognitiveScheduler, CognitiveTask
 from .working_memory import WorkingMemory
 
-from .affect import AffectAppraisalService, AppraisalInput
-from .circadian import CircadianClock
+from .affect import AffectAppraisalService, AppraisalInput, emotional_state_to_event
+from .circadian import CircadianClock, circadian_forced_wake_event, circadian_phase_changed_event
 from .executive import (
     CognitiveControlResource,
     ExecutiveControlService,
     ResponseCandidate,
     ResponseSource,
+    executive_decision_to_event,
 )
-from .hedonic import HedonicSystem
-from .perception import Modality, PerceptionService, TextPerceptionEncoder
-from .theory_of_mind import TheoryOfMindService
+from .hedonic import HedonicSystem, pain_signal_to_event, reward_prediction_error_to_event
+from .perception import Modality, PerceptionService, TextPerceptionEncoder, percept_to_event
+from .theory_of_mind import TheoryOfMindService, attributed_belief_to_event
 
 
 class AppendableEventStore(Protocol):
@@ -205,19 +206,41 @@ class CognitiveCycle:
 
         self._metabolize_capital(cycle_id, event_ids)
 
+        previous_circadian_phase = self.circadian.phase
         if not self.circadian.is_awake and stimulus.urgency >= 0.85:
             self.circadian.force_wake()
+            self._emit(
+                circadian_forced_wake_event(
+                    previous_phase=previous_circadian_phase,
+                    urgency=stimulus.urgency,
+                    aggregate_type="cognitive_cycle",
+                    aggregate_id=cycle_id,
+                    correlation_id=cycle_id,
+                ),
+                event_ids,
+            )
         else:
             self.circadian.advance(ticks=1.0, cognitive_load=max(0.1, stimulus.urgency))
+            if self.circadian.phase != previous_circadian_phase:
+                self._emit(
+                    circadian_phase_changed_event(
+                        previous_phase=previous_circadian_phase,
+                        new_phase=self.circadian.phase,
+                        pressure_ratio=self.circadian.pressure.ratio,
+                        aggregate_type="cognitive_cycle",
+                        aggregate_id=cycle_id,
+                        correlation_id=cycle_id,
+                    ),
+                    event_ids,
+                )
         self._blend_modulation(self.circadian.modulator_profile(), weight=0.15)
 
         percept = self.perception.perceive(Modality.TEXT, str(observation.id), stimulus.content)
         self._emit(
-            BrainEvent(
-                "perception.encoded",
-                "observation",
-                observation.id,
-                {"novelty": percept.novelty, "features": percept.features},
+            percept_to_event(
+                percept,
+                aggregate_type="observation",
+                aggregate_id=observation.id,
                 correlation_id=cycle_id,
             ),
             event_ids,
@@ -321,11 +344,21 @@ class CognitiveCycle:
             event_ids,
         )
 
-        self.theory_of_mind.attribute_belief(
+        attributed_belief = self.theory_of_mind.attribute_belief(
             stimulus.source_id,
             statement=stimulus.claim,
             confidence=max(0.0, min(1.0, stimulus.source_reliability)),
             evidence_refs=[str(observation.id)],
+        )
+        self._emit(
+            attributed_belief_to_event(
+                attributed_belief,
+                agent_id=stimulus.source_id,
+                aggregate_type="observation",
+                aggregate_id=observation.id,
+                correlation_id=cycle_id,
+            ),
+            event_ids,
         )
 
         contradiction = self.contradictions.inspect(belief, evidence, stimulus.supports)
@@ -353,9 +386,21 @@ class CognitiveCycle:
         rpe = self.hedonic.register_outcome(
             expected_value=prior_confidence, actual_value=updated.confidence
         )
+        self._emit(
+            reward_prediction_error_to_event(
+                rpe, aggregate_type="belief", aggregate_id=updated.id, correlation_id=cycle_id,
+            ),
+            event_ids,
+        )
         pain = None
         if contradiction is not None:
             pain = self.hedonic.register_pain(intensity=contradiction.severity, source="contradiction")
+            self._emit(
+                pain_signal_to_event(
+                    pain, aggregate_type="belief", aggregate_id=updated.id, correlation_id=cycle_id,
+                ),
+                event_ids,
+            )
         self._blend_modulation(self.hedonic.modulator_delta(rpe, pain), weight=0.25)
 
         appraisal = AppraisalInput(
@@ -371,17 +416,12 @@ class CognitiveCycle:
         emotion = self.affect.appraise(appraisal)
         self._blend_modulation(self.affect.modulator_delta(emotion), weight=0.25)
         self._emit(
-            BrainEvent(
-                "affect.appraised",
-                "observation",
-                observation.id,
-                {
-                    "label": str(emotion.label),
-                    "valence": emotion.valence,
-                    "arousal": emotion.arousal,
-                    "mood_valence": self.affect.mood.valence,
-                },
+            emotional_state_to_event(
+                emotion,
+                aggregate_type="observation",
+                aggregate_id=observation.id,
                 correlation_id=cycle_id,
+                mood_valence=self.affect.mood.valence,
             ),
             event_ids,
         )
@@ -470,18 +510,12 @@ class CognitiveCycle:
                 candidates, goals=None, control=self.control_resource, modulation=self.modulation
             )
             self._emit(
-                BrainEvent(
-                    "executive.arbitrated",
-                    "cognitive_cycle",
-                    cycle_id,
-                    {
-                        "chosen": executive_decision.chosen.action,
-                        "conflict_magnitude": executive_decision.conflict.magnitude,
-                        "override_attempted": executive_decision.override_attempted,
-                        "override_succeeded": executive_decision.override_succeeded,
-                        "control_remaining": self.control_resource.current,
-                    },
+                executive_decision_to_event(
+                    executive_decision,
+                    aggregate_type="cognitive_cycle",
+                    aggregate_id=cycle_id,
                     correlation_id=cycle_id,
+                    control_remaining=self.control_resource.current,
                 ),
                 event_ids,
             )
