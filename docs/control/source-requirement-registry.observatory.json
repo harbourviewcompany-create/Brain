@@ -1,0 +1,96 @@
+{
+  "registry_id": "brain-source-requirement-registry-observatory-extension-v1",
+  "status": "APPROVED_FOR_TRACEABILITY_ENFORCEMENT",
+  "purpose": "Canonical traceability extension for the Brain Observatory frontend/BFF consolidated from the accidental brain-control-plane repository split.",
+  "rules": [
+    "harbourviewcompany-create/Brain is the sole canonical Brain repository.",
+    "The Observatory frontend and browser-safe BFF live under apps/observatory.",
+    "The split repository source commit remains immutable provenance until retirement parity is proven.",
+    "Vercel production rewiring and split-repository retirement remain HOLD until separate parity evidence exists."
+  ],
+  "sources": [
+    {
+      "source_id": "SRC-OBSERVATORY-SPLIT-REPO",
+      "path": "docs/control/OBSERVATORY_CONSOLIDATION_PROVENANCE.md",
+      "label": "SOURCE"
+    },
+    {
+      "source_id": "SRC-OBSERVATORY-CONTRACT",
+      "path": "docs/observatory/BRAIN_OBSERVATORY.md",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-OBSERVATORY-PRODUCTION-WIRING",
+      "path": "docs/observatory/PRODUCTION_WIRING.md",
+      "label": "REVIEW-ONLY"
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-OBSERVATORY-SINGLE-CANONICAL-REPO",
+      "source_ids": ["SRC-OBSERVATORY-SPLIT-REPO"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-OBSERVATORY-BROWSER-BFF",
+      "source_ids": ["SRC-OBSERVATORY-CONTRACT", "SRC-OBSERVATORY-PRODUCTION-WIRING"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-OBSERVATORY-UI-PARITY",
+      "source_ids": ["SRC-OBSERVATORY-SPLIT-REPO", "SRC-OBSERVATORY-CONTRACT"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-OBSERVATORY-VERCEL-ROOT",
+      "source_ids": ["SRC-OBSERVATORY-PRODUCTION-WIRING"],
+      "label": "REVIEW-ONLY"
+    }
+  ],
+  "code_module_records": [
+    {
+      "record_id": "TRACE-OBSERVATORY-UI",
+      "paths": [
+        "apps/observatory/src/app/page.tsx",
+        "apps/observatory/src/components/observatory/BrainObservatory.tsx",
+        "apps/observatory/src/hooks/useBrainObservatory.ts",
+        "apps/observatory/src/lib/observatory.ts"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-OBSERVATORY-SPLIT-REPO", "SRC-OBSERVATORY-CONTRACT"],
+      "requirement_ids": ["REQ-OBSERVATORY-SINGLE-CANONICAL-REPO", "REQ-OBSERVATORY-UI-PARITY"],
+      "owner_object": "Brain Observatory frontend",
+      "schema": "typed Observatory read models under apps/observatory/src/types and browser-safe display state",
+      "runtime_service": "Next.js App Router application under apps/observatory",
+      "state_machine": "same-origin BFF reads -> typed Observatory model -> deterministic cognitive visualization -> live/quiet/degraded display states",
+      "fixtures": ["apps/observatory/scripts/verify-observatory.mjs"],
+      "tests": ["npm --prefix apps/observatory run verify", ".github/workflows/observatory-verify.yml"],
+      "acceptance_criteria": ["root route renders Brain Observatory", "no mock imports in Observatory runtime", "desktop/mobile build and structural verification pass", "existing production UI behavior is preserved before rewiring"],
+      "audit_events": ["OBSERVATORY_STRUCTURAL_VERIFICATION", "OBSERVATORY_VISUAL_EVIDENCE"],
+      "source_preservation": "complete split-repo UI source preserved under apps/observatory from immutable source commit",
+      "unresolved_gaps": ["Vercel Git integration still points to the split repository until separately rewired", "production parity after rewiring remains HOLD"]
+    },
+    {
+      "record_id": "TRACE-OBSERVATORY-BFF",
+      "paths": [
+        "apps/observatory/src/app/api/brain/[...path]/route.ts",
+        "apps/observatory/src/lib/brain-upstream.ts"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-OBSERVATORY-SPLIT-REPO", "SRC-OBSERVATORY-PRODUCTION-WIRING"],
+      "requirement_ids": ["REQ-OBSERVATORY-BROWSER-BFF", "REQ-OBSERVATORY-VERCEL-ROOT"],
+      "owner_object": "Browser-safe Brain BFF",
+      "schema": "allowlisted /api/brain path proxy with Vercel OIDC primary identity and server API-key fallback",
+      "runtime_service": "Next.js route handler and server-only upstream resolver",
+      "state_machine": "browser same-origin request -> allowlist -> Vercel OIDC/API-key server identity -> Railway Brain API -> no-store response",
+      "fixtures": ["apps/observatory/scripts/verify-observatory.mjs"],
+      "tests": ["npm --prefix apps/observatory run verify", ".github/workflows/observatory-verify.yml"],
+      "acceptance_criteria": ["browser never receives upstream API key", "protected upstream paths fail closed without server identity", "Vercel OIDC behavior remains intact", "health/ready public paths remain available"],
+      "audit_events": ["OBSERVATORY_BFF_IDENTITY_VERIFIED", "OBSERVATORY_BFF_UPSTREAM_REJECTED"],
+      "source_preservation": "BFF/OIDC source preserved from the split repository and moved without relaxing authentication",
+      "unresolved_gaps": ["production Vercel project rewiring remains HOLD", "post-rewire OIDC subject/audience parity must be verified"]
+    }
+  ]
+}

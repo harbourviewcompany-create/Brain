@@ -1,0 +1,145 @@
+name: Postdeploy Observatory Audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify production BFF and Railway auth boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="https://thebrain-sandy.vercel.app"
+          brain="https://brain-api-live-production.up.railway.app"
+
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/" -o /tmp/root.html
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/health" -o /tmp/health.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/signals" -o /tmp/signals.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/organism/cockpit" -o /tmp/organism.json
+
+          railway_health=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-health.json -w '%{http_code}' "$brain/health")
+          railway_protected=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-signals.json -w '%{http_code}' "$brain/signals")
+          test "$railway_health" = "200"
+          test "$railway_protected" = "401"
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
+          const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
+          const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
+          const direct = JSON.parse(fs.readFileSync('/tmp/railway-signals.json','utf8'));
+          if (health.status !== 'ok') throw new Error(`health status ${health.status}`);
+          if (health.database !== 'connected') throw new Error(`database ${health.database}`);
+          if (health.persistence !== 'postgres') throw new Error(`persistence ${health.persistence}`);
+          if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
+          if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
+          if (direct.detail !== 'invalid_or_missing_api_key') throw new Error(`unexpected direct Railway auth response: ${JSON.stringify(direct)}`);
+          console.log(JSON.stringify({
+            bff: {
+              health: health.status,
+              version: health.version,
+              database: health.database,
+              persistence: health.persistence,
+              signal_count: signals.items.length,
+              organism_keys: Object.keys(organism).sort()
+            },
+            railway_direct: { health: 200, protected_signals: 401, detail: direct.detail }
+          }, null, 2));
+          NODE
+
+      - name: Install browser
+        shell: bash
+        working-directory: apps/observatory
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Inspect live desktop and mobile UI
+        shell: bash
+        working-directory: apps/observatory
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          node - <<'NODE'
+          const fs = require('fs');
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const reports = [];
+            const failures = [];
+            for (const spec of [
+              { name: 'desktop', width: 1440, height: 1000 },
+              { name: 'mobile', width: 390, height: 844 },
+            ]) {
+              const page = await browser.newPage({ viewport: { width: spec.width, height: spec.height } });
+              const consoleErrors = [];
+              const pageErrors = [];
+              const serverErrors = [];
+              page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+              page.on('pageerror', err => pageErrors.push(String(err)));
+              page.on('response', response => {
+                if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
+              });
+              const response = await page.goto('https://thebrain-sandy.vercel.app/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+              if (!response || response.status() !== 200) failures.push(`${spec.name}: root status ${response?.status()}`);
+              await page.waitForTimeout(12000);
+              const bodyText = await page.locator('body').innerText();
+              const title = await page.title();
+              const canvasCount = await page.locator('canvas').count();
+              const dimensions = await page.evaluate(() => ({
+                innerWidth: window.innerWidth,
+                scrollWidth: document.documentElement.scrollWidth,
+                scrollHeight: document.documentElement.scrollHeight,
+              }));
+              await page.screenshot({ path: `evidence/production-${spec.name}.png`, fullPage: true });
+              const report = {
+                ...spec,
+                title,
+                canvasCount,
+                dimensions,
+                consoleErrors,
+                pageErrors,
+                serverErrors,
+                textSample: bodyText.slice(0, 2400),
+              };
+              reports.push(report);
+              if (!/Brain Observatory/i.test(title)) failures.push(`${spec.name}: document title is ${JSON.stringify(title)}`);
+              if (!/HEALTHY/i.test(bodyText)) failures.push(`${spec.name}: HEALTHY state missing`);
+              if (!/LIVE/i.test(bodyText)) failures.push(`${spec.name}: LIVE state missing`);
+              if (/\[object Object\]/.test(bodyText)) failures.push(`${spec.name}: [object Object] regression visible`);
+              if (/\bDEGRADED\b/i.test(bodyText)) failures.push(`${spec.name}: unexpected DEGRADED status`);
+              if (canvasCount < 1) failures.push(`${spec.name}: cognitive canvas missing`);
+              if (spec.name === 'mobile' && dimensions.scrollWidth > dimensions.innerWidth + 2) {
+                failures.push(`mobile horizontal overflow ${dimensions.scrollWidth} > ${dimensions.innerWidth}`);
+              }
+              if (consoleErrors.length || pageErrors.length || serverErrors.length) {
+                failures.push(`${spec.name} browser/runtime errors: ${JSON.stringify({ consoleErrors, pageErrors, serverErrors })}`);
+              }
+              await page.close();
+            }
+            await browser.close();
+            fs.writeFileSync('evidence/production-audit.json', JSON.stringify({ reports, failures }, null, 2));
+            console.log(JSON.stringify({ reports, failures }, null, 2));
+            if (failures.length) throw new Error(`production audit failures: ${JSON.stringify(failures)}`);
+          })().catch(error => { console.error(error); process.exit(1); });
+          NODE
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: postdeploy-observatory-audit
+          path: apps/observatory/evidence/*
+          if-no-files-found: error
+          retention-days: 7
