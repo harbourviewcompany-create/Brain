@@ -57,7 +57,6 @@ class MindRuntime:
         self._active_focus: str | None = None
 
     def set_replay_engine(self, engine: ReplayConsolidationEngine) -> None:
-        """Inject a fully configured ReplayConsolidationEngine (from heartbeat bootstrap)."""
         self._replay = engine
 
     def _get_replay(self) -> ReplayConsolidationEngine | None:
@@ -205,14 +204,15 @@ class MindRuntime:
         overload_hint: float = 0.0,
     ) -> MindPolicy:
         try:
-            snap = self.self_model.current()
+            snap = self.self_model.current
+            if callable(snap):
+                snap = snap()
             if snap is not None:
-                load = float(getattr(snap, "cognitive_load", None) or getattr(snap, "load", 0) or 0)
-                overload_hint = max(overload_hint, load)
                 overload_hint = max(
                     overload_hint,
                     float(getattr(snap, "stress_index", 0) or 0),
                     float(getattr(snap, "uncertainty_load", 0) or 0),
+                    float(getattr(snap, "contradiction_load", 0) or 0),
                 )
         except Exception:
             pass
@@ -232,28 +232,68 @@ class MindRuntime:
         self.policy.max_new_tasks = 1 if overload >= 0.6 else 3
         return self.policy
 
+    def _edges_by_outcome(self, learning: Any = None) -> dict:
+        out: dict = {}
+        if not self._outcomes:
+            return out
+        edges_by_id: dict = {}
+        if learning is not None:
+            edges_repo = getattr(learning, "edges", None)
+            if edges_repo is not None and hasattr(edges_repo, "list_edges"):
+                try:
+                    for e in edges_repo.list_edges():
+                        eid = getattr(e, "id", None)
+                        if eid is not None:
+                            edges_by_id[eid] = e
+                except Exception:
+                    pass
+        for outcome in self._outcomes:
+            aid = getattr(outcome, "action_id", None)
+            if aid is None:
+                continue
+            edges = []
+            for eid in getattr(outcome, "edge_ids", None) or []:
+                e = edges_by_id.get(eid)
+                if e is None and learning is not None:
+                    edges_repo = getattr(learning, "edges", None)
+                    if edges_repo is not None and hasattr(edges_repo, "get_edge"):
+                        try:
+                            e = edges_repo.get_edge(eid)
+                        except Exception:
+                            e = None
+                if e is not None:
+                    edges.append(e)
+            if edges:
+                out[aid] = edges
+        return out
+
     def run_night_phase(
-        self, *, circadian_phase=None, beliefs=None, event_store=None
+        self, *, circadian_phase=None, beliefs=None, event_store=None, learning=None
     ) -> NightPhaseResult | None:
         phase_name = str(getattr(circadian_phase, "value", circadian_phase) or "nrem").lower()
         if "rem" in phase_name and "nrem" not in phase_name:
             result = NightPhaseResult(phase="rem", hypotheses=min(3, len(list(beliefs or []))))
         else:
             replayed = 0
+            notes: list[str] = []
             engine = self._get_replay()
             if engine is not None and self._outcomes:
                 try:
+                    edges_map = self._edges_by_outcome(learning)
                     eng_result = engine.consolidate(
                         list(self._outcomes[-10:]),
-                        edges_by_outcome={},
+                        edges_by_outcome=edges_map,
                     )
-                    replayed = len(getattr(eng_result, "replayed_outcome_ids", None) or self._outcomes[-10:])
+                    replayed = len(getattr(eng_result, "replayed_outcome_ids", None) or [])
+                    if not edges_map:
+                        notes.append("no_edges_for_replay")
                 except Exception:
-                    replayed = 0
+                    notes.append("consolidate_error")
             result = NightPhaseResult(
                 phase="nrem",
                 consolidated=len(list(beliefs or [])),
                 replayed=replayed,
+                notes=notes,
             )
 
         if event_store is not None and hasattr(event_store, "append"):
@@ -270,6 +310,7 @@ class MindRuntime:
                             "consolidated": result.consolidated,
                             "hypotheses": result.hypotheses,
                             "replayed": result.replayed,
+                            "notes": list(result.notes or []),
                         },
                     )
                 )
