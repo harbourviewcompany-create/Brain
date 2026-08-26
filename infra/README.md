@@ -53,7 +53,7 @@ Local ports:
 ### Temporal Cloud
 
 1. Create a namespace; note gRPC endpoint and auth.
-2. Set `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`.
+2. Set `TEMPORAL_ADDRESS`, `TEMPORAL_NAMESPACE`, and `TEMPORAL_API_KEY` (TLS is enabled when the key is set).
 3. Deploy the worker image (`Dockerfile.worker`).
 4. Leave local `temporal` / `temporal-ui` compose services stopped.
 
