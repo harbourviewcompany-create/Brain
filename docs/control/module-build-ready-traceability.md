@@ -152,3 +152,4 @@ This matrix merges rows independently added on `main` (Cognitive Organism module
 ## Next expansion required
 
 For each module, replace `partial` and `missing` with source-backed evidence paths only after the repo contains the corresponding owner object, schema, runtime service, state machine, fixtures, tests, acceptance criteria, audit events, and GO/HOLD report.
+
