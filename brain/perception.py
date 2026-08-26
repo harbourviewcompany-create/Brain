@@ -39,6 +39,7 @@ import numpy as np
 from PIL import Image
 
 from .domain import utcnow
+from .events import BrainEvent
 
 
 class Modality(StrEnum):
@@ -283,3 +284,21 @@ class PerceptionService:
             self._habituation[key] = max(0.0, self._habituation[key] - self.recovery_rate * ticks)
             if self._habituation[key] <= 0.0:
                 del self._habituation[key]
+
+
+def percept_to_event(
+    percept: Percept,
+    *,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``PerceptionService.perceive`` directly, outside ``CognitiveCycle``."""
+    return BrainEvent(
+        "perception.encoded",
+        aggregate_type,
+        aggregate_id,
+        {"modality": str(percept.modality), "novelty": percept.novelty, "features": percept.features},
+        correlation_id=correlation_id,
+    )

@@ -28,8 +28,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
+from uuid import UUID
 
 from .cognitive_state import NeuromodulatorState
+from .events import BrainEvent
 
 
 class CircadianPhase(StrEnum):
@@ -184,3 +186,48 @@ class CircadianClock:
             dopamine=0.4, norepinephrine=0.1, serotonin=0.1,
             acetylcholine=0.75, stress=0.15,
         )
+
+
+def circadian_phase_changed_event(
+    *,
+    previous_phase: CircadianPhase,
+    new_phase: CircadianPhase,
+    pressure_ratio: float,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers driving
+    ``CircadianClock`` directly, outside ``CognitiveCycle``. Only meant to
+    be called on an actual transition (``previous_phase != new_phase``);
+    it does not check that itself since the caller already knows."""
+    return BrainEvent(
+        "circadian.phase_changed",
+        aggregate_type,
+        aggregate_id,
+        {
+            "previous_phase": str(previous_phase),
+            "new_phase": str(new_phase),
+            "pressure_ratio": pressure_ratio,
+        },
+        correlation_id=correlation_id,
+    )
+
+
+def circadian_forced_wake_event(
+    *,
+    previous_phase: CircadianPhase,
+    urgency: float,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for a ``force_wake()`` override,
+    outside ``CognitiveCycle``."""
+    return BrainEvent(
+        "circadian.forced_wake",
+        aggregate_type,
+        aggregate_id,
+        {"previous_phase": str(previous_phase), "urgency": urgency},
+        correlation_id=correlation_id,
+    )

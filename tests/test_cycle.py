@@ -45,7 +45,9 @@ def test_continuous_cycle_emits_full_cognitive_path():
         "memory.working_stored",
         "belief.created",
         "evidence.created",
+        "theory_of_mind.belief_attributed",
         "belief.updated",
+        "hedonic.outcome_registered",
         "affect.appraised",
         "cognitive_task.selected",
         "cycle.completed",
@@ -153,6 +155,96 @@ def test_theory_of_mind_tracks_source_claims_across_cycles():
     assert result.agent_trust is not None
     agent_model = cycle.theory_of_mind.agents["regulator"]
     assert "Licence renewed" in agent_model.attributed_beliefs
+
+
+def test_contradiction_emits_hedonic_pain_event():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    first = cycle.process(
+        CognitiveStimulus(
+            content="Source says licence active",
+            source_id="source-a",
+            claim="Licence is active",
+            source_reliability=0.9,
+            supports=True,
+            belief_statement="Licence is active",
+        )
+    )
+    cycle.process(
+        CognitiveStimulus(
+            content="Regulator says licence revoked",
+            source_id="regulator",
+            claim="Licence was revoked",
+            source_reliability=1.0,
+            supports=False,
+            belief_id=first.belief_id,
+            contradiction_value=1.0,
+        )
+    )
+    pain_events = [e for e in store.events if e.event_type == "hedonic.pain_registered"]
+    assert len(pain_events) == 1
+    assert pain_events[0].payload["intensity"] > 0
+
+
+def test_theory_of_mind_attribution_emits_event_every_cycle():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    cycle.process(
+        CognitiveStimulus(
+            content="Regulator confirms licence renewal",
+            source_id="regulator",
+            claim="Licence renewed",
+            source_reliability=0.95,
+            supports=True,
+        )
+    )
+    attributed = [e for e in store.events if e.event_type == "theory_of_mind.belief_attributed"]
+    assert len(attributed) == 1
+    assert attributed[0].payload["agent_id"] == "regulator"
+    assert attributed[0].payload["statement"] == "Licence renewed"
+
+
+def test_circadian_phase_change_emits_event():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    cycle.circadian.pressure.level = 0.9
+    cycle.circadian.oscillator.phase_position = 0.0
+    cycle.circadian.sleep_onset_pressure = 0.5
+
+    cycle.process(
+        CognitiveStimulus(
+            content="routine update",
+            source_id="system",
+            claim="all clear",
+            urgency=0.1,
+        )
+    )
+    phase_events = [e for e in store.events if e.event_type == "circadian.phase_changed"]
+    assert len(phase_events) == 1
+    assert phase_events[0].payload["previous_phase"] == "wake"
+    assert phase_events[0].payload["new_phase"] == "nrem"
+
+
+def test_circadian_forced_wake_emits_event():
+    store = InMemoryBrainStore()
+    cycle = CognitiveCycle(store, attention_threshold=-100)
+    cycle.circadian.pressure.level = 0.9
+    cycle.circadian.oscillator.phase_position = 0.0
+    cycle.circadian.sleep_onset_pressure = 0.5
+    cycle.circadian.advance(ticks=0.1)
+    assert not cycle.circadian.is_awake
+
+    cycle.process(
+        CognitiveStimulus(
+            content="critical breach detected right now",
+            source_id="system",
+            claim="breach in progress",
+            urgency=0.95,
+        )
+    )
+    forced_wake_events = [e for e in store.events if e.event_type == "circadian.forced_wake"]
+    assert len(forced_wake_events) == 1
+    assert forced_wake_events[0].payload["previous_phase"] == "nrem"
 
 
 def test_forced_sleep_reduces_encoding_via_low_control_and_urgency_can_wake_it():

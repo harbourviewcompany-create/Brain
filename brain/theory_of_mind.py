@@ -22,6 +22,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from .domain import utcnow
+from .events import BrainEvent
 
 
 @dataclass(slots=True)
@@ -218,3 +219,27 @@ def _token_overlap(a: str, b: str) -> float:
     if not tokens_a or not tokens_b:
         return 0.0
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
+
+
+def attributed_belief_to_event(
+    belief: AttributedBelief,
+    *,
+    agent_id: str,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Standalone audit-event constructor for callers using
+    ``TheoryOfMindService.attribute_belief`` directly, outside
+    ``CognitiveCycle``."""
+    return BrainEvent(
+        "theory_of_mind.belief_attributed",
+        aggregate_type,
+        aggregate_id,
+        {
+            "agent_id": agent_id,
+            "statement": belief.statement,
+            "confidence": belief.believed_confidence,
+        },
+        correlation_id=correlation_id,
+    )

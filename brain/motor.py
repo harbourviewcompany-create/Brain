@@ -28,6 +28,7 @@ from uuid import UUID, uuid4
 import httpx
 
 from .domain import CandidateAction, utcnow
+from .events import BrainEvent
 from .governance import GovernanceDecision, GovernanceGovernor
 
 
@@ -220,3 +221,33 @@ class MotorExecutionService:
             self.history.pop(0)
 
         return decision, result
+
+
+def motor_execution_result_to_event(
+    result: MotorExecutionResult,
+    *,
+    effector_name: str,
+    aggregate_type: str,
+    aggregate_id: UUID,
+    correlation_id: UUID | None = None,
+) -> BrainEvent:
+    """Audit-event constructor for a completed ``MotorExecutionResult``.
+    Not currently called by anything -- ``MotorExecutionService`` is not
+    yet wired into ``CognitiveCycle`` at all (it has no default effector
+    to safely call automatically), so this exists for whoever wires a
+    concrete ``Effector`` into a cycle or standalone workflow next, per
+    ``docs/spec/BRAIN_STATE_MACHINES.md``'s motor-execution state
+    machine."""
+    return BrainEvent(
+        "motor.executed",
+        aggregate_type,
+        aggregate_id,
+        {
+            "effector_name": effector_name,
+            "expected_outcome": result.prediction.expected_outcome,
+            "actual_outcome": result.actual_outcome,
+            "succeeded": result.succeeded,
+            "error": result.error,
+        },
+        correlation_id=correlation_id,
+    )

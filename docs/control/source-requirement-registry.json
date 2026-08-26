@@ -937,16 +937,24 @@
         "each module has a registered pydantic schema mirror in brain/schemas.py",
         "stateful modules have a documented, test-enforced state machine",
         "perception supports image and audio modalities via classical signal-processing features (no external model dependency)",
-        "motor execution has at least one concrete, real (non-stub) Effector implementation, testable without live credentials or network access"
+        "motor execution has at least one concrete, real (non-stub) Effector implementation, testable without live credentials or network access",
+        "each of the seven modules has a standalone to_event() audit-event constructor usable outside CognitiveCycle, and CognitiveCycle itself uses the same shared constructors rather than duplicating payload construction"
       ],
       "audit_events": [
-        "TRACEABILITY_RECORD_VERIFIED"
+        "circadian.phase_changed",
+        "circadian.forced_wake",
+        "theory_of_mind.belief_attributed",
+        "hedonic.outcome_registered",
+        "hedonic.pain_registered",
+        "affect.appraised",
+        "executive.arbitrated",
+        "perception.encoded",
+        "motor.executed"
       ],
       "source_preservation": "preserved",
       "unresolved_gaps": [
         "brain/motor.py's HttpEffector is real and generic but not pointed at a specific production endpoint/vendor -- that wiring (which service, which credentials) is a deployment decision, not made here",
-        "brain/perception.py's image/audio encoders are classical-DSP (luminance/edge/frequency statistics), matching early V1/A1-style processing, not deep-learning semantic understanding (object/scene/speech recognition) -- upgrading to a real vision/audio model remains a deliberate product/infra decision requiring an external model/API choice",
-        "audit_events (TRACEABILITY_RECORD_VERIFIED) are declared but not yet emitted as BrainEvent instances from the six new modules themselves -- brain/cycle.py emits perception.encoded, affect.appraised, and executive.arbitrated during wiring, but affect.py/executive.py/etc. do not self-emit audit events when used standalone outside CognitiveCycle"
+        "brain/perception.py's image/audio encoders are classical-DSP (luminance/edge/frequency statistics), matching early V1/A1-style processing, not deep-learning semantic understanding (object/scene/speech recognition) -- upgrading to a real vision/audio model remains a deliberate product/infra decision requiring an external model/API choice"
       ]
     }
   ]
