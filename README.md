@@ -30,8 +30,12 @@ docker compose -f infra/docker-compose.yml up -d
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
+python -m tools.apply_migrations
+python scripts/infra_healthcheck.py
 uvicorn apps.api.main:app --reload
 ```
+
+See [infra/README.md](infra/README.md) for the local infrastructure stack and managed-service configuration boundaries.
 
 Test:
 

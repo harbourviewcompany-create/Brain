@@ -1,0 +1,130 @@
+{
+  "registry_id": "brain-source-requirement-registry-infra-extension-v1",
+  "status": "APPROVED_FOR_TRACEABILITY_ENFORCEMENT",
+  "purpose": "Canonical traceability extension for infrastructure adapters and operator verification scripts. PostgreSQL remains authoritative and the merged tenant/RLS controls remain unchanged.",
+  "rules": [
+    "Infrastructure adapters are additive derived-service boundaries; they do not replace canonical PostgreSQL state.",
+    "Neo4j projection operations require explicit tenant scope and must be rebuildable from canonical PostgreSQL rows.",
+    "Object-storage writes are immutable by default and file uploads must stream rather than read complete files into memory.",
+    "Managed-service production rollout remains HOLD until separately verified with deployment-specific credentials and evidence."
+  ],
+  "sources": [
+    {
+      "source_id": "SRC-INFRA-ARCHITECTURE",
+      "path": "docs/architecture.md",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-INFRA-CONTROL",
+      "path": "docs/control/brain-build-rules.md",
+      "label": "APPROVED"
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-INFRA-POSTGRES-CANONICAL",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-INFRA-NEO4J-TENANT-PROJECTION",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-INFRA-TEMPORAL-AUTH",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-INFRA-OBJECT-STORAGE-IMMUTABLE",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-INFRA-NATIVE-HEALTH",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "label": "APPROVED"
+    }
+  ],
+  "code_module_records": [
+    {
+      "record_id": "TRACE-INFRA-NEO4J",
+      "paths": ["brain/adapters/neo4j_projection.py", "scripts/rebuild_neo4j_projection.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "requirement_ids": ["REQ-INFRA-POSTGRES-CANONICAL", "REQ-INFRA-NEO4J-TENANT-PROJECTION"],
+      "owner_object": "Tenant-scoped rebuildable Neo4j projection",
+      "schema": "projection_id is tenant scope plus canonical UUID; graph rows remain authoritative in PostgreSQL",
+      "runtime_service": "Neo4jProjection and scripts/rebuild_neo4j_projection.py",
+      "state_machine": "explicit tenant scope -> constrained trusted worker database read -> tenant-only canonical graph rows -> tenant-only Neo4j replacement -> success/fail closed",
+      "fixtures": ["tests/test_infra_adapters.py"],
+      "tests": ["tests/test_infra_adapters.py", "python -m pytest -q", "ruff check ."],
+      "acceptance_criteria": [
+        "tenant projection rebuild cannot delete another tenant projection",
+        "node replacement removes stale properties",
+        "logical edge endpoint changes remove the previous projected relationship before recreation",
+        "rebuild reads canonical graph rows only for the explicitly selected tenant",
+        "canonical Postgres store remains unchanged by projection wiring"
+      ],
+      "audit_events": ["NEO4J_TENANT_PROJECTION_REBUILT", "NEO4J_TENANT_PROJECTION_FAILED"],
+      "source_preservation": "preserved; Neo4j remains derived and rebuildable and does not become a canonical write authority",
+      "unresolved_gaps": ["automatic projection scheduling/outbox remains HOLD", "managed Neo4j production verification remains HOLD"]
+    },
+    {
+      "record_id": "TRACE-INFRA-OBJECT-STORAGE",
+      "paths": ["brain/adapters/object_storage.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "requirement_ids": ["REQ-INFRA-OBJECT-STORAGE-IMMUTABLE"],
+      "owner_object": "Immutable S3-compatible artifact storage",
+      "schema": "content digest metadata plus content-addressed default keys and conditional write-once object creation",
+      "runtime_service": "S3ObjectStorage",
+      "state_machine": "resolve standard or explicit credentials -> hash input -> conditional If-None-Match write -> identical digest idempotence or conflicting overwrite rejection",
+      "fixtures": ["tests/test_infra_adapters.py"],
+      "tests": ["tests/test_infra_adapters.py", "python -m pytest -q"],
+      "acceptance_criteria": ["standard boto3 credential provider chain is supported", "temporary session tokens are supported", "file uploads stream from a file handle", "different content cannot overwrite an existing immutable key"],
+      "audit_events": ["OBJECT_STORED_IMMUTABLY", "OBJECT_WRITE_CONFLICT"],
+      "source_preservation": "preserved; object storage is additive and does not replace governed database provenance",
+      "unresolved_gaps": ["production bucket policy and managed credential verification remain HOLD"]
+    },
+    {
+      "record_id": "TRACE-INFRA-TEMPORAL",
+      "paths": ["apps/worker/main.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "requirement_ids": ["REQ-INFRA-TEMPORAL-AUTH", "REQ-INFRA-POSTGRES-CANONICAL"],
+      "owner_object": "Temporal-backed cognition worker transport",
+      "schema": "Temporal address, namespace, optional API key/TLS and existing trusted worker database identity",
+      "runtime_service": "apps.worker.main.run_temporal_worker",
+      "state_machine": "verify trusted worker database topology -> construct authenticated Temporal client -> start/reuse workflow -> run worker",
+      "fixtures": ["tests/test_infra_adapters.py"],
+      "tests": ["tests/test_infra_adapters.py", "python -m pytest -q"],
+      "acceptance_criteria": ["Temporal Cloud API key is passed through the SDK client", "API-key mode requires TLS", "existing BRAIN_WORKER_DATABASE_URL and trusted-service RLS checks remain intact"],
+      "audit_events": ["TEMPORAL_WORKER_CONNECTED", "TEMPORAL_WORKER_CONNECTION_FAILED"],
+      "source_preservation": "preserved; only Temporal transport authentication is extended and existing tenant/RLS worker authorization remains authoritative",
+      "unresolved_gaps": ["live Temporal Cloud verification remains HOLD"]
+    },
+    {
+      "record_id": "TRACE-INFRA-HEALTH",
+      "paths": ["brain/adapters/infra_health.py", "scripts/infra_healthcheck.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "requirement_ids": ["REQ-INFRA-NATIVE-HEALTH"],
+      "owner_object": "Native authenticated infrastructure health verification",
+      "schema": "configured/ok/error result per PostgreSQL, Neo4j, Temporal and S3-compatible object storage dependency",
+      "runtime_service": "infrastructure_status and scripts/infra_healthcheck.py",
+      "state_machine": "discover configured dependency -> connect with native authenticated client -> native health/read operation -> aggregate configured-service health -> zero/nonzero CLI result",
+      "fixtures": ["tests/test_infra_adapters.py"],
+      "tests": ["tests/test_infra_adapters.py", "python -m pytest -q"],
+      "acceptance_criteria": ["health checks use native service clients", "configured unhealthy services fail aggregate health", "missing optional service configuration is reported without fabricating connectivity"],
+      "audit_events": ["INFRA_HEALTH_CHECKED"],
+      "source_preservation": "preserved; health inspection is read-only and additive",
+      "unresolved_gaps": ["live managed-service health evidence remains HOLD"]
+    }
+  ]
+}

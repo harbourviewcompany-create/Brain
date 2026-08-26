@@ -1,3 +1,6 @@
+# Local Brain infrastructure stack.
+# Production uses managed services (Postgres/Supabase, Neo4j Aura, Temporal Cloud, S3).
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -6,15 +9,88 @@ services:
       POSTGRES_PASSWORD: brain
       POSTGRES_DB: brain
     ports: ["5432:5432"]
-    volumes: ["brain_pg:/var/lib/postgresql/data"]
+    volumes:
+      - brain_pg:/var/lib/postgresql/data
+      - ./init-temporal-db.sql:/docker-entrypoint-initdb.d/01-temporal.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brain -d brain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   neo4j:
     image: neo4j:2025.04
     environment:
       NEO4J_AUTH: neo4j/brainpassword
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
     ports: ["7474:7474", "7687:7687"]
     volumes: ["brain_neo4j:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  temporal:
+    image: temporalio/auto-setup:1.27.2
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: brain
+      POSTGRES_PWD: brain
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    ports: ["7233:7233"]
+    volumes:
+      - ./temporal-dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports: ["8088:8080"]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: brainminio
+      MINIO_ROOT_PASSWORD: brainminiopass
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["brain_minio:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -ec '
+      for i in $$(seq 1 20); do
+        if mc alias set local http://minio:9000 brainminio brainminiopass; then
+          mc mb --ignore-existing local/brain-artifacts;
+          exit 0;
+        fi;
+        sleep 2;
+      done;
+      echo "MinIO initialization failed" >&2;
+      exit 1;
+      '
 
 volumes:
   brain_pg:
   brain_neo4j:
+  brain_minio:
