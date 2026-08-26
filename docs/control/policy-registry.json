@@ -59,7 +59,8 @@
   ],
   "required_workflows": [
     ".github/workflows/control-policy.yml",
-    ".github/workflows/repository-hardening.yml"
+    ".github/workflows/repository-hardening.yml",
+    ".github/workflows/observatory-verify.yml"
   ],
   "required_pr_template_sections": [
     "Control Preflight",
