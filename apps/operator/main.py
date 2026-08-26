@@ -5,7 +5,7 @@ import os
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import Response
 
 from brain.cognitive_organism import AgencyTier, CognitiveOrganism, GlobalWorkspaceItem
 from brain.economic_runtime import EconomicRuntime, InMemoryEconomicStore
@@ -74,6 +74,76 @@ def _seed_organism_operator_state() -> None:
         action_backlog_pressure=0.35,
         source_event_ids=["operator:cognitive-organism-persistence-cockpit-v1"],
     )
+
+
+# Shared design tokens for every operator cockpit page. Both cockpit routes
+# previously carried their own near-duplicate <style> block with drifting
+# colors; centralizing them keeps the two pages visually consistent and
+# means a palette change only happens in one place.
+_COCKPIT_STYLE = """
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;background:#0b0f14;color:#edf2f7}
+main{max-width:1160px;margin:40px auto;padding:0 20px 56px}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.02em}
+p{color:#9aa7b4;line-height:1.5;margin:0 0 20px}
+.crumb{display:flex;gap:8px;align-items:center;font-size:13px;color:#5f6d7c;margin-bottom:18px}
+.crumb a{color:#9cc9ff;text-decoration:none}
+.crumb a:hover{text-decoration:underline}
+.crumb .here{color:#edf2f7;font-weight:600}
+section.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+article{background:#141b24;border:1px solid #263241;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}
+article strong{font-size:12px;letter-spacing:.08em;color:#9fb0c3}
+article span{font-size:30px;font-weight:600}
+section.panel{margin-top:18px;background:#101925;border:1px solid #263241;border-radius:10px;padding:18px}
+section.panel strong{display:block;margin-bottom:8px;color:#dbeafe}
+section.panel ul{margin:0;padding-left:20px}
+section.panel li{color:#a7b4c2}
+nav.links{margin-top:24px;display:flex;gap:16px;flex-wrap:wrap}
+nav.links a{color:#9cc9ff;text-decoration:none;font-size:14px}
+nav.links a:hover{text-decoration:underline}
+@media (max-width:640px){section.cards{grid-template-columns:repeat(2,1fr)}article span{font-size:24px}}
+"""
+
+
+def _cockpit_cards(rows: list[tuple[str, Any]]) -> str:
+    return "".join(
+        f"<article><strong>{html.escape(str(label))}</strong><span>{html.escape(str(value))}</span></article>"
+        for label, value in rows
+    )
+
+
+def _cockpit_page(
+    *,
+    title: str,
+    active: str,
+    lead: str,
+    cards_html: str,
+    panels_html: str = "",
+    nav_links: list[tuple[str, str]],
+    refresh_seconds: int = 20,
+) -> Response:
+    """Render an operator cockpit page with shared layout, a breadcrumb showing
+    which cockpit is active, and a no-JS meta-refresh so the numbers stay
+    current without requiring the operator to manually reload."""
+    crumb = " · ".join(
+        f'<span class="here">{html.escape(label)}</span>' if label == active else f'<a href="{href}">{html.escape(label)}</a>'
+        for label, href in [("Economic", "/operator/ui"), ("Organism", "/operator/organism/ui")]
+    )
+    links = "".join(f'<a href="{href}">{html.escape(label)}</a>' for label, href in nav_links)
+    body = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="{refresh_seconds}">
+<title>{html.escape(title)}</title>
+<style>{_COCKPIT_STYLE}</style></head>
+<body><main>
+<nav class="crumb">{crumb}</nav>
+<h1>{html.escape(title)}</h1>
+<p>{lead}</p>
+<section class="cards">{cards_html}</section>
+{panels_html}
+<nav class="links">{links}</nav>
+</main></body></html>"""
+    return Response(content=body, media_type="text/html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/health")
@@ -185,84 +255,72 @@ def organism_operator_snapshot() -> dict[str, Any]:
     return organism.cockpit()
 
 
-@app.get("/operator/ui", response_class=HTMLResponse)
-def operator_ui() -> str:
+@app.get("/operator/ui")
+def operator_ui() -> Response:
     snapshot = economic.operator_snapshot()
-    rows = [
-        ("ACT NOW", len(snapshot["act_now"])),
-        ("VERIFY FIRST", len(snapshot["verify_first"])),
-        ("WATCH", len(snapshot["watch"])),
-        ("SUPPRESSED", snapshot["suppressed_count"]),
-        ("ACTIVE PRESSURES", snapshot["active_pressures"]),
-        ("QUALIFIED MONEY PATHS", snapshot["qualified_money_paths"]),
-        ("ACTIVE SOURCES", snapshot["active_sources"]),
-        ("TRANSACTIONS", len(snapshot["transactions"])),
-        ("COMPOUNDING ASSETS", len(snapshot["compounding_assets"])),
-    ]
-    cards = "".join(
-        f"<article><strong>{html.escape(label)}</strong><span>{value}</span></article>"
-        for label, value in rows
+    cards = _cockpit_cards(
+        [
+            ("ACT NOW", len(snapshot["act_now"])),
+            ("VERIFY FIRST", len(snapshot["verify_first"])),
+            ("WATCH", len(snapshot["watch"])),
+            ("SUPPRESSED", snapshot["suppressed_count"]),
+            ("ACTIVE PRESSURES", snapshot["active_pressures"]),
+            ("QUALIFIED MONEY PATHS", snapshot["qualified_money_paths"]),
+            ("ACTIVE SOURCES", snapshot["active_sources"]),
+            ("TRANSACTIONS", len(snapshot["transactions"])),
+            ("COMPOUNDING ASSETS", len(snapshot["compounding_assets"])),
+        ]
     )
-    return f"""<!doctype html>
-<html><head><meta charset='utf-8'><title>Brain Economic Operator</title>
-<style>
-body{{font-family:system-ui;margin:0;background:#0b0f14;color:#edf2f7}}
-main{{max-width:1100px;margin:40px auto;padding:0 20px}}
-h1{{font-size:30px}}p{{color:#9aa7b4}}
-section{{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}}
-article{{background:#141b24;border:1px solid #263241;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}}
-article strong{{font-size:12px;letter-spacing:.08em;color:#9fb0c3}}article span{{font-size:30px}}
-nav{{margin-top:24px;display:flex;gap:16px;flex-wrap:wrap}}a{{color:#9cc9ff}}
-</style></head><body><main><h1>Brain Economic Operator</h1>
-<p>Attention, pressure, money paths, transactions, source rights/ROI and compounding state.</p>
-<section>{cards}</section><nav>
-<a href='/operator'>JSON snapshot</a><a href='/operator/organism/ui'>Organism cockpit</a>
-<a href='/operator/pressure'>Pressure map</a><a href='/operator/money-paths'>Money paths</a>
-<a href='/operator/counterparties'>Counterparties</a><a href='/operator/transactions'>Transactions</a>
-<a href='/operator/sources'>Sources</a>
-</nav></main></body></html>"""
+    return _cockpit_page(
+        title="Brain Economic Operator",
+        active="Economic",
+        lead="Attention, pressure, money paths, transactions, source rights/ROI and compounding state.",
+        cards_html=cards,
+        nav_links=[
+            ("JSON snapshot", "/operator"),
+            ("Pressure map", "/operator/pressure"),
+            ("Money paths", "/operator/money-paths"),
+            ("Counterparties", "/operator/counterparties"),
+            ("Transactions", "/operator/transactions"),
+            ("Sources", "/operator/sources"),
+        ],
+    )
 
 
-@app.get("/operator/organism/ui", response_class=HTMLResponse)
-def organism_operator_ui() -> str:
+@app.get("/operator/organism/ui")
+def organism_operator_ui() -> Response:
     _seed_organism_operator_state()
     snapshot = organism.cockpit()
     self_state = snapshot.get("self_state") or {}
-    rows = [
-        ("FOCUS ITEMS", len(snapshot["conscious_focus"]["active_focus"])),
-        ("CURIOSITY", len(snapshot["curiosity_queue"])),
-        ("ORIGINAL IDEAS", len(snapshot["original_ideas"])),
-        ("DREAM INSIGHTS", len(snapshot["dream_insights"])),
-        ("DEBATES", len(snapshot["internal_debates"])),
-        ("QUARANTINE", len(snapshot["immune_quarantine"])),
-        ("ACTIONS", len(snapshot["proposed_actions"])),
-        ("DEVELOPMENT EVENTS", len(snapshot["development_timeline"])),
-    ]
-    cards = "".join(
-        f"<article><strong>{html.escape(label)}</strong><span>{value}</span></article>"
-        for label, value in rows
+    cards = _cockpit_cards(
+        [
+            ("FOCUS ITEMS", len(snapshot["conscious_focus"]["active_focus"])),
+            ("CURIOSITY", len(snapshot["curiosity_queue"])),
+            ("ORIGINAL IDEAS", len(snapshot["original_ideas"])),
+            ("DREAM INSIGHTS", len(snapshot["dream_insights"])),
+            ("DEBATES", len(snapshot["internal_debates"])),
+            ("QUARANTINE", len(snapshot["immune_quarantine"])),
+            ("ACTIONS", len(snapshot["proposed_actions"])),
+            ("DEVELOPMENT EVENTS", len(snapshot["development_timeline"])),
+        ]
     )
     focus = html.escape(str(self_state.get("focus", "no self-state yet")))
     boundary = html.escape(str(snapshot["autonomy_boundary"]))
     curiosity = "".join(f"<li>{html.escape(item)}</li>" for item in snapshot["curiosity_queue"])
     actions = "".join(f"<li>{html.escape(item)}</li>" for item in snapshot["proposed_actions"])
-    return f"""<!doctype html>
-<html><head><meta charset='utf-8'><title>Brain Organism Operator</title>
-<style>
-body{{font-family:system-ui;margin:0;background:#081018;color:#edf2f7}}
-main{{max-width:1160px;margin:40px auto;padding:0 20px}}
-h1{{font-size:30px}}p,li{{color:#a7b4c2}}strong{{color:#dbeafe}}
-section.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}}
-article{{background:#121c27;border:1px solid #26394f;border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}}
-article strong{{font-size:12px;letter-spacing:.08em;color:#9fb0c3}}article span{{font-size:30px}}
-section.panel{{margin-top:18px;background:#101925;border:1px solid #26394f;border-radius:10px;padding:18px}}
-a{{color:#9cc9ff}}
-</style></head><body><main><h1>Brain Organism Operator</h1>
-<p>Functional consciousness proxy cockpit. This is governed cognition, not a literal consciousness claim.</p>
-<section class='cards'>{cards}</section>
-<section class='panel'><strong>Current focus</strong><p>{focus}</p></section>
-<section class='panel'><strong>Autonomy boundary</strong><p>{boundary}</p></section>
-<section class='panel'><strong>Curiosity queue</strong><ul>{curiosity}</ul></section>
-<section class='panel'><strong>Proposed actions</strong><ul>{actions}</ul></section>
-<p><a href='/operator/organism'>JSON organism snapshot</a> · <a href='/operator/ui'>Economic cockpit</a></p>
-</main></body></html>"""
+    panels = f"""
+<section class="panel"><strong>Current focus</strong><p>{focus}</p></section>
+<section class="panel"><strong>Autonomy boundary</strong><p>{boundary}</p></section>
+<section class="panel"><strong>Curiosity queue</strong><ul>{curiosity}</ul></section>
+<section class="panel"><strong>Proposed actions</strong><ul>{actions}</ul></section>"""
+    return _cockpit_page(
+        title="Brain Organism Operator",
+        active="Organism",
+        lead="Functional consciousness proxy cockpit. This is governed cognition, not a literal consciousness claim.",
+        cards_html=cards,
+        panels_html=panels,
+        nav_links=[
+            ("JSON organism snapshot", "/operator/organism"),
+            ("Economic cockpit", "/operator/ui"),
+        ],
+    )
