@@ -133,3 +133,4 @@ def test_full_integrated_loop():
     assert "mind" in st
     assert st["belief_cache_size"] >= 4
     assert st["mind"]["reason_calls"] >= 0
+
