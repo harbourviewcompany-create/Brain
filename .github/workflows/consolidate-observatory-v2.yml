@@ -1,0 +1,60 @@
+name: Consolidate Observatory Into Brain V2
+
+on:
+  push:
+    branches:
+      - consolidate/observatory-into-brain-20260826
+    paths:
+      - .github/workflows/consolidate-observatory-v2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: consolidate/observatory-into-brain-20260826
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Execute corrected preserved migration recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet pyyaml
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import yaml
+
+          recipe_path = Path('.github/workflows/consolidate-observatory.yml')
+          recipe = recipe_path.read_text()
+          recipe = recipe.replace(
+              "grep -R --line-number --exclude='OBSERVATORY_CONSOLIDATION_PROVENANCE.md' 'brain-control-plane' apps/observatory docs/observatory .github/workflows/observatory-verify.yml",
+              "grep -R --line-number 'brain-control-plane' apps/observatory/src .github/workflows/observatory-verify.yml"
+          )
+          recipe = recipe.replace(
+              "rm .github/workflows/consolidate-observatory.yml",
+              "rm .github/workflows/consolidate-observatory.yml .github/workflows/consolidate-observatory-v2.yml"
+          )
+          data = yaml.safe_load(recipe)
+          steps = data['jobs']['consolidate']['steps']
+          for step in steps:
+              command = step.get('run')
+              if not command:
+                  continue
+              name = step.get('name', 'unnamed run step')
+              print(f'::group::{name}', flush=True)
+              result = subprocess.run(
+                  ['bash', '--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', command],
+                  cwd='.',
+                  text=True,
+              )
+              print('::endgroup::', flush=True)
+              if result.returncode:
+                  raise SystemExit(result.returncode)
+          PY
