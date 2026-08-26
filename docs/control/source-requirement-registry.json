@@ -7,7 +7,153 @@
     "Traceability records do not make a module BUILD-READY by themselves.",
     "Missing detail must be marked unresolved instead of deleted or inferred."
   ],
-  "sources": [],
-  "requirements": [],
-  "code_module_records": []
+  "sources": [
+    {
+      "source_id": "SRC-README",
+      "path": "README.md",
+      "label": "SOURCE"
+    },
+    {
+      "source_id": "SRC-ARCHITECTURE",
+      "path": "docs/architecture.md",
+      "label": "SOURCE"
+    },
+    {
+      "source_id": "SRC-BUILD-PLAN",
+      "path": "docs/build-plan.md",
+      "label": "SOURCE"
+    },
+    {
+      "source_id": "SRC-FUNCTION-MAP",
+      "path": "docs/brain-function-map.md",
+      "label": "SOURCE"
+    },
+    {
+      "source_id": "SRC-CONTROL",
+      "path": "docs/control",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-ARCHIVE-WORKFLOW",
+      "path": "docs/archive",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-V1-MONEY-SPINE",
+      "path": "docs/revenue/V1_MONEY_SPINE.md",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-CAPITAL-CORTEX",
+      "path": "docs/spec/CAPITAL_DISCOVERY_CORTEX.md",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-DEVELOPMENTAL",
+      "path": "docs/spec/BRAIN_DEVELOPMENTAL_INTELLIGENCE_ARCHITECTURE.md",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-NEUROSCIENCE",
+      "path": "docs/neuroscience",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-COGNITIVE-ORGANISM",
+      "path": "docs/cognitive-organism",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-CAPITAL-SOURCE-INTELLIGENCE",
+      "path": "docs/spec/CAPITAL_SOURCE_INTELLIGENCE_REGISTRY.md",
+      "label": "APPROVED"
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-BRAIN-RUNTIME-MODULES",
+      "source_ids": ["SRC-README", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-FUNCTION-MAP"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-BRAIN-ADAPTERS",
+      "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-BRAIN-APPS",
+      "source_ids": ["SRC-README", "SRC-BUILD-PLAN"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-CONTROL-ENFORCEMENT",
+      "source_ids": ["SRC-CONTROL"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-ARCHIVE-INGESTION",
+      "source_ids": ["SRC-ARCHIVE-WORKFLOW"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-V1-MONEY-SPINE",
+      "source_ids": ["SRC-README", "SRC-BUILD-PLAN", "SRC-V1-MONEY-SPINE"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-ECONOMIC-RUNTIME",
+      "source_ids": ["SRC-CAPITAL-CORTEX"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-DEVELOPMENTAL-RUNTIME",
+      "source_ids": ["SRC-DEVELOPMENTAL"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-NEUROSCIENCE-CONTROL-LAYER",
+      "source_ids": ["SRC-NEUROSCIENCE", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-COGNITIVE-ORGANISM-V1",
+      "source_ids": ["SRC-COGNITIVE-ORGANISM", "SRC-DEVELOPMENTAL", "SRC-ARCHITECTURE"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-CAPITAL-SOURCE-INTELLIGENCE",
+      "source_ids": ["SRC-CAPITAL-SOURCE-INTELLIGENCE", "SRC-CAPITAL-CORTEX", "SRC-CONTROL"],
+      "label": "APPROVED"
+    }
+  ],
+  "code_module_records": [
+    {
+      "record_id": "TRACE-INFRA-ADAPTERS-TEMP",
+      "paths": [
+        "brain/adapters/infra_health.py",
+        "brain/adapters/neo4j_projection.py",
+        "brain/adapters/object_storage.py",
+        "scripts/infra_healthcheck.py",
+        "scripts/rebuild_neo4j_projection.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-ARCHITECTURE", "SRC-BUILD-PLAN", "SRC-CONTROL"],
+      "requirement_ids": ["REQ-BRAIN-ADAPTERS", "REQ-CONTROL-ENFORCEMENT"],
+      "owner_object": "Infrastructure adapters and operational scripts for Neo4j, object storage, and health",
+      "schema": "environment-driven Neo4j projection and S3-compatible object storage",
+      "runtime_service": "Neo4jProjection, ObjectStorage, infrastructure_status",
+      "state_machine": "optional projection write-through; rebuild from Postgres; health aggregate",
+      "fixtures": ["tests/test_infra_adapters.py"],
+      "tests": ["tests/test_infra_adapters.py", "python scripts/validate_control_layer.py", "ruff check ."],
+      "acceptance_criteria": [
+        "adapter paths are traceable",
+        "Postgres remains canonical",
+        "Neo4j is rebuildable"
+      ],
+      "audit_events": ["TRACEABILITY_RECORD_VERIFIED"],
+      "source_preservation": "preserved",
+      "unresolved_gaps": ["full registry merge with main TRACE records pending if branch diverged"]
+    }
+  ]
 }
