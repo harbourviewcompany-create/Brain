@@ -42,8 +42,23 @@ No Brain database migration, Railway runtime implementation, or backend persiste
 
 ## Production endpoints
 
-- Operator UI / canonical Vercel production URL: `https://thebrain-sandy.vercel.app`
+- Vercel project (the only one for this repository): `brain`, `prj_Fr14GlGBNeae7coqrnhgXteHC0jA`, team `team_0rK4jTvMLlSufR0ZzX4LCKYi`
+- Its domains: `brain-harbourview.vercel.app`, `brain-seven-puce.vercel.app`, `brain-git-main-harbourview.vercel.app`
 - Brain Runtime API / Railway production URL: `https://brain-api-live-production.up.railway.app`
+
+> **Historical, no longer resolving.** `https://thebrain-sandy.vercel.app` was the
+> canonical operator URL under the pre-consolidation split-repo topology, served by a
+> separate Vercel project named `thebrain`. That project is not the repository's Vercel
+> project and the hostname no longer serves this application. The value is preserved here
+> as the record of the previous wiring, not as a live endpoint.
+
+> **Current deployed state, verified 2026-08-26.** The `brain` project builds from the
+> repository root, where `vercel.json` declares a single `@vercel/static` build of
+> `index.html` and routes `/(.*)` to it. Every path therefore returns the static landing
+> page: `GET https://brain-harbourview.vercel.app/api/brain/health` answers `200` with
+> `text/html`, not the BFF. The Observatory under `apps/observatory` is not deployed by
+> this project. Serving it requires pointing the project's Root Directory at
+> `apps/observatory` and deciding what then serves the landing page.
 
 The browser calls only same-origin `/api/brain/*`. The BFF is responsible for authenticating upstream requests to Railway.
 
@@ -140,7 +155,9 @@ A Brain production release follows these boundaries:
 2. Railway `brain-api-live` deploys from Brain `main`.
 3. `python tools/apply_migrations.py` applies/verifies only the Brain repository migration tree before runtime promotion.
 4. BFF/UI work merges to `harbourviewcompany-create/Brain`.
-5. Vercel `thebrain` deploys from control-plane `main`.
+5. Vercel `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`) deploys from Brain `main`. The
+   former `thebrain` project deploying from a separate control-plane repository is
+   historical; consolidation moved the UI into this repository.
 6. No migration or backend implementation is copied into the control-plane repository, and no Vercel BFF/UI implementation is copied into the Brain repository.
 
 ## Post-deploy verification
@@ -148,7 +165,9 @@ A Brain production release follows these boundaries:
 For a production wiring change, verify at minimum:
 
 - `GET https://brain-api-live-production.up.railway.app/health` succeeds.
-- `GET https://thebrain-sandy.vercel.app/api/brain/health` succeeds through the BFF.
+- `GET <app_base_url>/api/brain/health` succeeds through the BFF, where `<app_base_url>`
+  is the `app_base_url` input of the production audit workflows. It must be a domain of
+  `prj_Fr14GlGBNeae7coqrnhgXteHC0jA`.
 - A protected BFF route succeeds through Vercel deployment identity.
 - Protected Railway routes remain unauthorized without an accepted credential.
 - The browser/client bundle contains no upstream API credential.

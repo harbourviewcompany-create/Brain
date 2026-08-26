@@ -41,33 +41,16 @@ jobs:
       - name: Production build
         working-directory: apps/observatory
         run: npm run build
-      - name: Existing production BFF read smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          base="https://thebrain-sandy.vercel.app/api/brain"
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/health" -o /tmp/health.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/signals" -o /tmp/signals.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/organism/cockpit" -o /tmp/organism.json
-          node - <<'NODE'
-          const fs = require('fs');
-          const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
-          const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
-          const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
-          if (health.status !== 'ok') throw new Error(`health status ${health.status}`);
-          if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
-          if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
-          console.log(JSON.stringify({
-            health: { status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
-            signals: { count: signals.items.length, latest: signals.items.slice(0, 5).map(s => ({ id: s.id, source_id: s.source_id, attention_score: s.attention_score, novelty: s.novelty, urgency: s.urgency })) },
-            organism: { keys: Object.keys(organism).sort() }
-          }, null, 2));
-          NODE
-      - name: Render desktop and mobile visual evidence
+      - name: Verify BFF boundary and render visual evidence
         shell: bash
         working-directory: apps/observatory
         env:
-          BRAIN_API_URL: https://thebrain-sandy.vercel.app/api/brain
+          # Deliberately unreachable. This job verifies the BFF *boundary*
+          # -- who may reach the proxy and which paths it forwards -- which
+          # needs no real upstream. Reading live Brain data requires real
+          # credentials and belongs in the workflow_dispatch production
+          # audits, not in a gate every pull request must pass.
+          BRAIN_API_URL: https://upstream.invalid/api/brain
           BRAIN_API_KEY: ci-visual-evidence-proxy
           # The Observatory now requires a signed operator session on every
           # route. These are CI-only fixtures, like BRAIN_API_KEY above; without
@@ -104,6 +87,22 @@ jobs:
           node scripts/ci-operator-storage-state.mjs \
             http://127.0.0.1:3000 \
             /tmp/brain-operator-state.json
+
+          # BFF boundary smoke. The proxy attaches the server-side Brain API key
+          # to everything it forwards, so these three properties are what stop it
+          # being an open relay.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/brain/health)
+          test "$code" = "401" || { echo "unauthenticated BFF returned $code, expected 401"; exit 1; }
+
+          cookie=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/brain-operator-state.json','utf8')).cookies[0].value)")
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b "brain_operator=$cookie" http://127.0.0.1:3000/api/brain/health)
+          test "$code" != "401" || { echo "authenticated BFF still returned 401"; exit 1; }
+
+          body=$(curl -s -b "brain_operator=$cookie" http://127.0.0.1:3000/api/brain/not-an-allowed-path)
+          echo "$body" | grep -q 'path_not_allowed' || { echo "allowlist did not reject an unlisted path: $body"; exit 1; }
+
+          echo "BFF boundary: unauthenticated 401, authenticated reaches proxy, allowlist enforced"
 
           npx --yes playwright@1.55.0 install --with-deps chromium
           npx --yes playwright@1.55.0 screenshot \

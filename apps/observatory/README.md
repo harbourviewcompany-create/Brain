@@ -4,7 +4,15 @@
 
 Brain Control Plane — operator UI and server-side BFF for the Brain cognitive runtime (Next.js).
 
-Production: https://thebrain-sandy.vercel.app
+Vercel project: `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`) — the only Vercel project for
+this repository. Its domains are `brain-harbourview.vercel.app`,
+`brain-seven-puce.vercel.app` and `brain-git-main-harbourview.vercel.app`.
+
+> The project currently builds from the repository root, where `vercel.json` routes every
+> path to the static `index.html`, so this app is not yet served in production. See
+> [`docs/observatory/PRODUCTION_WIRING.md`](../../docs/observatory/PRODUCTION_WIRING.md).
+> The former `thebrain-sandy.vercel.app` belonged to a separate, pre-consolidation project
+> and no longer resolves.
 
 ## Production wiring authority
 
