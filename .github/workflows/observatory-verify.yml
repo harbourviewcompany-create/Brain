@@ -1,0 +1,115 @@
+name: Brain Observatory Verify
+
+on:
+  pull_request:
+    paths:
+      - "apps/observatory/src/**"
+      - "apps/observatory/scripts/verify-observatory.mjs"
+      - "apps/observatory/package.json"
+      - "apps/observatory/package-lock.json"
+      - "apps/observatory/eslint.config.mjs"
+      - "apps/observatory/tailwind.config.ts"
+      - "docs/observatory/BRAIN_OBSERVATORY.md"
+      - ".github/workflows/observatory-verify.yml"
+      - ".github/workflows/test.yml"
+      - "docs/control/policy-registry.json"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        working-directory: apps/observatory
+        run: npm install --no-audit --no-fund
+      - name: Lint
+        working-directory: apps/observatory
+        run: npm run lint
+      - name: Typecheck
+        working-directory: apps/observatory
+        run: npm run typecheck
+      - name: Observatory structural tests
+        working-directory: apps/observatory
+        run: npm run test:observatory
+      - name: Production build
+        working-directory: apps/observatory
+        run: npm run build
+      - name: Existing production BFF read smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://thebrain-sandy.vercel.app/api/brain"
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/health" -o /tmp/health.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/signals" -o /tmp/signals.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/organism/cockpit" -o /tmp/organism.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
+          const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
+          const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
+          if (health.status !== 'ok') throw new Error(`health status ${health.status}`);
+          if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
+          if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
+          console.log(JSON.stringify({
+            health: { status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
+            signals: { count: signals.items.length, latest: signals.items.slice(0, 5).map(s => ({ id: s.id, source_id: s.source_id, attention_score: s.attention_score, novelty: s.novelty, urgency: s.urgency })) },
+            organism: { keys: Object.keys(organism).sort() }
+          }, null, 2));
+          NODE
+      - name: Render desktop and mobile visual evidence
+        shell: bash
+        working-directory: apps/observatory
+        env:
+          BRAIN_API_URL: https://thebrain-sandy.vercel.app/api/brain
+          BRAIN_API_KEY: ci-visual-evidence-proxy
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          npm run start -- -H 127.0.0.1 -p 3000 >/tmp/brain-observatory-next.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" >/dev/null 2>&1 || true' EXIT
+
+          ready=0
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:3000/api/brain/health >/tmp/local-health.json; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/brain-observatory-next.log
+            exit 1
+          fi
+
+          npx --yes playwright@1.55.0 install --with-deps chromium
+          npx --yes playwright@1.55.0 screenshot \
+            --browser chromium \
+            --viewport-size="1440,1000" \
+            --wait-for-timeout=10000 \
+            http://127.0.0.1:3000 \
+            evidence/brain-observatory-desktop.png
+          npx --yes playwright@1.55.0 screenshot \
+            --browser chromium \
+            --viewport-size="390,844" \
+            --wait-for-timeout=10000 \
+            http://127.0.0.1:3000 \
+            evidence/brain-observatory-mobile.png
+
+          test -s evidence/brain-observatory-desktop.png
+          test -s evidence/brain-observatory-mobile.png
+          file evidence/*.png
+      - name: Upload visual evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: brain-observatory-visual-evidence
+          path: apps/observatory/evidence/*.png
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,161 @@
+name: Verify Observatory Edges Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify production BFF reads and Railway auth boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="https://thebrain-sandy.vercel.app"
+          brain="https://brain-api-live-production.up.railway.app"
+
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/health" -o /tmp/health.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/signals" -o /tmp/signals.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/organism/cockpit" -o /tmp/organism.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/edges" -o /tmp/edges.json
+
+          railway_health=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-health.json -w '%{http_code}' "$brain/health")
+          railway_edges=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-edges.json -w '%{http_code}' "$brain/edges")
+          railway_signals=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-signals.json -w '%{http_code}' "$brain/signals")
+          test "$railway_health" = "200"
+          test "$railway_edges" = "401"
+          test "$railway_signals" = "401"
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
+          const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
+          const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
+          const edges = JSON.parse(fs.readFileSync('/tmp/edges.json','utf8'));
+          const railwayEdges = JSON.parse(fs.readFileSync('/tmp/railway-edges.json','utf8'));
+          const railwaySignals = JSON.parse(fs.readFileSync('/tmp/railway-signals.json','utf8'));
+          if (health.status !== 'ok') throw new Error(`health=${health.status}`);
+          if (health.database !== 'connected') throw new Error(`database=${health.database}`);
+          if (health.persistence !== 'postgres') throw new Error(`persistence=${health.persistence}`);
+          if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
+          if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
+          if (!Array.isArray(edges.items)) throw new Error('edges.items missing');
+          if (edges.total !== edges.items.length) throw new Error(`edge total mismatch ${edges.total} != ${edges.items.length}`);
+          if (railwayEdges.detail !== 'invalid_or_missing_api_key') throw new Error(`Railway edges auth=${JSON.stringify(railwayEdges)}`);
+          if (railwaySignals.detail !== 'invalid_or_missing_api_key') throw new Error(`Railway signals auth=${JSON.stringify(railwaySignals)}`);
+          console.log(JSON.stringify({
+            health: {status: health.status, version: health.version, database: health.database, persistence: health.persistence},
+            signal_count: signals.items.length,
+            edge_count: edges.items.length,
+            organism_keys: Object.keys(organism).sort(),
+            railway_direct: {health: 200, edges: 401, signals: 401}
+          }, null, 2));
+          NODE
+
+      - name: Install browser
+        shell: bash
+        working-directory: apps/observatory
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Verify live desktop and mobile Observatory
+        shell: bash
+        working-directory: apps/observatory
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          node - <<'NODE'
+          const fs = require('fs');
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const reports = [];
+            const failures = [];
+            for (const spec of [
+              {name: 'desktop', width: 1440, height: 1000},
+              {name: 'mobile', width: 390, height: 844},
+            ]) {
+              const page = await browser.newPage({ viewport: { width: spec.width, height: spec.height } });
+              const pageErrors = [];
+              const edgeResponses = [];
+              const serverErrors = [];
+              const edgeConsole405 = [];
+
+              page.on('pageerror', error => pageErrors.push(String(error)));
+              page.on('console', msg => {
+                if (msg.type() === 'error' && /405|edges/i.test(msg.text())) edgeConsole405.push(msg.text());
+              });
+              page.on('response', response => {
+                const url = response.url();
+                if (url.includes('/api/brain/edges')) edgeResponses.push({status: response.status(), url});
+                if (response.status() >= 500) serverErrors.push(`${response.status()} ${url}`);
+              });
+
+              const root = await page.goto('https://thebrain-sandy.vercel.app/', {waitUntil: 'domcontentloaded', timeout: 60000});
+              if (!root || root.status() !== 200) failures.push(`${spec.name}: root ${root?.status()}`);
+              await page.waitForTimeout(12500);
+
+              const title = await page.title();
+              const bodyText = await page.locator('body').innerText();
+              const canvasCount = await page.locator('canvas').count();
+              const dimensions = await page.evaluate(() => ({
+                innerWidth: window.innerWidth,
+                scrollWidth: document.documentElement.scrollWidth,
+                scrollHeight: document.documentElement.scrollHeight,
+              }));
+
+              await page.screenshot({path: `evidence/production-${spec.name}.png`, fullPage: true});
+
+              if (title !== 'Brain Observatory') failures.push(`${spec.name}: title=${JSON.stringify(title)}`);
+              if (!/HEALTHY/i.test(bodyText)) failures.push(`${spec.name}: HEALTHY missing`);
+              if (!/LIVE/i.test(bodyText)) failures.push(`${spec.name}: LIVE missing`);
+              if (!/OBS\s+18\/18/i.test(bodyText)) failures.push(`${spec.name}: OBS 18/18 missing`);
+              if (/\[object Object\]/.test(bodyText)) failures.push(`${spec.name}: [object Object] visible`);
+              if (/\bDEGRADED\b/i.test(bodyText)) failures.push(`${spec.name}: DEGRADED visible`);
+              if (canvasCount < 1) failures.push(`${spec.name}: canvas missing`);
+              if (spec.name === 'mobile' && dimensions.scrollWidth > dimensions.innerWidth + 2) failures.push(`${spec.name}: horizontal overflow ${dimensions.scrollWidth}/${dimensions.innerWidth}`);
+              if (pageErrors.length) failures.push(`${spec.name}: page errors ${JSON.stringify(pageErrors)}`);
+              if (serverErrors.length) failures.push(`${spec.name}: 5xx ${JSON.stringify(serverErrors)}`);
+              if (edgeConsole405.length) failures.push(`${spec.name}: edge/405 console errors ${JSON.stringify(edgeConsole405)}`);
+              if (edgeResponses.length < 2) failures.push(`${spec.name}: expected >=2 edge polls, got ${edgeResponses.length}`);
+              if (edgeResponses.some(item => item.status !== 200)) failures.push(`${spec.name}: edge responses ${JSON.stringify(edgeResponses)}`);
+
+              reports.push({
+                ...spec,
+                title,
+                canvasCount,
+                dimensions,
+                edgeResponses,
+                edgeConsole405,
+                pageErrors,
+                serverErrors,
+                obs18: /OBS\s+18\/18/i.test(bodyText),
+                textSample: bodyText.slice(0, 2200),
+              });
+              await page.close();
+            }
+            await browser.close();
+            fs.writeFileSync('evidence/production-edge-audit.json', JSON.stringify({reports, failures}, null, 2));
+            console.log(JSON.stringify({reports, failures}, null, 2));
+            if (failures.length) throw new Error(JSON.stringify(failures));
+          })().catch(error => { console.error(error); process.exit(1); });
+          NODE
+
+      - name: Upload verification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: observatory-edges-production-evidence
+          path: apps/observatory/evidence/*
+          if-no-files-found: error
+          retention-days: 7
