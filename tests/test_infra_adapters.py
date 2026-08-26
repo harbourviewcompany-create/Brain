@@ -8,6 +8,7 @@ from uuid import UUID
 import pytest
 
 import apps.worker.main as worker_main
+import brain.adapters.infra_health as infra_health_module
 import brain.adapters.object_storage as object_storage_module
 from brain.adapters.neo4j_projection import Neo4jConfig, Neo4jProjection
 from brain.adapters.object_storage import S3ObjectStorage
@@ -266,3 +267,26 @@ def test_temporal_worker_passes_api_key_and_tls(monkeypatch):
     assert kwargs["api_key"] == "api-key"
     assert kwargs["tls"] is True
     assert calls["ran"] is True
+
+
+def test_temporal_health_uses_authenticated_sdk_connect(monkeypatch):
+    calls = {}
+
+    class _Client:
+        @staticmethod
+        async def connect(address, **kwargs):
+            calls["connect"] = (address, kwargs)
+            return object()
+
+    monkeypatch.setattr(infra_health_module, "Client", _Client)
+    monkeypatch.setenv("TEMPORAL_ADDRESS", "tenant.tmprl.cloud:7233")
+    monkeypatch.setenv("TEMPORAL_NAMESPACE", "tenant.account")
+    monkeypatch.setenv("TEMPORAL_API_KEY", "api-key")
+    monkeypatch.delenv("TEMPORAL_TLS", raising=False)
+
+    assert asyncio.run(infra_health_module._temporal_check()) is True
+    address, kwargs = calls["connect"]
+    assert address == "tenant.tmprl.cloud:7233"
+    assert kwargs["namespace"] == "tenant.account"
+    assert kwargs["api_key"] == "api-key"
+    assert kwargs["tls"] is True

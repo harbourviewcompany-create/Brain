@@ -41,6 +41,13 @@ def _neo4j() -> dict[str, Any]:
 
 
 async def _temporal_check() -> bool:
+    """Verify Temporal reachability/authentication through the native SDK.
+
+    ``Client.connect`` performs the SDK connection/authentication handshake.
+    We intentionally do not call the generic gRPC health service afterward:
+    Temporal Cloud API-key connections can reject that endpoint even when the
+    authenticated namespace connection used by workers is healthy.
+    """
     address = os.environ["TEMPORAL_ADDRESS"]
     namespace = os.environ.get("TEMPORAL_NAMESPACE", "default")
     api_key = os.environ.get("TEMPORAL_API_KEY", "").strip() or None
@@ -52,7 +59,7 @@ async def _temporal_check() -> bool:
         api_key=api_key,
         tls=tls,
     )
-    return bool(await client.service_client.check_health())
+    return client is not None
 
 
 def _temporal() -> dict[str, Any]:
