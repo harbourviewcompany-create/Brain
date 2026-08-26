@@ -60,6 +60,7 @@ jobs:
           # push workflow-file changes, so restore them for this commit and let the
           # connected GitHub app apply those validated files afterward.
           git restore .github/workflows
+          rm -rf apps/observatory/node_modules apps/observatory/.next apps/observatory/tsconfig.tsbuildinfo
           python - <<'PY'
           from pathlib import Path
           import json
