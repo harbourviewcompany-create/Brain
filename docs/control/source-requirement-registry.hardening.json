@@ -17,48 +17,68 @@
   "requirements": [
     {
       "requirement_id": "REQ-BFF-OPERATOR-AUTHENTICATION",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
       "label": "APPROVED"
     },
     {
       "requirement_id": "REQ-CREDENTIAL-PRECEDENCE",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
       "label": "APPROVED"
     },
     {
       "requirement_id": "REQ-EVIDENCE-DEDUPLICATION",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
       "label": "APPROVED"
     },
     {
       "requirement_id": "REQ-DURABLE-WORKER-COGNITION",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
       "label": "APPROVED"
     },
     {
       "requirement_id": "REQ-BOUNDED-TENANT-PARTITIONS",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
       "label": "APPROVED"
     },
     {
       "requirement_id": "REQ-DIAGNOSABLE-COGNITION-LOOP",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
       "label": "APPROVED"
     },
     {
       "requirement_id": "REQ-CANONICAL-COCKPIT-ROUTE-SURFACE",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
       "label": "APPROVED"
     }
   ],
   "code_module_records": [
     {
       "record_id": "TRACE-COCKPIT-READ-ROUTES",
-      "paths": ["apps/api/cockpit_read_routes.py"],
+      "paths": [
+        "apps/api/cockpit_read_routes.py"
+      ],
       "classification": "APPROVED",
-      "go_hold_status": "GO",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
-      "requirement_ids": ["REQ-CANONICAL-COCKPIT-ROUTE-SURFACE"],
+      "go_hold_status": "REVIEW",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "requirement_ids": [
+        "REQ-CANONICAL-COCKPIT-ROUTE-SURFACE"
+      ],
       "owner_object": "Brain cockpit read model",
       "schema": "list envelope {items, total, source} over signals, edges, contradictions, curiosity tasks and sources projected from durable Brain state",
       "runtime_service": "apps.api.main, registered on the canonical FastAPI app served by Dockerfile",
@@ -77,7 +97,9 @@
         "a client function added against a route the API never gained fails the suite",
         "GET /signals reads the durable signal.enqueued event stream, not the evidence projection"
       ],
-      "audit_events": ["COCKPIT_READ_MODEL_SERVED"],
+      "audit_events": [
+        "COCKPIT_READ_MODEL_SERVED"
+      ],
       "source_preservation": "route bodies moved verbatim from tools/live_cockpit_routes.py; the Vercel OIDC bridge remains in that module",
       "unresolved_gaps": [
         "approvals, opportunities, outcomes, formula-runs and acceptance-reports answer with empty collections until the runtime populates them",
@@ -86,16 +108,24 @@
     },
     {
       "record_id": "TRACE-RUNTIME-LOGGING",
-      "paths": ["brain/logging_config.py"],
+      "paths": [
+        "brain/logging_config.py"
+      ],
       "classification": "APPROVED",
-      "go_hold_status": "GO",
-      "source_ids": ["SRC-RUNTIME-REVIEW-FINDINGS"],
-      "requirement_ids": ["REQ-DIAGNOSABLE-COGNITION-LOOP"],
+      "go_hold_status": "REVIEW",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "requirement_ids": [
+        "REQ-DIAGNOSABLE-COGNITION-LOOP"
+      ],
       "owner_object": "Brain runtime observability",
       "schema": "one JSON object per line carrying ts, level, logger, message, promoted extra fields and any exception traceback",
       "runtime_service": "brain.logging_config, configured by every Brain entrypoint",
       "state_machine": "unconfigured -> configure_logging attaches exactly one stderr handler to the brain logger tree -> get_logger returns namespaced loggers",
-      "fixtures": ["tests/test_worker_persistence.py"],
+      "fixtures": [
+        "tests/test_worker_persistence.py"
+      ],
       "tests": [
         "pytest tests/test_worker_persistence.py",
         "ruff check brain apps"
@@ -106,7 +136,9 @@
         "the continuous cognition loop reports every swallowed failure instead of passing silently",
         "BRAIN_LOG_PROPAGATE forwards records to root when an aggregator needs them"
       ],
-      "audit_events": ["COGNITION_STEP_FAILED"],
+      "audit_events": [
+        "COGNITION_STEP_FAILED"
+      ],
       "source_preservation": "new module; no prior logging configuration existed in the repository",
       "unresolved_gaps": [
         "handlers that fall back to a computed default outside the cognition loop remain unlogged by design"
