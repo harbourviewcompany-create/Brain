@@ -215,6 +215,51 @@
         "AGENT-002"
       ],
       "go_hold_condition": "GO after protected CI passes and PR merges. HOLD for external action, autonomous spend and production capital persistence."
+    },
+    {
+      "ticket_id": "AGENT-022",
+      "issue_number": null,
+      "issue_url": null,
+      "status": "implemented",
+      "title": "Replace point-update learning with generalization, offline consolidation, and adaptive learning rate",
+      "phase": "V0_proof_harness",
+      "objective": "Close the three gaps identified by direct code inspection as separating 'bookkeeping that updates numbers' from actually learning like a brain: (1) OutcomeAttribution only ever updated the exact edge/source cited by a prediction, with no transfer to structurally similar-but-untested pathways; (2) DreamConsolidationEngine produced narrative priority nudges but never touched a learned weight, confirmed by zero references to rewiring/attribution/edge anywhere in dreaming.py; (3) edge_learn_rate and related constants were fixed literals, never adapted by how volatile or accurate recent prediction error had actually been.",
+      "files_to_create_or_modify": [
+        "brain/generalization.py",
+        "brain/attribution.py",
+        "brain/dreaming.py",
+        "tests/test_generalization.py",
+        "tests/test_attribution_learning.py",
+        "tests/test_replay_consolidation.py",
+        "tests/fixtures/brain/learning_generalization_and_consolidation.json",
+        "tools/validate_agent_control.py",
+        "docs/spec/source-to-build-traceability.json"
+      ],
+      "required_tests": [
+        "test_propagate_reinforces_similar_edges_with_partial_credit",
+        "test_propagate_respects_similarity_threshold",
+        "test_attribute_with_candidate_edges_generalizes_to_similar_pathway",
+        "test_generalization_never_touches_edges_already_directly_cited",
+        "test_meta_plasticity_raises_rate_after_volatile_prediction_errors",
+        "test_meta_plasticity_stays_near_base_rate_after_consistently_accurate_predictions",
+        "test_meta_plasticity_rate_does_not_leak_into_its_own_update",
+        "test_meta_plasticity_rate_is_bounded",
+        "test_consolidate_replays_real_outcomes_and_updates_weights",
+        "test_consolidation_uses_a_reduced_rate_and_restores_it_afterward",
+        "test_consolidate_prioritizes_most_salient_outcomes_when_over_the_cap",
+        "test_consolidation_generalizes_when_given_a_candidate_pool"
+      ],
+      "required_fixtures": [
+        "learning_generalization_and_consolidation"
+      ],
+      "acceptance_criteria": [
+        "learning on one edge partially transfers to structurally similar edges (same relation, shared endpoint), never to unrelated ones, bounded by similarity_threshold/max_neighbors/transfer_rate and RewiringEngine's own max_edge_delta underneath",
+        "offline consolidation replays real recorded Outcomes (never fabricated ones) through the same OutcomeAttribution used while awake, at a reduced rate, prioritized by salience, and restores the original rate afterward",
+        "edge_learn_rate is no longer a fixed constant: it rises after a run of volatile prediction error and relaxes toward baseline after a run of accurate predictions, bounded by min/max, and never uses an outcome's own error to set its own update's rate",
+        "all three are fully backward compatible: no candidate_edges argument means no generalization; no error history means the base rate; existing callers of attribute() and DreamConsolidationEngine are unaffected"
+      ],
+      "blocked_by": [],
+      "go_hold_condition": "GO for the engine-level implementation: all three mechanisms exist, are unit- and integration-tested (25 new tests), and are proven backward compatible with the full existing suite. HOLD for full production wiring: cycle.py is not touched by this ticket (deliberately, to avoid colliding with concurrent fast-moving work on that file) -- candidate_edges and edges_by_outcome must still be threaded from a live edge store into CognitiveCycle's calls to attribute()/consolidate() for this to run automatically rather than only when explicitly invoked."
     }
   ]
 }
