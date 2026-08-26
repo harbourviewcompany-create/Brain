@@ -56,6 +56,10 @@ class MindRuntime:
         self._outcomes: list[Any] = []
         self._active_focus: str | None = None
 
+    def set_replay_engine(self, engine: ReplayConsolidationEngine) -> None:
+        """Inject a fully configured ReplayConsolidationEngine (from heartbeat bootstrap)."""
+        self._replay = engine
+
     def _get_replay(self) -> ReplayConsolidationEngine | None:
         if self._replay is not None:
             return self._replay
@@ -205,12 +209,24 @@ class MindRuntime:
             if snap is not None:
                 load = float(getattr(snap, "cognitive_load", None) or getattr(snap, "load", 0) or 0)
                 overload_hint = max(overload_hint, load)
+                overload_hint = max(
+                    overload_hint,
+                    float(getattr(snap, "stress_index", 0) or 0),
+                    float(getattr(snap, "uncertainty_load", 0) or 0),
+                )
         except Exception:
             pass
 
         overload = max(0.0, min(1.0, overload_hint + 0.05 * max(0, open_curiosity - 3)))
         self.policy.overload = overload
-        self.policy.phase = "active" if belief_count else "uninitialized"
+        active = (
+            belief_count > 0
+            or self._reason_calls > 0
+            or self._curiosity_resolved > 0
+            or self._active_focus is not None
+            or len(self.curiosity.tasks) > 0
+        )
+        self.policy.phase = "active" if active else "uninitialized"
         self.policy.prefer_consolidation = overload >= 0.6
         self.policy.suppress_new_curiosity = overload >= 0.75
         self.policy.max_new_tasks = 1 if overload >= 0.6 else 3
