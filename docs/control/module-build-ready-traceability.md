@@ -45,6 +45,12 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/cognitive_immune.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_organism.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_state.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/http_client.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/http_json.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/protocol.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/rss.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/service.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/contradiction.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/contradiction_queue.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/curiosity.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -80,6 +86,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/economic_runtime.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_sources.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/economic_transaction.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
+| brain/endogenous.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/events.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/executive.py | partial | present | partial | partial | present | missing | present | HOLD |
 | brain/experiments.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -98,6 +105,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/memory_systems.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/metabolism.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/mind_runtime.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/model_cortex.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/money_spine.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/motor.py | partial | present | partial | partial | present | missing | present | HOLD |
@@ -113,6 +121,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/prediction.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/projections.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/protocol.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
+| brain/reasoning.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/replay.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/resources.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/reward.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -129,6 +138,8 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/working_memory.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/world_model.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | scripts/ingest_current_thread_archive.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
+| scripts/run_ingest.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| scripts/start_thinking.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | scripts/validate_archive_manifest.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_build_ready_traceability.py | partial | partial | partial | missing | partial | partial | missing | HOLD |
 | scripts/validate_control_layer.py | partial | partial | partial | missing | partial | partial | missing | HOLD |

@@ -60,7 +60,7 @@ def test_temporal_cognition_workflow_executes_maintenance_and_continue_as_new():
                     task_queue=task_queue,
                 )
 
-        assert result == {"iterations": 2, "maintenance_runs": 2}
+        assert result == {"iterations": 2, "maintenance_runs": 2, "ingest_runs": 0}
         assert _activity_counts == {"ticks": 4, "maintenance": 4}
 
     asyncio.run(scenario())

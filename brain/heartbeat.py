@@ -1,24 +1,14 @@
-"""Heartbeat: continuous cognition runner + closed sensory→learning loop.
-
-Composes:
-  sensory inbox → CognitiveCycle (perceive / attend / evidence / belief) →
-  optional prediction → outcome attribution (via LearningService)
-
-The heartbeat is the process that makes the Brain keep thinking between
-operator HTTP calls. Production deployments should run `run_forever` in a
-worker process (or call `tick` on a schedule).
-"""
-
+"""Heartbeat service."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import timedelta
 from threading import Lock
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from .cycle import CognitiveCycle, CognitiveCycleResult
-from .domain import Outcome
+from .endogenous import seed_foundational_beliefs
 from .events import BrainEvent
 from .learning import LearningService
 from .memory import InMemoryBrainStore
@@ -35,8 +25,6 @@ class CycleRunRecord:
 
 @dataclass
 class HeartbeatService:
-    """Operator-facing façade over inbox + cycle runner + learning loop."""
-
     event_store: Any
     learning: LearningService | None = None
     inbox: InMemorySensoryInbox = field(default_factory=InMemorySensoryInbox)
@@ -55,6 +43,7 @@ class HeartbeatService:
         self._runs_lock = Lock()
         self._ticks: int = 0
         self._processed: int = 0
+        self._bootstrapped: bool = False
 
         class _RunsAdapter:
             def __init__(self, outer: HeartbeatService) -> None:
@@ -69,7 +58,20 @@ class HeartbeatService:
             inbox=self.inbox,
             cycle_runs=_RunsAdapter(self),
             idle_sleep_seconds=self.idle_sleep_seconds,
+            enable_endogenous=True,
+            status_provider=self.status,
+            learning=self.learning,
+            auto_predict=self.auto_predict,
         )
+        try:
+            from .attribution import OutcomeAttribution
+            from .dreaming import ReplayConsolidationEngine
+
+            self._runner.mind.set_replay_engine(
+                ReplayConsolidationEngine(OutcomeAttribution())
+            )
+        except Exception:
+            pass
 
     def perceive(
         self,
@@ -90,7 +92,6 @@ class HeartbeatService:
         operator_burden: float = 0.0,
         metadata: dict[str, Any] | None = None,
     ) -> InboxItem:
-        """Enqueue a sensory stimulus for the next tick."""
         payload = {
             "source_reliability": source_reliability,
             "supports": supports,
@@ -127,8 +128,33 @@ class HeartbeatService:
             )
         return item
 
+    def bootstrap_mind(self) -> int:
+        if self._bootstrapped and self._cycle._belief_cache:
+            return len(self._cycle._belief_cache)
+        seeds = seed_foundational_beliefs()
+        for belief in seeds:
+            self._cycle._belief_cache[belief.id] = belief
+            if hasattr(self.event_store, "append"):
+                self.event_store.append(
+                    BrainEvent(
+                        "belief.seeded",
+                        "belief",
+                        belief.id,
+                        {
+                            "statement": belief.statement,
+                            "confidence": belief.confidence,
+                            "state": str(belief.state),
+                            "unknowns": list(belief.unknowns or []),
+                            "source": "endogenous_bootstrap",
+                        },
+                    )
+                )
+        self._bootstrapped = True
+        return len(seeds)
+
     def tick(self, *, max_items: int = 1) -> dict[str, Any]:
-        """Run up to max_items cognition cycles. Returns a status snapshot."""
+        if not self._bootstrapped:
+            self.bootstrap_mind()
         processed: list[dict[str, Any]] = []
         for _ in range(max(1, max_items)):
             before = len(self._runs)
@@ -164,11 +190,10 @@ class HeartbeatService:
         }
 
     def run_forever(self) -> None:
-        """Blocking worker loop — use in a dedicated process/container."""
+        self.bootstrap_mind()
         self._runner.run_forever()
 
     def _maybe_predict(self, result: CognitiveCycleResult) -> Prediction | None:
-        """Create an open prediction from a high-attention belief update."""
         if self.learning is None:
             return None
         if result.attention_score < 0.3:
@@ -182,66 +207,93 @@ class HeartbeatService:
             confidence=min(0.95, max(0.05, confidence)),
             horizon=timedelta(hours=24),
             belief_id=result.belief_id,
-            metadata={"cycle_id": str(result.cycle_id), "auto": True},
+            source_keys=["endogenous"],
         )
-        return self.learning.create_prediction(pred)
+        try:
+            return self.learning.create_prediction(pred)
+        except Exception:
+            return None
 
     def resolve_with_outcome(
         self,
         *,
-        prediction_id: UUID,
-        value_created: float,
-        action_id: UUID | None = None,
+        value_created: float = 0.5,
         prediction_accuracy: float = 0.5,
-        operator_time_cost: float = 0.0,
-        source_keys: list[str] | None = None,
+        prediction_id: UUID | None = None,
+        action_id: UUID | None = None,
         edge_ids: list[UUID] | None = None,
+        source_keys: list[str] | None = None,
     ) -> Any:
-        """Close the loop: outcome → attribution → rewire via LearningService."""
-        if self.learning is None:
-            raise RuntimeError("learning_service_unavailable")
-        outcome = Outcome(
-            action_id=action_id or uuid4(),
+        return self.inject_outcome(
             value_created=value_created,
-            operator_time_cost=operator_time_cost,
             prediction_accuracy=prediction_accuracy,
             prediction_id=prediction_id,
-            edge_ids=list(edge_ids or []),
-            source_keys=list(source_keys or []),
-        )
-        return self.learning.record_outcome(
-            outcome,
-            prediction_id=prediction_id,
-            edge_ids=edge_ids,
+            action_id=action_id,
             source_keys=source_keys,
+            edge_ids=edge_ids,
         )
+
+    @property
+    def mind(self) -> Any:
+        return self._runner.mind
 
     def status(self) -> dict[str, Any]:
         with self._runs_lock:
-            last = None
-            if self._runs:
-                r = self._runs[-1]
-                last = {
-                    "inbox_id": str(r.inbox_id),
-                    "cycle_id": str(r.result.cycle_id),
-                    "belief_id": str(r.result.belief_id),
-                    "attention_score": r.result.attention_score,
-                }
-        return {
+            run_n = len(self._runs)
+        out: dict[str, Any] = {
             "ticks": self._ticks,
             "total_processed": self._processed,
+            "cycle_runs": run_n,
             "inbox": self.inbox.stats(),
             "belief_cache_size": len(self._cycle._belief_cache),
-            "working_memory_size": self._cycle.working_memory.size,
-            "last_cycle": last,
-            "auto_predict": self.auto_predict,
+            "bootstrapped": self._bootstrapped,
         }
+        try:
+            out["mind"] = self._runner.mind.status()
+        except Exception:
+            pass
+        return out
+
+    def inject_outcome(
+        self,
+        *,
+        value_created: float,
+        prediction_id: UUID | None = None,
+        prediction_accuracy: float = 0.5,
+        action_id: UUID | None = None,
+        source_keys: list[str] | None = None,
+        edge_ids: list[UUID] | None = None,
+    ) -> Any:
+        return self._runner.inject_outcome(
+            value_created=value_created,
+            prediction_id=prediction_id,
+            prediction_accuracy=prediction_accuracy,
+            action_id=action_id,
+            source_keys=source_keys,
+            edge_ids=edge_ids,
+        )
 
 
 def build_default_heartbeat(
     *,
     event_store: Any | None = None,
     learning: LearningService | None = None,
+    with_learning: bool = True,
 ) -> HeartbeatService:
     store = event_store or InMemoryBrainStore()
+    if learning is None and with_learning:
+        try:
+            from brain.adapters.learning_store import InMemoryLearningStore
+            from brain.learning import LearningService as LS
+
+            mem = InMemoryLearningStore()
+            learning = LS(
+                store,
+                predictions=mem,
+                edges=mem,
+                attributions=mem,
+                sources=mem,
+            )
+        except Exception:
+            learning = None
     return HeartbeatService(event_store=store, learning=learning)
