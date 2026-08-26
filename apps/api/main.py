@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hmac
 import os
+import sys
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from apps.api.cockpit_read_routes import register_cockpit_read_routes
 from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
@@ -21,7 +22,7 @@ from brain.memory import InMemoryBrainStore
 from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
-from brain.security import SecurityConfig
+from brain.security import SecurityConfig, presented_credentials
 
 _security = SecurityConfig.from_env()
 
@@ -63,16 +64,7 @@ async def brain_authentication(request: Request, call_next):
             },
         )
 
-    authorization = request.headers.get("authorization")
-    candidate = (
-        request.headers.get("x-brain-api-key")
-        or request.headers.get("x-api-key")
-        or ""
-    )
-    if authorization and authorization.lower().startswith("bearer "):
-        candidate = authorization[7:].strip()
-
-    if not candidate or not hmac.compare_digest(candidate, configured_key):
+    if not presented_credentials(request.headers, configured_key):
         return JSONResponse(
             status_code=401,
             content={"detail": "invalid_or_missing_api_key"},
@@ -576,3 +568,7 @@ def daily_revenue_report(body: DailyRevenueReportRequest):
 
 
 register_cognitive_organism_routes(app)
+
+# The cockpit read model lives on the canonical image, not only on the
+# deprecated Dockerfile.railway compatibility entrypoint.
+register_cockpit_read_routes(app, api_module=sys.modules[__name__])

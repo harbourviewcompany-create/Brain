@@ -1,7 +1,15 @@
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
-from tests.conftest import TEST_API_KEY
+
+# Imported at module scope, before any request is served, because that is how
+# production loads it: uvicorn imports the module at process start. Importing
+# it inside a test instead makes the file pass only when some earlier test file
+# happened to import it first -- Starlette refuses to add middleware once the
+# app has handled a request, so `tenant_app`'s membership middleware raises
+# "Cannot add middleware after an application has started".
+import tools.live_cockpit_routes  # noqa: E402,F401  (registers cockpit routes on `app`)
+from tests.conftest import TEST_API_KEY  # noqa: E402
 
 # Deliberately reuse the same `app` singleton every other apps/api test file
 # uses. Reloading the module here would rebind apps.api.main's globals
@@ -52,11 +60,9 @@ def test_write_endpoint_requires_key():
 
 
 def test_cockpit_routes_are_covered_by_same_middleware():
-    """live_cockpit_routes.py registers routes on the same `app` object after
-    import, so it must inherit the same auth middleware without any
-    per-route change in that file."""
-    import tools.live_cockpit_routes  # noqa: F401  (registers extra routes on `app`)
-
+    """live_cockpit_routes.py registers routes on the same `app` object at
+    import time (see the module-scope import above), so it must inherit the
+    same auth middleware without any per-route change in that file."""
     unauth = client.get("/signals", headers={"x-api-key": "wrong-key"})
     assert unauth.status_code == 401
 

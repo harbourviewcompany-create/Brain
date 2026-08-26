@@ -42,8 +42,17 @@ def hydrate_belief_cache(
         except ValueError:
             bstate = BeliefState.HYPOTHESIS
         version = int(payload.get("version", 1))
+        # Restore the dedup set so a replayed belief does not accept an
+        # already-counted claim again after a restart.
+        raw_fingerprints = payload.get("evidence_fingerprints") or []
+        fingerprints = {str(item) for item in raw_fingerprints} if isinstance(raw_fingerprints, (list, set, tuple)) else set()
         belief_cache[bid] = Belief(
-            statement=statement, confidence=confidence, state=bstate, id=bid, version=version
+            statement=statement,
+            confidence=confidence,
+            state=bstate,
+            id=bid,
+            version=version,
+            evidence_fingerprints=fingerprints,
         )
         loaded += 1
     return loaded

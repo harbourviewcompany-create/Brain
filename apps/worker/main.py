@@ -9,6 +9,10 @@ from typing import Any
 
 import psycopg
 
+from brain.logging_config import get_logger
+
+log = get_logger("worker")
+
 
 try:
     from temporalio import activity, workflow
@@ -55,6 +59,33 @@ def worker_database_url() -> str:
     return dsn
 
 
+def build_brain_store() -> Any | None:
+    """Return the durable Brain store, or None when no database is configured.
+
+    The continuous cognition loop used to run entirely on InMemoryBrainStore
+    regardless of DATABASE_URL, so every belief, prediction and cycle result the
+    worker produced was invisible to the API and discarded on restart -- while
+    `worker_database_url()`, and the tenant-RLS role topology it enforces, ran
+    only under BRAIN_WORKER_MODE=verify.
+    """
+
+    if not (os.environ.get("BRAIN_WORKER_DATABASE_URL") or os.environ.get("DATABASE_URL")):
+        return None
+
+    # Validates the role topology before opening the pool, and fails closed if
+    # tenant RLS is enforced without a dedicated trusted-service login.
+    dsn = worker_database_url()
+
+    from brain.adapters.brain_store import PostgresBrainStore
+
+    store = PostgresBrainStore(dsn)
+    log.info(
+        "worker cognition bound to durable store",
+        extra={"beliefs": len(store.beliefs), "persistence": "postgres"},
+    )
+    return store
+
+
 def build_learning(event_store: Any | None = None) -> Any:
     try:
         from brain.adapters.learning_store import InMemoryLearningStore
@@ -67,13 +98,21 @@ def build_learning(event_store: Any | None = None) -> Any:
             store, predictions=mem, edges=mem, attributions=mem, sources=mem
         )
     except Exception:
+        log.exception("learning service unavailable; continuing without attribution")
         return None
 
 
-def build_runner(*, enable_endogenous: bool = True) -> Any:
+def build_runner(*, enable_endogenous: bool = True, event_store: Any | None = None) -> Any:
     from brain.heartbeat import build_default_heartbeat
 
-    hb = build_default_heartbeat(with_learning=True)
+    store = event_store if event_store is not None else build_brain_store()
+    if store is None:
+        log.warning(
+            "no DATABASE_URL or BRAIN_WORKER_DATABASE_URL configured; "
+            "worker cognition is in-memory and will be lost on restart"
+        )
+
+    hb = build_default_heartbeat(with_learning=True, event_store=store)
     hb.bootstrap_mind()
     runner = hb._runner
     runner.enable_endogenous = enable_endogenous
@@ -107,7 +146,7 @@ def build_ingest_service(*, inbox: Any | None = None, event_store: Any | None = 
                     refresh_seconds=int(os.environ.get("BRAIN_RSS_REFRESH", "300")),
                 )
             except Exception:
-                pass
+                log.exception("RSS source could not be registered", extra={"source_key": key})
     return svc
 
 
@@ -126,7 +165,10 @@ def _runner_singleton() -> Any:
 def _learning_singleton() -> Any:
     global _learning
     if _learning is None:
-        _learning = build_learning()
+        # Share the runner's store so attribution is written where cognition
+        # is written, instead of into a second, unrelated in-memory store.
+        runner = _runner_singleton()
+        _learning = build_learning(getattr(runner.cycle, "event_store", None))
     return _learning
 
 
@@ -155,7 +197,7 @@ def run_forever_with_maintenance(
             try:
                 ingest.ingest_due_sources()
             except Exception:
-                pass
+                log.exception("connector ingest cycle failed")
         worked = runner.run_once()
         if worked:
             idle_ticks = 0
@@ -167,7 +209,7 @@ def run_forever_with_maintenance(
                 if learning is not None and hasattr(learning, "expire_due_predictions"):
                     learning.expire_due_predictions()
             except Exception:
-                pass
+                log.exception("prediction expiry maintenance failed")
             idle_ticks = 0
 
 
@@ -196,7 +238,9 @@ if _HAS_TEMPORAL:
                         )
                         ingest_runs += 1
                     except Exception:
-                        pass
+                        # workflow.logger, not the module logger: workflow code
+                        # must stay deterministic and replay-safe.
+                        workflow.logger.warning("ingest activity failed", exc_info=True)
                 worked = await workflow.execute_activity(
                     "brain.cognition_tick",
                     start_to_close_timeout=timedelta(minutes=2),
@@ -281,7 +325,8 @@ if _HAS_TEMPORAL:
                     task_queue=task_queue,
                 )
             except WorkflowAlreadyStartedError:
-                pass
+                # Expected on redeploy: the durable workflow is already running.
+                log.info("continuous cognition workflow already running", extra={"workflow_id": workflow_id})
         worker = Worker(
             client,
             task_queue=task_queue,

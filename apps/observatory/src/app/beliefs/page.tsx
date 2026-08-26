@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 import Link from "next/link";
 import { Panel } from "@/components/Panel";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ConfidenceBar } from "@/components/ConfidenceBar";
-import { MOCK_BELIEFS } from "@/lib/mock";
-import { isApiConfigured, listBeliefs } from "@/lib/api";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ResourceState";
+import { useBrainResource } from "@/hooks/useBrainResource";
+import { listBeliefs } from "@/lib/api";
 import type { Belief } from "@/types/brain";
 
 function normalize(b: Partial<Belief> & { id: string; statement: string }): Belief {
@@ -23,23 +24,15 @@ function normalize(b: Partial<Belief> & { id: string; statement: string }): Beli
 }
 
 export default function BeliefsPage() {
-  const [items, setItems] = useState<Belief[]>(MOCK_BELIEFS);
-  const [source, setSource] = useState<string>("mock");
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isApiConfigured()) return;
-    listBeliefs()
-      .then((res) => {
-        setItems((res.items || []).map((b) => normalize(b)));
-        setSource(res.source || "api");
-        setError(null);
-      })
-      .catch((e: Error) => {
-        setError(e.message);
-        setSource("mock");
-      });
+  const load = useCallback(async () => {
+    const res = await listBeliefs();
+    return {
+      items: (res.items || []).map((b) => normalize(b)),
+      source: res.source || "api",
+    };
   }, []);
+
+  const { status, data, error, reload } = useBrainResource(load);
 
   return (
     <div className="space-y-4">
@@ -50,44 +43,60 @@ export default function BeliefsPage() {
             Evidence-backed claims with explicit uncertainty. Contradictions are preserved.
           </p>
         </div>
-        <span className="font-mono text-[10px] text-cockpit-muted">
-          {source} · {items.length} beliefs
-          {error ? ` · ${error}` : ""}
-        </span>
+        {status === "ready" && (
+          <span className="font-mono text-[10px] text-cockpit-muted">
+            {data.source} · {data.items.length} beliefs
+          </span>
+        )}
       </div>
 
-      <Panel>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-xs">
-            <thead>
-              <tr className="border-b border-cockpit-border text-[10px] uppercase text-cockpit-muted">
-                <th className="pb-2 pr-3 font-medium">Statement</th>
-                <th className="pb-2 pr-3 font-medium">State</th>
-                <th className="pb-2 pr-3 font-medium">Confidence</th>
-                <th className="pb-2 font-medium">Id</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((b) => (
-                <tr key={b.id} className="border-b border-cockpit-border/50">
-                  <td className="py-2 pr-3">
-                    <Link href={`/beliefs/${b.id}`} className="hover:text-cockpit-accent">
-                      {b.statement}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-3">
-                    <StatusBadge status={b.state} />
-                  </td>
-                  <td className="py-2 pr-3">
-                    <ConfidenceBar value={b.confidence} className="max-w-[120px]" />
-                  </td>
-                  <td className="py-2 font-mono text-[10px] text-cockpit-muted">{b.id.slice(0, 8)}</td>
+      {status === "loading" && <LoadingState label="beliefs" />}
+      {status === "error" && <ErrorState label="beliefs" error={error} onRetry={reload} />}
+
+      {status === "ready" && data.items.length === 0 && (
+        <EmptyState
+          title="No beliefs yet"
+          description="Beliefs appear here once evidence has been recorded against a claim."
+          schemaHint="Belief · Evidence"
+        />
+      )}
+
+      {status === "ready" && data.items.length > 0 && (
+        <Panel>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-xs">
+              <thead>
+                <tr className="border-b border-cockpit-border text-[10px] uppercase text-cockpit-muted">
+                  <th className="pb-2 pr-3 font-medium">Statement</th>
+                  <th className="pb-2 pr-3 font-medium">State</th>
+                  <th className="pb-2 pr-3 font-medium">Confidence</th>
+                  <th className="pb-2 font-medium">Id</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
+              </thead>
+              <tbody>
+                {data.items.map((b) => (
+                  <tr key={b.id} className="border-b border-cockpit-border/50">
+                    <td className="py-2 pr-3">
+                      <Link href={`/beliefs/${b.id}`} className="hover:text-cockpit-accent">
+                        {b.statement}
+                      </Link>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <StatusBadge status={b.state} />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <ConfidenceBar value={b.confidence} className="max-w-[120px]" />
+                    </td>
+                    <td className="py-2 font-mono text-[10px] text-cockpit-muted">
+                      {b.id.slice(0, 8)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }

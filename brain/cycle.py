@@ -377,6 +377,9 @@ class CognitiveCycle:
                     "version": updated.version,
                     "evidence_id": str(evidence.id),
                     "supports": stimulus.supports,
+                    # Carried so a cache rebuilt from event replay knows which
+                    # assertions have already moved this belief's confidence.
+                    "evidence_fingerprints": sorted(updated.evidence_fingerprints),
                 },
                 correlation_id=cycle_id,
             ),

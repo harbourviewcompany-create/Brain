@@ -12,6 +12,7 @@ except ImportError:  # pragma: no cover - infrastructure dependency guard
     Jsonb = None
     ConnectionPool = Any  # type: ignore[misc,assignment]
 
+from ..beliefs import rebuild_fingerprints
 from ..domain import Belief, BeliefState, Edge, Evidence, Node, RewireEvent, RewireOperation
 from ..memory import InMemoryBrainStore
 from .postgres import PostgresEventStore
@@ -107,6 +108,12 @@ class PostgresBrainStore(InMemoryBrainStore):
                     belief.supporting_evidence.add(row["evidence_id"])
                 elif row["relation"] == "contradicts":
                     belief.contradicting_evidence.add(row["evidence_id"])
+
+            # Rebuild the derived dedup set now that beliefs and evidence are
+            # both loaded, so a restart cannot let an already-counted claim
+            # move confidence a second time.
+            for belief in self.beliefs.values():
+                rebuild_fingerprints(belief, self.evidence)
 
             cur.execute("select id, kind, node_key, properties from public.graph_nodes")
             for row in cur.fetchall():

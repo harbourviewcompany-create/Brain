@@ -56,6 +56,36 @@ def _migration_version(path: Path) -> int:
         raise RuntimeError(f"invalid migration filename: {path.name}") from exc
 
 
+#: Versions that already shipped with a colliding prefix. Apply order between
+#: them is fixed by filename sort and both are long applied in production, so
+#: renaming either would orphan its `brain_schema_migrations` row. New
+#: collisions are refused instead.
+GRANDFATHERED_DUPLICATE_VERSIONS = frozenset({6})
+
+
+def _assert_unique_versions(files: Sequence[Path]) -> None:
+    """Refuse a new migration that reuses an existing version number.
+
+    ``--max-version`` and the CI baseline gate both select migrations by this
+    number, so two files sharing one version cannot be separated by either.
+    """
+
+    seen: dict[int, list[str]] = {}
+    for path in files:
+        seen.setdefault(_migration_version(path), []).append(path.name)
+
+    collisions = {
+        version: names
+        for version, names in seen.items()
+        if len(names) > 1 and version not in GRANDFATHERED_DUPLICATE_VERSIONS
+    }
+    if collisions:
+        detail = "; ".join(
+            f"{version:03d}: {', '.join(sorted(names))}" for version, names in sorted(collisions.items())
+        )
+        raise RuntimeError(f"duplicate migration version numbers are not allowed -- {detail}")
+
+
 def _ensure_compatibility_roles(conn: psycopg.Connection) -> None:
     # These NOLOGIN roles are part of the repository migration contract and
     # are created by CI before migrations are applied.
@@ -216,6 +246,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise RuntimeError("DATABASE_URL or BRAIN_MIGRATION_DATABASE_URL is required")
 
     files = sorted(MIGRATIONS_DIR.glob("*.sql"), key=lambda path: path.name)
+    _assert_unique_versions(files)
     if args.max_version is not None:
         files = [path for path in files if _migration_version(path) <= args.max_version]
     if not files:

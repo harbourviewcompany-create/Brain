@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test:observatory": "node scripts/verify-observatory.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run test:observatory && npm run build"
+    "verify": "npm run lint && npm run typecheck && npm run test:observatory && npm run test:session && npm run build",
+    "test:session": "node scripts/test-operator-session.mjs"
   },
   "dependencies": {
     "@vercel/oidc": "3.8.5",

@@ -12,11 +12,33 @@ The canonical Brain ↔ control-plane production ownership, authentication, envi
 
 ## Security model
 
+**Operators sign in before anything reaches the Brain.** `src/middleware.ts` requires a
+valid signed operator session on every route except `/login` and the auth endpoints,
+including `/api/brain/*` and `/api/brain-status`. The BFF attaches the server-side Brain
+credential to everything it forwards, so an unauthenticated caller here would be an
+unauthenticated caller against the Brain itself. Set `OBSERVATORY_ACCESS_KEY` and
+`OBSERVATORY_SESSION_SECRET`; without both, the Observatory refuses every request rather
+than falling open. Sessions are HttpOnly, SameSite=Lax and last 12 hours.
+
 The browser talks only to same-origin `/api/brain/*` and receives no upstream credential.
 
-Vercel deployment OIDC is the primary server-to-server authentication path. The BFF obtains its signed deployment identity at runtime and forwards it to the Railway Brain API. Railway verifies the exact production identity before translating it internally to its locally stored Brain API credential.
+Two upstream authentication paths exist, and which one applies depends on the Brain image
+being addressed:
 
-`BRAIN_API_KEY` remains an optional server-only fallback for the BFF. `BRAIN_API_URL` is also server-side and points to the Railway runtime.
+- **`Dockerfile.railway`** (`railway.brain-api-live.toml`, the BFF's default upstream)
+  wraps the app in `VercelOidcAuthBridge`. It verifies the deployment token's issuer,
+  audience and subject via `tools/vercel_oidc.py`, then exchanges it for the locally
+  stored Brain API key. This is the OIDC path.
+- **`Dockerfile`** (`railway.toml`, the repository default) runs `apps.api.tenant_app` and
+  authenticates on `BRAIN_API_KEY` alone. It has no OIDC bridge and ignores the bearer
+  token.
+
+The BFF sends both credentials, and `apps/api/main.py` accepts any presented credential
+that matches — so a deployment token no longer masks a valid `X-Brain-Api-Key`. Set
+`BRAIN_UPSTREAM_ACCEPTS_OIDC=false` to stop forwarding the deployment token.
+
+`BRAIN_API_KEY` is server-only and must equal the Brain runtime's `BRAIN_API_KEY`.
+`BRAIN_API_URL` is also server-side and points to the Railway runtime.
 
 Default upstream if `BRAIN_API_URL` is unset: `https://brain-api-live-production.up.railway.app`.
 

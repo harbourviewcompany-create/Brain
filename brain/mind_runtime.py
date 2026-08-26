@@ -9,8 +9,11 @@ from .curiosity import CuriosityEngine, CuriosityState
 from .dreaming import ReplayConsolidationEngine
 from .endogenous import EndogenousStimulus, EndogenousThoughtGenerator
 from .global_workspace import GlobalWorkspace, GlobalWorkspaceItem
+from .logging_config import get_logger
 from .reasoning import ReasonRequest, default_reasoner
 from .self_model import SelfModel
+
+log = get_logger("mind_runtime")
 
 
 @dataclass
@@ -125,7 +128,7 @@ class MindRuntime:
                     "confidence": result.confidence,
                 }
             except Exception:
-                pass
+                log.exception("reasoner enrichment failed; keeping the unenriched thought")
 
         if thought.kind == "curiosity" and not self.policy.suppress_new_curiosity:
             try:
@@ -149,7 +152,7 @@ class MindRuntime:
                         cost=0.15,
                     )
             except Exception:
-                pass
+                log.exception("curiosity task generation failed")
 
         return thought
 
@@ -166,7 +169,7 @@ class MindRuntime:
                     task.state = CuriosityState.ANSWERED
                     self._curiosity_resolved += 1
         except Exception:
-            pass
+            log.exception("curiosity auto-resolution from claim failed")
 
     def broadcast_focus(
         self,
@@ -215,7 +218,7 @@ class MindRuntime:
                     float(getattr(snap, "contradiction_load", 0) or 0),
                 )
         except Exception:
-            pass
+            log.exception("policy refresh could not read the self-model snapshot")
 
         overload = max(0.0, min(1.0, overload_hint + 0.05 * max(0, open_curiosity - 3)))
         self.policy.overload = overload
@@ -246,7 +249,7 @@ class MindRuntime:
                         if eid is not None:
                             edges_by_id[eid] = e
                 except Exception:
-                    pass
+                    log.exception("edge repository listing failed during outcome attribution")
         for outcome in self._outcomes:
             aid = getattr(outcome, "action_id", None)
             if aid is None:
@@ -260,6 +263,7 @@ class MindRuntime:
                         try:
                             e = edges_repo.get_edge(eid)
                         except Exception:
+                            log.exception("edge lookup failed", extra={"edge_id": str(eid)})
                             e = None
                 if e is not None:
                     edges.append(e)
@@ -288,6 +292,7 @@ class MindRuntime:
                     if not edges_map:
                         notes.append("no_edges_for_replay")
                 except Exception:
+                    log.exception("replay consolidation failed during night phase")
                     notes.append("consolidate_error")
             result = NightPhaseResult(
                 phase="nrem",
@@ -315,7 +320,7 @@ class MindRuntime:
                     )
                 )
             except Exception:
-                pass
+                log.exception("night-phase event could not be emitted")
         return result
 
     def buffer_outcome(self, outcome: Any) -> None:
@@ -346,7 +351,7 @@ class MindRuntime:
         try:
             focus = [getattr(i, "title", str(i)) for i in self.workspace.active_focus()[:5]]
         except Exception:
-            pass
+            log.exception("workspace active-focus read failed")
         return {
             "reason_calls": self._reason_calls,
             "curiosity_resolved": self._curiosity_resolved,
