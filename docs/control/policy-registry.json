@@ -38,7 +38,10 @@
     "docs/control/module-build-ready-traceability.md",
     "docs/control/module-build-ready-traceability.pr126.md",
     "docs/control/source-requirement-registry.infra.json",
-    "docs/control/module-build-ready-traceability.infra.md"
+    "docs/control/module-build-ready-traceability.infra.md",
+    "docs/control/OBSERVATORY_CONSOLIDATION_PROVENANCE.md",
+    "docs/control/source-requirement-registry.observatory.json",
+    "docs/control/module-build-ready-traceability.observatory.md"
   ],
   "required_templates": [
     ".github/pull_request_template.md",
@@ -112,13 +115,15 @@
     "registry_path": "docs/control/source-requirement-registry.json",
     "canonical_registry_extensions": [
       "docs/control/source-requirement-registry.convergence.json",
-      "docs/control/source-requirement-registry.infra.json"
+      "docs/control/source-requirement-registry.infra.json",
+      "docs/control/source-requirement-registry.observatory.json"
     ],
     "module_build_ready_schema_path": "docs/control/module-build-ready-traceability.schema.json",
     "module_build_ready_matrix_path": "docs/control/module-build-ready-traceability.md",
     "canonical_module_matrix_extensions": [
       "docs/control/module-build-ready-traceability.pr126.md",
-      "docs/control/module-build-ready-traceability.infra.md"
+      "docs/control/module-build-ready-traceability.infra.md",
+      "docs/control/module-build-ready-traceability.observatory.md"
     ],
     "enforced_code_roots": [
       "apps",
