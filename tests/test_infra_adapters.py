@@ -98,7 +98,11 @@ def test_neo4j_edge_move_deletes_same_logical_edge_before_recreate():
     )
     projection.upsert_edge(edge, scope=TENANT_A)
 
-    queries = [call for call in driver.calls if isinstance(call[0], str)]
+    queries = [
+        call
+        for call in driver.calls
+        if isinstance(call[0], str) and call[0] != "database"
+    ]
     assert "DELETE old" in queries[0][0]
     assert queries[0][1]["projection_id"] == f"{TENANT_A}:{EDGE}"
     assert "CREATE (s)-[r:BRAIN_REL]->(t)" in queries[1][0]
