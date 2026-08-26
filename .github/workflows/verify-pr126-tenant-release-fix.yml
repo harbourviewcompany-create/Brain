@@ -1,0 +1,217 @@
+name: Verify PR126 Observatory Compatibility
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-pr126-observatory-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+env:
+  OBSERVATORY_TENANT_ID: 7d4427c4-8b8d-4f4a-9f75-b46cedc2f126
+  LEGACY_EVENT_ID: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa0
+  TENANT_B_ID: bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2
+
+jobs:
+  observatory-compatibility:
+    name: Explicit legacy strategies and Observatory compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prove exact PR head
+        run: |
+          mkdir -p evidence
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+          printf 'head_sha=%s\ntree_sha=%s\n' \
+            "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" \
+            | tee evidence/exact-head.txt
+
+      - name: Install
+        run: pip install -c constraints.txt -e '.[dev]'
+
+      - name: Focused OIDC and Observatory bridge tests
+        run: |
+          pytest -q \
+            tests/test_pr126_release_integration.py \
+            tests/test_live_cockpit_signals.py \
+            | tee evidence/focused-tests.txt
+
+      - name: Start clean PostgreSQL with split roles
+        run: |
+          docker run -d --name brain-pr126-compat -p 55432:5432 \
+            -e POSTGRES_USER=brain \
+            -e POSTGRES_PASSWORD=brain \
+            -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 60); do
+            if docker exec brain-pr126-compat psql -At -U brain -d brain -c 'select 1' \
+              2>/dev/null | grep -qx 1; then
+              break
+            fi
+            [ "$i" = 60 ] && { docker logs brain-pr126-compat; exit 1; }
+            sleep 1
+          done
+          docker exec -i brain-pr126-compat psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          create role brain_api_ci login password 'api' nosuperuser nobypassrls;
+          create role brain_worker_ci login password 'worker' nosuperuser nobypassrls;
+          SQL
+
+      - name: Apply canonical zero-state baseline through 018
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+        run: |
+          python tools/apply_migrations.py --max-version 18 \
+            | tee evidence/baseline-001-018.txt
+          grep -q 'applied 018_neuro_rich_memory_systems.sql' evidence/baseline-001-018.txt
+
+      - name: Seed deterministic pre-tenant legacy row
+        run: |
+          docker exec -i brain-pr126-compat psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          insert into public.brain_events (
+            id, event_type, aggregate_type, aggregate_id, payload
+          ) values (
+            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa0'::uuid,
+            'legacy.pretenant',
+            'legacy_fixture',
+            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa9'::uuid,
+            '{"fixture":"pretenant"}'::jsonb
+          );
+          SQL
+
+      - name: Apply canonical tenant migrations 019 through 022
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          DATABASE_URL: postgresql://brain_api_ci:api@127.0.0.1:55432/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:worker@127.0.0.1:55432/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-pr126-context-secret
+        run: |
+          python tools/apply_migrations.py --max-version 22 \
+            | tee evidence/tenant-first.txt
+          for n in 019 020 021 022; do
+            grep -q "applied ${n}_" evidence/tenant-first.txt
+          done
+
+      - name: Prove canonical migration idempotency
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          DATABASE_URL: postgresql://brain_api_ci:api@127.0.0.1:55432/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:worker@127.0.0.1:55432/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-pr126-context-secret
+        run: |
+          python tools/apply_migrations.py --max-version 22 \
+            | tee evidence/tenant-second.txt
+          grep -q 'skip 019_tenant_auth_foundation.sql (already applied)' evidence/tenant-second.txt
+          grep -q 'skip 022_tenant_runtime_enforcement.sql (already applied)' evidence/tenant-second.txt
+          grep -q 'required schema verification passed' evidence/tenant-second.txt
+
+      - name: Verify Strategy A quarantine, split roles, FORCE RLS and isolation
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          DATABASE_URL: postgresql://brain_api_ci:api@127.0.0.1:55432/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:worker@127.0.0.1:55432/brain
+        run: |
+          python tools/verify_tenant_rls_release.py \
+            | tee evidence/strategy-a-quarantine.txt
+          grep -q 'non-owner runtime role and two-tenant isolation verification passed' \
+            evidence/strategy-a-quarantine.txt
+          grep -q 'trusted-service worker and legacy-null visibility verification passed' \
+            evidence/strategy-a-quarantine.txt
+
+      - name: Apply explicit Strategy B Observatory release asset twice
+        run: |
+          for pass in first second; do
+            echo "${pass}" | tee -a evidence/strategy-b-apply.txt
+            docker exec -i brain-pr126-compat \
+              psql -v ON_ERROR_STOP=1 -U brain -d brain \
+              < db/release/023_legacy_observatory_tenant_backfill.sql \
+              >> evidence/strategy-b-apply.txt
+          done
+
+      - name: Verify Strategy B assignment, RLS and append-only restoration
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          DATABASE_URL: postgresql://brain_api_ci:api@127.0.0.1:55432/brain
+        run: |
+          python - <<'PY' | tee evidence/strategy-b-verification.txt
+          import os
+          import psycopg
+
+          obs = os.environ['OBSERVATORY_TENANT_ID']
+          legacy = os.environ['LEGACY_EVENT_ID']
+          tenant_b = os.environ['TENANT_B_ID']
+
+          with psycopg.connect(os.environ['BRAIN_MIGRATION_DATABASE_URL'], autocommit=True) as conn:
+              tenant_id = conn.execute(
+                  'select tenant_id::text from public.brain_events where id=%s::uuid',
+                  (legacy,),
+              ).fetchone()[0]
+              assert tenant_id == obs, tenant_id
+              membership = conn.execute(
+                  "select role, status from public.tenant_memberships "
+                  "where tenant_id=%s::uuid and user_id='brain-observatory-bff'",
+                  (obs,),
+              ).fetchone()
+              assert membership == ('operator', 'active'), membership
+              trigger = conn.execute(
+                  "select tgenabled from pg_trigger where "
+                  "tgrelid='public.brain_events'::regclass "
+                  "and tgname='brain_events_append_only_update'"
+              ).fetchone()[0]
+              assert trigger == 'O', trigger
+
+          with psycopg.connect(os.environ['DATABASE_URL'], autocommit=False) as conn:
+              with conn.transaction():
+                  conn.execute("select set_config('brain.tenant_id', %s, true)", (obs,))
+                  conn.execute(
+                      "select set_config('brain.actor_id', 'brain-observatory-bff', true)"
+                  )
+                  visible = conn.execute(
+                      'select count(*) from public.brain_events where id=%s::uuid',
+                      (legacy,),
+                  ).fetchone()[0]
+                  assert visible == 1, visible
+
+              with conn.transaction():
+                  conn.execute("select set_config('brain.tenant_id', %s, true)", (tenant_b,))
+                  conn.execute(
+                      "select set_config('brain.actor_id', 'tenant-b-operator', true)"
+                  )
+                  cross = conn.execute(
+                      'select count(*) from public.brain_events where id=%s::uuid',
+                      (legacy,),
+                  ).fetchone()[0]
+                  assert cross == 0, cross
+
+          print('observatory_assignment=pass')
+          print('observatory_membership=operator_active')
+          print('append_only_trigger=enabled')
+          print('observatory_runtime_visibility=pass')
+          print('cross_tenant_visibility=denied')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pr126-observatory-compatibility
+          path: evidence/*
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f brain-pr126-compat >/dev/null 2>&1 || true
