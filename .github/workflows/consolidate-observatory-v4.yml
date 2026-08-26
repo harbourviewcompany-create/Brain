@@ -57,9 +57,10 @@ jobs:
           PY
 
           # The generated full tree is validated above. GitHub's workflow token cannot
-          # push workflow-file changes, so restore them for this commit and let the
-          # connected GitHub app apply those validated files afterward.
+          # push workflow-file changes, so restore/delete them for this commit and let
+          # the connected GitHub app apply those validated workflow files afterward.
           git restore .github/workflows
+          rm -f .github/workflows/observatory-verify.yml .github/workflows/postdeploy-observatory-audit.yml .github/workflows/verify-observatory-edges-production.yml
           rm -rf apps/observatory/node_modules apps/observatory/.next apps/observatory/tsconfig.tsbuildinfo
           python - <<'PY'
           from pathlib import Path
