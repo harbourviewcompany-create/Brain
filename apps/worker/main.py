@@ -7,6 +7,8 @@ import time
 from datetime import timedelta
 from typing import Any
 
+import psycopg
+
 
 try:
     from temporalio import activity, workflow
@@ -40,13 +42,14 @@ def worker_database_url() -> str:
     if not dsn:
         raise RuntimeError("DATABASE_URL or BRAIN_WORKER_DATABASE_URL is required")
 
-    with psycopg.connect(dsn, autocommit=True) as conn:
-        if tenant_rls_enforced(conn):
-            if not dedicated_dsn:
-                raise RuntimeError(
-                    "BRAIN_WORKER_DATABASE_URL is required when tenant RLS is enforced"
-                )
-            require_safe_runtime_role(conn, require_trusted_service=True)
+    if _HAS_TENANT:
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            if tenant_rls_enforced(conn):
+                if not dedicated_dsn:
+                    raise RuntimeError(
+                        "BRAIN_WORKER_DATABASE_URL is required when tenant RLS is enforced"
+                    )
+                require_safe_runtime_role(conn, require_trusted_service=True)
 
     _verified_worker_dsn = dsn
     return dsn
