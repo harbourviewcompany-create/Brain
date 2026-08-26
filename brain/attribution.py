@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import statistics
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID, uuid4
 
 from .domain import Edge, Outcome, RewireEvent, utcnow
+from .generalization import GeneralizationEngine
 from .prediction import Prediction, PredictionEngine, PredictionResolution
 from .reward import RewardSystem
 from .rewiring import RewiringEngine
@@ -34,6 +37,7 @@ class LearningResult:
     updated_edges: list[Edge]
     rewire_events: list[RewireEvent]
     pruned_edge_ids: list[UUID]
+    generalized_edge_ids: list[str] = field(default_factory=list)
 
 
 class OutcomeAttribution:
@@ -49,12 +53,42 @@ class OutcomeAttribution:
         reward: RewardSystem | None = None,
         rewiring: RewiringEngine | None = None,
         predictions: PredictionEngine | None = None,
+        generalization: GeneralizationEngine | None = None,
         edge_learn_rate: float = 0.08,
+        min_learn_rate: float = 0.02,
+        max_learn_rate: float = 0.24,
+        volatility_window: int = 20,
     ) -> None:
         self.reward = reward or RewardSystem()
         self.rewiring = rewiring or RewiringEngine()
         self.predictions = predictions or PredictionEngine()
-        self.edge_learn_rate = edge_learn_rate
+        self.generalization = generalization or GeneralizationEngine()
+        # Meta-plasticity: base_edge_learn_rate is the rate absent any error
+        # history; effective_edge_learn_rate below scales it by how volatile
+        # recent prediction error has actually been. This mirrors why
+        # acetylcholine already gates learning_weight in CognitiveScheduler
+        # (Yu & Dayan-style expected/unexpected uncertainty) -- a brain
+        # that's been consistently right should stop moving its weights so
+        # hard on every new data point; one that's been consistently
+        # surprised should move them faster, not at a rate fixed forever.
+        self.base_edge_learn_rate = edge_learn_rate
+        self.min_learn_rate = min_learn_rate
+        self.max_learn_rate = max_learn_rate
+        self._recent_errors: deque[float] = deque(maxlen=volatility_window)
+
+    @property
+    def edge_learn_rate(self) -> float:
+        """Backward-compatible alias -- existing callers that read
+        .edge_learn_rate directly still see a sane value."""
+        return self.effective_edge_learn_rate
+
+    @property
+    def effective_edge_learn_rate(self) -> float:
+        if len(self._recent_errors) < 2:
+            return self.base_edge_learn_rate
+        volatility = statistics.pstdev(self._recent_errors)
+        scaled = self.base_edge_learn_rate * (1.0 + 3.0 * volatility)
+        return max(self.min_learn_rate, min(self.max_learn_rate, scaled))
 
     def attribute(
         self,
@@ -64,10 +98,17 @@ class OutcomeAttribution:
         prediction: Prediction | None = None,
         source_keys: list[str] | None = None,
         evidence_id: UUID | None = None,
+        candidate_edges: list[Edge] | None = None,
     ) -> LearningResult:
         resolution: PredictionResolution | None = None
         prediction_error = 0.0
         reward_score = self.reward.score(outcome)
+
+        # Meta-plasticity rate for *this* update is drawn from error history
+        # *prior* to this outcome -- using this outcome's own error to set
+        # its own rate would be circular. The new error (if any) is folded
+        # in afterward, below, so it's available for the next call.
+        effective_rate = self.effective_edge_learn_rate
 
         if prediction is not None:
             resolution = self.predictions.resolve(prediction, outcome)
@@ -83,7 +124,7 @@ class OutcomeAttribution:
         else:
             sources = list(source_keys or [])
 
-        amount = min(self.edge_learn_rate, abs(reward_score) * self.edge_learn_rate)
+        amount = min(effective_rate, abs(reward_score) * effective_rate)
         updated_edges: list[Edge] = []
         rewire_events: list[RewireEvent] = []
         pruned: list[UUID] = []
@@ -128,6 +169,31 @@ class OutcomeAttribution:
                     updated_edges.append(new_edge)
                     edge_deltas[str(edge_id)] = new_edge.weight - prev
 
+        # Generalization: partial transfer to structurally similar edges
+        # that weren't themselves cited by this prediction/outcome. Only
+        # runs when the caller actually supplies a candidate pool -- no
+        # pool, no propagation, fully backward compatible.
+        generalized_edge_ids: list[str] = []
+        if candidate_edges:
+            already_touched = set(edge_ids)
+            eid = evidence_id or outcome.id
+            for edge_id in edge_ids:
+                delta = edge_deltas.get(str(edge_id))
+                edge = edge_map.get(edge_id)
+                if edge is None or delta is None or abs(delta) < 1e-9:
+                    continue
+                gen_result = self.generalization.propagate(
+                    edge, delta, candidate_edges, self.rewiring, eid, exclude_ids=already_touched
+                )
+                updated_edges.extend(gen_result.updated_edges)
+                rewire_events.extend(gen_result.rewire_events)
+                pruned.extend(gen_result.pruned_edge_ids)
+                for key, gen_delta in gen_result.edge_deltas.items():
+                    edge_deltas[key] = edge_deltas.get(key, 0.0) + gen_delta
+                    generalized_edge_ids.append(key)
+                already_touched.update(e.id for e in gen_result.updated_edges)
+                already_touched.update(gen_result.pruned_edge_ids)
+
         source_deltas: dict[str, float] = {}
         source_step = max(-0.05, min(0.05, reward_score * 0.05))
         for key in sources:
@@ -138,9 +204,17 @@ class OutcomeAttribution:
             f"prediction_error={prediction_error:.4f}",
             f"edges_touched={len(edge_deltas)}",
             f"sources_touched={len(source_deltas)}",
+            f"effective_edge_learn_rate={effective_rate:.4f}",
         ]
         if resolution is not None:
             rationale.append(f"signed_prediction_error={resolution.signed_error:.4f}")
+        if generalized_edge_ids:
+            rationale.append(f"generalized_to={len(set(generalized_edge_ids))}_edges")
+
+        # Fold this outcome's error into volatility history *after* using
+        # the prior history to set this update's rate.
+        if resolution is not None:
+            self._recent_errors.append(abs(resolution.signed_error))
 
         attribution = AttributionRecord(
             outcome_id=outcome.id,
@@ -159,4 +233,5 @@ class OutcomeAttribution:
             updated_edges=updated_edges,
             rewire_events=rewire_events,
             pruned_edge_ids=pruned,
+            generalized_edge_ids=sorted(set(generalized_edge_ids)),
         )

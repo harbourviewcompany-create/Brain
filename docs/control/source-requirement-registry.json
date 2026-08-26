@@ -180,6 +180,7 @@
         "brain/events.py",
         "brain/experiments.py",
         "brain/formulas.py",
+        "brain/generalization.py",
         "brain/governance.py",
         "brain/heartbeat.py",
         "brain/homeostasis.py",
