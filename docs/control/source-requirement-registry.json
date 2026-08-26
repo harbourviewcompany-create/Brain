@@ -1,1 +1,13 @@
-PLACEHOLDER_WILL_FAIL
+{
+  "registry_id": "brain-source-requirement-registry-v1",
+  "status": "APPROVED_FOR_TRACEABILITY_ENFORCEMENT",
+  "purpose": "Machine-readable source, requirement, and code-module traceability registry. This prevents untraced code without narrowing Brain scope.",
+  "rules": [
+    "Every enforced code module path must appear in a traceability record.",
+    "Traceability records do not make a module BUILD-READY by themselves.",
+    "Missing detail must be marked unresolved instead of deleted or inferred."
+  ],
+  "sources": [],
+  "requirements": [],
+  "code_module_records": []
+}
