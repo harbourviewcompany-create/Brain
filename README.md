@@ -26,12 +26,21 @@ PostgreSQL is canonical. Neo4j is rebuildable. This prevents the graph engine fr
 ## Local start
 
 ```bash
+# Infrastructure: Postgres, Neo4j, Temporal, MinIO (S3)
 docker compose -f infra/docker-compose.yml up -d
 python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
+cp .env.example .env
+set -a && source .env && set +a
+python -m tools.apply_migrations
+python scripts/infra_healthcheck.py
 uvicorn apps.api.main:app --reload
+# separate terminal — Temporal cognition worker
+python -m apps.worker.main
 ```
+
+See [infra/README.md](infra/README.md) for Supabase, Neo4j Aura, Temporal Cloud, and S3 wiring.
 
 Test:
 
