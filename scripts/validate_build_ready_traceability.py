@@ -11,7 +11,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = ROOT / "docs" / "control" / "module-build-ready-traceability.md"
 POLICY = ROOT / "docs" / "control" / "policy-registry.json"
-SUPPLEMENTAL = ROOT / "docs" / "control" / "source-requirement-registry.convergence.json"
 MIGRATIONS = ROOT / "db" / "migrations"
 MIGRATION_NAME = re.compile(r"^(\d{3})_[a-z0-9][a-z0-9_]*\.sql$")
 ALLOWED_MIGRATION_COLLISIONS = {
@@ -31,18 +30,6 @@ REQUIRED_FIELDS = [
     "acceptance criteria",
     "audit events",
     "go/hold status",
-]
-
-SUPPLEMENTAL_REQUIRED_FIELDS = [
-    "owner_object",
-    "schema",
-    "runtime_service",
-    "state_machine",
-    "fixtures",
-    "tests",
-    "acceptance_criteria",
-    "audit_events",
-    "go_hold_status",
 ]
 
 
@@ -81,7 +68,7 @@ def validate_migrations() -> None:
     versions: dict[str, set[str]] = defaultdict(set)
     files = sorted(path for path in MIGRATIONS.iterdir() if path.is_file())
     if not files:
-        fail("no migration files found")
+        fail("no migrations found")
     for path in files:
         match = MIGRATION_NAME.match(path.name)
         if path.suffix == ".sql" and match is None:
@@ -117,47 +104,33 @@ def table_rows(text: str) -> list[str]:
     return [line for line in text.splitlines() if line.startswith("| ")]
 
 
-def supplemental_module_paths() -> set[str]:
-    if not SUPPLEMENTAL.is_file():
-        return set()
-    payload = json.loads(SUPPLEMENTAL.read_text(encoding="utf-8"))
-    paths: set[str] = set()
-    for record in payload.get("code_module_records", []):
-        record_id = record.get("record_id", "<missing>")
-        missing = [
-            field
-            for field in SUPPLEMENTAL_REQUIRED_FIELDS
-            if field not in record or record[field] in ("", [], None)
-        ]
-        if missing:
-            fail(f"supplemental record {record_id} missing fields: {', '.join(missing)}")
-        if record["go_hold_status"] == "GO" or record.get("classification") == "BUILD-READY":
-            fail(f"supplemental runtime record cannot claim BUILD-READY/GO: {record_id}")
-        for path in record.get("paths", []):
-            if not (ROOT / path).is_file():
-                fail(f"supplemental record {record_id} references missing path: {path}")
-            paths.add(path)
-    return paths
+def canonical_matrix_text(policy: dict) -> str:
+    if not MATRIX.exists():
+        fail(f"missing matrix file: {MATRIX.relative_to(ROOT)}")
+    paths = [MATRIX]
+    extensions = policy.get("traceability_policy", {}).get(
+        "canonical_module_matrix_extensions", []
+    )
+    for rel in extensions:
+        path = ROOT / rel
+        if not path.is_file():
+            fail(f"missing canonical matrix extension: {rel}")
+        paths.append(path)
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
 
 def main() -> None:
-    if not MATRIX.exists():
-        fail(f"missing matrix file: {MATRIX.relative_to(ROOT)}")
-
     validate_migrations()
     policy = load_policy()
     module_paths = discover_modules(policy)
-    supplemental_paths = supplemental_module_paths()
-    text = MATRIX.read_text(encoding="utf-8")
+    text = canonical_matrix_text(policy)
     lower = text.lower()
 
     for field in REQUIRED_FIELDS:
         if field not in lower:
             fail(f"missing required field phrase: {field}")
 
-    missing_paths = [
-        path for path in module_paths if path not in text and path not in supplemental_paths
-    ]
+    missing_paths = [path for path in module_paths if path not in text]
     if missing_paths:
         fail("missing module paths: " + ", ".join(missing_paths))
 
@@ -166,14 +139,8 @@ def main() -> None:
 
     rows = table_rows(text)
     data_rows = [row for row in rows if any(path in row for path in module_paths)]
-    supplemental_only = {
-        path for path in module_paths if path in supplemental_paths and path not in text
-    }
-    if len(data_rows) + len(supplemental_only) < len(module_paths):
-        fail(
-            f"expected at least {len(module_paths)} represented modules, found "
-            f"{len(data_rows)} matrix rows + {len(supplemental_only)} supplemental paths"
-        )
+    if len(data_rows) < len(module_paths):
+        fail(f"expected at least {len(module_paths)} module rows, found {len(data_rows)}")
 
     for row in data_rows:
         cells = [cell.strip().lower() for cell in row.strip("|").split("|")]
@@ -185,8 +152,7 @@ def main() -> None:
 
     print(
         f"Module BUILD-READY traceability validation: GO "
-        f"({len(module_paths)} enforced modules; {len(supplemental_only)} convergence modules; "
-        "migration integrity GO)"
+        f"({len(module_paths)} enforced modules; migration integrity GO)"
     )
 
 

@@ -18,15 +18,15 @@
   "fixtures": ["cross_cutting_cognitive_protocol"],
   "evidence": [
     "brain/protocol.py extends the existing traced protocol boundary with provenance-required cognitive envelopes, epistemic state, transitions, conflict preservation, knowledge gaps, cognitive affordances, projection decisions, attributed learning, rollback-aware plasticity and zero-action replay bundles",
-    "brain/growth_runtime.py shares PR #105 cognitive-object persistence with CognitiveProtocolService rather than introducing parallel storage",
+    "brain/growth_runtime.py shares the existing protected-main cognitive-object persistence with CognitiveProtocolService rather than introducing parallel storage",
     "tests/test_cognitive_protocol.py exercises runtime, persistence and invariant failures",
     "tests/fixtures/brain/cross_cutting_cognitive_protocol.json materializes the evidence-to-learning replay chain",
-    "docs/spec/ACCEPTANCE_MATRIX_DELTA.md retains full organ integration, tenant reconciliation, PR #108/#109/#110 adoption and production restart replay as broader HOLD boundaries"
+    "docs/spec/ACCEPTANCE_MATRIX_DELTA.md keeps broad organ adapters, production tenant/RLS topology, durable tenant administration and production restart replay as explicit HOLD boundaries"
   ],
   "unresolved_items": [
     "full organ-by-organ adapters are not accepted by this report",
-    "tenant-aware production persistence remains dependent on PR #100/#104 reconciliation",
-    "Theory of Mind PR #108, Executive Control PR #109 and Affect PR #110 have not yet adopted the shared protocol",
+    "the previously separate tenant and cognitive-organ PR ancestry is merged; production tenant/RLS release evidence remains HOLD",
+    "Theory of Mind, Executive Control and Affect exist on protected main but broad adoption of the shared protocol still requires per-organ integration/replay evidence",
     "production PostgreSQL restart replay evidence remains outside this bounded acceptance unit"
   ]
 }

@@ -1,7 +1,7 @@
 {
-  "registry_id": "brain-source-requirement-registry-full-convergence-v1",
+  "registry_id": "brain-source-requirement-registry-pr126-runtime-extension-v2",
   "status": "APPROVED_FOR_TRACEABILITY_ENFORCEMENT",
-  "purpose": "Additive traceability records for full Brain convergence modules. This registry supplements, never replaces or narrows, the canonical source-requirement registry.",
+  "purpose": "Required canonical traceability extension for runtime modules introduced by PR #126. This extension is enforced alongside the historical canonical registry, preserves all existing source authority, and does not substitute for the canonical BUILD-READY matrix.",
   "sources": [],
   "requirements": [],
   "code_module_records": [
@@ -13,15 +13,15 @@
       "source_ids": ["SRC-CONTROL", "SRC-ARCHITECTURE", "SRC-BUILD-PLAN"],
       "requirement_ids": ["REQ-CONTROL-ENFORCEMENT", "REQ-BRAIN-RUNTIME-MODULES", "REQ-BRAIN-ADAPTERS"],
       "owner_object": "Tenant identity, membership, role and database-isolation runtime",
-      "schema": "Tenant, TenantMembership, TenantInvite, TenantContext, signed tenant identity and tenant-scoped connection contracts; migrations 019 through 022",
+      "schema": "Tenant, TenantMembership, TenantInvite, TenantContext, signed tenant identity, tenant-scoped connection contracts, database-role topology checks and migrations 019 through 022",
       "runtime_service": "TenantAuthService, TenantRequestSecurity, PostgresTenantMembershipResolver, TenantScopedConnectionPool and tenant-partitioned service registries",
-      "state_machine": "signed tenant and actor identity -> signature verification -> active membership resolution -> trusted TenantContext -> transaction-local tenant/actor SQL settings -> RLS -> scoped operation; malformed, untrusted or cross-tenant paths fail closed",
+      "state_machine": "signed tenant and actor identity -> signature verification -> active membership resolution -> trusted TenantContext -> transaction-local tenant/actor SQL settings -> RLS -> scoped operation; malformed, untrusted, unsafe-role or cross-tenant paths fail closed",
       "fixtures": ["tests/test_tenant_auth.py", "tests/test_tenant_context.py", "tests/test_tenant_runtime.py"],
-      "tests": ["tests/test_tenant_auth.py", "tests/test_tenant_auth_migration.py", "tests/test_tenant_context.py", "tests/test_tenant_runtime.py", "tests/test_tenant_runtime_migration.py", "tests/test_tenant_scope_extended_migration.py", "tests/test_tenant_scope_migration.py", "production container persistence workflow"],
-      "acceptance_criteria": ["request headers cannot assert roles or service context", "signed tenant identity resolves roles from persisted membership", "database sessions receive only verified tenant and actor context", "RLS fails cross-tenant access closed", "mutable in-process projections are partitioned by tenant", "tenant mode requires durable membership authority"],
+      "tests": ["tests/test_tenant_auth.py", "tests/test_tenant_auth_migration.py", "tests/test_tenant_context.py", "tests/test_tenant_runtime.py", "tests/test_tenant_runtime_migration.py", "tests/test_tenant_scope_extended_migration.py", "tests/test_tenant_scope_migration.py", "tools/verify_tenant_rls_release.py", "tenant RLS integration workflow"],
+      "acceptance_criteria": ["request headers cannot assert roles or service context", "signed tenant identity resolves roles from persisted membership", "database sessions receive only verified tenant and actor context", "runtime database roles are non-owner non-superuser non-BYPASSRLS", "RLS fails cross-tenant access closed", "trusted service access is PostgreSQL-role-derived", "tenant mode requires durable membership authority"],
       "audit_events": ["TENANT_IDENTITY_VERIFIED", "TENANT_MEMBERSHIP_RESOLVED", "TENANT_SCOPE_APPLIED", "TENANT_SCOPE_DENIED"],
       "source_preservation": "preserved; tenant isolation is additive and does not reclassify global control registries as tenant-owned without evidence",
-      "unresolved_gaps": ["legacy/global row backfill remains table-specific HOLD", "production non-owner non-BYPASSRLS runtime-role verification remains deployment evidence", "worker-side tenant context requires separate convergence", "production tenant-mode rollout remains HOLD"]
+      "unresolved_gaps": ["legacy/global row backfill remains table-specific HOLD", "production runtime-role verification remains deployment evidence", "durable tenant lifecycle administration remains HOLD", "production tenant-mode rollout remains HOLD"]
     },
     {
       "record_id": "TRACE-CONVERGENCE-TENANT-APP",
@@ -33,10 +33,10 @@
       "owner_object": "Tenant-aware canonical production API entrypoint",
       "schema": "FastAPI middleware boundary over the canonical Brain API with signed tenant identity, membership-derived roles and tenant-local service bundles",
       "runtime_service": "apps.api.tenant_app",
-      "state_machine": "public health/readiness -> API-key boundary -> signed tenant identity -> persisted membership -> tenant-local service binding -> route; write routes additionally require owner/admin/operator",
+      "state_machine": "public health/readiness -> API-key boundary -> signed tenant identity -> persisted membership -> tenant-local service binding -> route; write routes additionally require owner/admin/operator; forced-RLS startup requires safe runtime-role topology",
       "fixtures": ["tests/test_tenant_runtime.py", "tests/test_api_key_auth.py"],
-      "tests": ["tests/test_tenant_runtime.py", "tests/test_api_key_auth.py", "production container persistence workflow", "ruff check --select E4,E7,E9,F ."],
-      "acceptance_criteria": ["production API remains fail-closed", "tenant-required mode requires DATABASE_URL and membership authority", "tenant route state cannot leak through singleton projections", "health and readiness remain independently observable"],
+      "tests": ["tests/test_tenant_runtime.py", "tests/test_api_key_auth.py", "tenant RLS integration workflow", "ruff check --select E4,E7,E9,F ."],
+      "acceptance_criteria": ["production API remains fail-closed", "forced RLS requires BRAIN_TENANT_MODE=required", "tenant-required mode requires DATABASE_URL and membership authority", "tenant route state cannot leak through singleton projections", "health and readiness remain independently observable"],
       "audit_events": ["PRODUCTION_AUTHENTICATION_ENFORCED", "TENANT_ROUTE_CONTEXT_ESTABLISHED", "TENANT_ROUTE_CONTEXT_DENIED"],
       "source_preservation": "preserved; canonical API behavior is reused rather than replaced",
       "unresolved_gaps": ["production tenant-mode enablement remains deployment-specific HOLD", "live runtime-role verification remains HOLD"]
@@ -76,24 +76,6 @@
       "audit_events": ["DEVELOPMENT_SCHEDULE_RECORDED", "DEVELOPMENT_WORK_QUEUED", "DEVELOPMENT_BUDGET_HELD", "DEVELOPMENT_RUN_RECORDED", "DEVELOPMENT_BACKOFF_APPLIED"],
       "source_preservation": "preserved; autonomous-development aspirations remain represented while consequential mutation authority stays governed",
       "unresolved_gaps": ["continuous production execution remains deployment-specific HOLD", "operator scheduling controls require secured operator-surface integration", "autonomous mutation/merge/deploy remains HOLD"]
-    },
-    {
-      "record_id": "TRACE-NEURO-007-RICH-MEMORY",
-      "paths": ["brain/neuro/memory_systems.py"],
-      "classification": "APPROVED",
-      "go_hold_status": "REVIEW",
-      "source_ids": ["SRC-NEUROSCIENCE", "SRC-DEVELOPMENTAL"],
-      "requirement_ids": ["REQ-NEUROSCIENCE-CONTROL-LAYER"],
-      "owner_object": "NEURO-007 rich memory-system control and runtime layer",
-      "schema": "MemoryRecord, MemorySystemKind, MemoryLifecycleState and MemoryConsolidationEvent with provenance, evidence, source, retention and quarantine contracts; persistence migration 018",
-      "runtime_service": "RichMemorySystemService and RichMemoryValidationService",
-      "state_machine": "encoded -> retrievable -> consolidated -> reconsolidated -> decay_candidate -> forgotten; quarantine path -> operator review -> retained quarantined, rejected or restored with evidence",
-      "fixtures": ["tests/fixtures/neuro/rich_memory_systems.json"],
-      "tests": ["tests/test_rich_memory_systems.py", "production migration apply workflow"],
-      "acceptance_criteria": ["required memory-system kinds remain represented", "memory requires evidence, sources and provenance", "quarantined/forgotten memories are excluded from normal retrieval", "fabricated memory cannot remain GO", "quarantine forces HOLD"],
-      "audit_events": ["RICH_MEMORY_ENCODED", "RICH_MEMORY_CONSOLIDATED", "RICH_MEMORY_QUARANTINED", "RICH_MEMORY_REPLAYED"],
-      "source_preservation": "preserved; richer memory is additive to existing core memory systems",
-      "unresolved_gaps": ["does not claim perfect recall", "does not claim human-memory equivalence", "does not claim autobiographical consciousness", "full perception/action/affect/self-model integration remains controlled future work"]
     }
   ]
 }

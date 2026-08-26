@@ -1,7 +1,8 @@
 {
   "report_id": "AGENT-021-developmental-scheduler",
   "source": "issue:103",
-  "verdict": "GO_PENDING_EXACT_HEAD_CI",
+  "verdict": "REVIEW",
+  "scope": "bounded repository scheduler implementation only; canonical runtime module remains HOLD",
   "runtime": "brain.developmental.scheduler.DevelopmentalSchedulerService",
   "persistence": "AGENT-019 developmental evidence ledger",
   "acceptance": [
@@ -10,11 +11,17 @@
     "exponential failure backoff",
     "stale evidence priority",
     "regression-risk priority",
-    "restart reconstruction",
+    "restart reconstruction under repository tests",
     "assessment-only authority",
     "self-approval bypass rejected"
   ],
+  "verified_history": [
+    "PR #126 exact-head test workflow passed before merge",
+    "repository implementation is source-preserved on protected main"
+  ],
   "holds": [
+    "continuous production scheduler execution",
+    "secured operator scheduling integration",
     "self approval",
     "autonomous code mutation",
     "merge",
