@@ -243,7 +243,16 @@ if _HAS_TEMPORAL:
         workflow_id = os.environ.get(
             "BRAIN_TEMPORAL_WORKFLOW_ID", "brain-continuous-cognition"
         )
-        client = await Client.connect(address, namespace=namespace)
+        api_key = os.environ.get("TEMPORAL_API_KEY")
+        if api_key:
+            client = await Client.connect(
+                address,
+                namespace=namespace,
+                api_key=api_key,
+                tls=True,
+            )
+        else:
+            client = await Client.connect(address, namespace=namespace)
         if os.environ.get("BRAIN_TEMPORAL_AUTOSTART", "true").lower() == "true":
             try:
                 await client.start_workflow(

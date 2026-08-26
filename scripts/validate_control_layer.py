@@ -16,9 +16,6 @@ from typing import Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 POLICY_PATH = REPO_ROOT / "docs/control/policy-registry.json"
-SUPPLEMENTAL_TRACEABILITY_PATHS = (
-    "docs/control/source-requirement-registry.convergence.json",
-)
 
 
 def fail(message: str) -> None:
@@ -172,15 +169,18 @@ def discover_code_modules(roots: Iterable[str], excluded_filenames: set[str]) ->
 
 
 def _traceability_registries(policy: dict) -> list[tuple[str, dict]]:
-    registry_path = policy["traceability_policy"].get("registry_path")
+    trace_policy = policy["traceability_policy"]
+    registry_path = trace_policy.get("registry_path")
     if not registry_path or not (REPO_ROOT / registry_path).is_file():
         fail("traceability_policy.registry_path is missing or invalid")
 
-    registries = [(registry_path, read_json(REPO_ROOT / registry_path))]
-    for path in SUPPLEMENTAL_TRACEABILITY_PATHS:
+    paths = [registry_path, *trace_policy.get("canonical_registry_extensions", [])]
+    registries: list[tuple[str, dict]] = []
+    for path in paths:
         candidate = REPO_ROOT / path
-        if candidate.is_file():
-            registries.append((path, read_json(candidate)))
+        if not candidate.is_file():
+            fail(f"canonical traceability registry is missing: {path}")
+        registries.append((path, read_json(candidate)))
     return registries
 
 
@@ -295,7 +295,7 @@ def validate_traceability_registry(policy: dict) -> None:
         )
 
     print(
-        "OK: traceability registries cover enforced code modules "
+        "OK: canonical traceability registries cover enforced code modules "
         f"({len(discovered)} modules across {len(registries)} registries)"
     )
 
