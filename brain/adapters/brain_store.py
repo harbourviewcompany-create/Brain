@@ -27,6 +27,9 @@ class PostgresBrainStore(InMemoryBrainStore):
     The in-memory dictionaries are disposable projections used by the existing
     runtime interface. PostgreSQL remains authoritative and the projection is
     rebuilt at startup, so process restarts do not erase beliefs or graph state.
+
+    When NEO4J_URI is set, graph node/edge writes are also projected to Neo4j.
+    Neo4j remains rebuildable; Postgres stays canonical.
     """
 
     def __init__(self, dsn: str, *, pool: ConnectionPool | None = None) -> None:
@@ -36,9 +39,25 @@ class PostgresBrainStore(InMemoryBrainStore):
         self._owns_pool = pool is None
         self.pool = pool or ConnectionPool(conninfo=dsn, min_size=1, max_size=10, open=True)
         self.event_store = PostgresEventStore(dsn, pool=self.pool)
+        self._neo4j = None
+        try:
+            from .neo4j_projection import Neo4jProjection
+
+            self._neo4j = Neo4jProjection.from_env()
+            if self._neo4j is not None:
+                self._neo4j.ensure_constraints()
+        except Exception:
+            # Graph projection is optional; Postgres remains canonical.
+            self._neo4j = None
         self.hydrate()
 
     def close(self) -> None:
+        if getattr(self, "_neo4j", None) is not None:
+            try:
+                self._neo4j.close()
+            except Exception:
+                pass
+            self._neo4j = None
         if self._owns_pool:
             self.pool.close()
 
@@ -256,6 +275,11 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().upsert_node(node)
+        if self._neo4j is not None:
+            try:
+                self._neo4j.upsert_node(node)
+            except Exception:
+                pass
 
     def upsert_edge(self, edge: Edge) -> None:
         with self.pool.connection() as conn:
@@ -286,6 +310,11 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().upsert_edge(edge)
+        if self._neo4j is not None:
+            try:
+                self._neo4j.upsert_edge(edge)
+            except Exception:
+                pass
 
     def log_rewire(self, event: RewireEvent) -> None:
         with self.pool.connection() as conn:
@@ -309,3 +338,9 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().log_rewire(event)
+
+    def rebuild_neo4j_projection(self) -> dict[str, int]:
+        """Rebuild Neo4j from canonical Postgres graph tables (or in-memory projection)."""
+        if self._neo4j is None:
+            raise RuntimeError("Neo4j projection is not configured (set NEO4J_URI)")
+        return self._neo4j.rebuild(self.nodes.values(), self.edges.values())
