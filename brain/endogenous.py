@@ -1,25 +1,13 @@
-"""Endogenous thought generation — the Brain thinks when nothing external arrives.
-
-When the sensory inbox is empty the continuous cognition runner used to sleep.
-That made the system purely reactive. This module supplies internal stimuli so
-the organism keeps cycling: curiosity over unknowns, dream recombination of
-existing beliefs, contradiction pressure, working-memory rehearsal, and
-self-model status.
-
-These are not synthetic_probe / CI noise. They are first-class cognitive events
-with source_key \"endogenous\" and source_type \"endogenous_thought\".
-"""
-
+"""Endogenous thought generation — the Brain thinks when nothing external arrives."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Iterable
-from uuid import UUID, uuid4
+from uuid import uuid4
 
+from .curiosity import CuriosityEngine
 from .domain import Belief, BeliefState
 from .dreaming import DreamEngine
-from .curiosity import CuriosityEngine
-
 
 ENDOGENOUS_SOURCE_KEY = "endogenous"
 ENDOGENOUS_SOURCE_TYPE = "endogenous_thought"
@@ -27,8 +15,6 @@ ENDOGENOUS_SOURCE_TYPE = "endogenous_thought"
 
 @dataclass(slots=True)
 class EndogenousStimulus:
-    """Minimal shape compatible with sensory-inbox / CognitiveStimulus construction."""
-
     content: str
     claim: str
     source_key: str = ENDOGENOUS_SOURCE_KEY
@@ -64,63 +50,73 @@ class EndogenousStimulus:
 
 
 class EndogenousThoughtGenerator:
-    """Produce the next internal thought from current mind state.
+    """Priority: contradictions → curiosity unknowns → dream hyps → WM → self → bootstrap."""
 
-    Priority order (first non-empty wins):
-      1. Open contradictions (highest pressure to resolve)
-      2. Curiosity tasks from belief unknowns
-      3. Dream recombination hypotheses
-      4. Working-memory rehearsal
-      5. Self-model status reflection
-    """
-
-    def __init__(
-        self,
-        *,
-        curiosity: CuriosityEngine | None = None,
-        dream_engine: DreamEngine | None = None,
-    ) -> None:
-        self.curiosity = curiosity or CuriosityEngine()
-        self.dream_engine = dream_engine or DreamEngine()
-        self._turn = 0
+    def __init__(self) -> None:
+        self._dream = DreamEngine()
+        self._curiosity = CuriosityEngine()
+        self._rotation: int = 0
 
     def next_thought(
         self,
         *,
         beliefs: Iterable[Belief] | None = None,
+        working_memory_items: list[Any] | None = None,
         working_memory: list[Any] | None = None,
-        open_contradictions: list[str] | None = None,
         self_status: dict[str, Any] | None = None,
+        open_contradictions: list[str] | None = None,
         prefer_kind: str | None = None,
-    ) -> EndogenousStimulus:
-        self._turn += 1
-        beliefs_list = list(beliefs or [])
-        wm = list(working_memory or [])
+        circadian_phase: Any = None,
+    ) -> EndogenousStimulus | None:
+        belief_list = [b for b in (beliefs or []) if getattr(b, "state", None) != BeliefState.REJECTED]
+        wm = list(working_memory_items or working_memory or [])
         contradictions = list(open_contradictions or [])
-        self_status = self_status or {}
+        self._rotation += 1
 
-        if prefer_kind == "curiosity" or (contradictions and prefer_kind is None):
-            if contradictions:
-                q = contradictions[0]
-                return EndogenousStimulus(
-                    content=f"Contradiction pressure: {q}. Investigate and update confidence.",
-                    claim=f"Resolve contradiction: {q}",
-                    kind="contradiction",
-                    novelty=0.7,
-                    urgency=0.75,
-                    contradiction_value=0.8,
-                    uncertainty_reduction=0.7,
-                    metadata={"trigger": "contradiction", "question": q},
-                )
+        if contradictions and prefer_kind in (None, "contradiction"):
+            q = contradictions[0]
+            return EndogenousStimulus(
+                content=f"Contradiction pressure: {q}. Investigate and update confidence.",
+                claim=f"Resolve contradiction: {q}",
+                kind="contradiction",
+                novelty=0.7,
+                urgency=0.75,
+                contradiction_value=0.8,
+                uncertainty_reduction=0.7,
+                metadata={"trigger": "contradiction", "question": q},
+            )
 
-        # Curiosity from unknowns on beliefs
+        contested = [
+            b
+            for b in belief_list
+            if getattr(b, "state", None) == BeliefState.CONTESTED
+            or getattr(b, "contradicting_evidence", None)
+        ]
+        if contested and prefer_kind in (None, "contradiction"):
+            b = contested[self._rotation % len(contested)]
+            return EndogenousStimulus(
+                content=(
+                    f"Internal pressure: belief is contested — \"{b.statement}\". "
+                    f"Confidence={b.confidence:.2f}. "
+                    f"Supporting={len(getattr(b, 'supporting_evidence', []) or [])}, "
+                    f"contradicting={len(getattr(b, 'contradicting_evidence', []) or [])}. "
+                    "What would resolve or revise this?"
+                ),
+                claim=f"Resolve contest on: {b.statement}",
+                kind="contradiction",
+                novelty=0.55,
+                urgency=0.7,
+                contradiction_value=0.75,
+                metadata={"trigger": "contested_belief"},
+            )
+
         unknowns: list[str] = []
-        for b in beliefs_list:
-            for u in (getattr(b, "unknowns", None) or []):
+        for b in belief_list:
+            for u in getattr(b, "unknowns", None) or []:
                 if u and u not in unknowns:
                     unknowns.append(u)
         if unknowns and prefer_kind in (None, "curiosity"):
-            q = unknowns[self._turn % len(unknowns)]
+            q = unknowns[self._rotation % len(unknowns)]
             return EndogenousStimulus(
                 content=f"Curiosity: {q}",
                 claim=f"Resolve: {q}",
@@ -131,28 +127,34 @@ class EndogenousThoughtGenerator:
                 metadata={"trigger": "curiosity", "question": q},
             )
 
-        # Dream recombination when we have enough beliefs
-        if len(beliefs_list) >= 2 and prefer_kind in (None, "dream"):
+        if len(belief_list) >= 2 and prefer_kind in (None, "dream"):
             try:
-                hyp = self.dream_engine.recombine(beliefs_list)
-                if hyp:
+                hyps = self._dream.recombine(belief_list)
+                if hyps:
+                    hyp = hyps[self._rotation % len(hyps)]
                     text = getattr(hyp, "statement", None) or str(hyp)
+                    conf = float(getattr(hyp, "confidence", 0.4) or 0.4)
+                    reason = getattr(hyp, "reason", "") or ""
                     return EndogenousStimulus(
-                        content=f"Dream hypothesis: {text}",
+                        content=f"Dream hypothesis: {text}. {reason}".strip(),
                         claim=text if isinstance(text, str) else str(text),
                         kind="dream",
                         novelty=0.8,
                         urgency=0.2,
                         uncertainty_reduction=0.4,
-                        metadata={"trigger": "dream"},
+                        metadata={"trigger": "dream", "dream_confidence": conf},
                     )
             except Exception:
                 pass
 
-        # Working-memory rehearsal
         if wm:
-            item = wm[self._turn % len(wm)]
-            text = getattr(item, "content", None) or getattr(item, "claim", None) or str(item)
+            item = wm[self._rotation % len(wm)]
+            text = (
+                getattr(item, "content", None)
+                or getattr(item, "claim", None)
+                or (item.get("content") if isinstance(item, dict) else None)
+                or str(item)
+            )
             return EndogenousStimulus(
                 content=f"Rehearse: {text}",
                 claim=str(text)[:200],
@@ -162,7 +164,6 @@ class EndogenousThoughtGenerator:
                 metadata={"trigger": "working_memory"},
             )
 
-        # Self-model status
         if self_status:
             return EndogenousStimulus(
                 content=f"Self-status: {self_status}",
@@ -170,13 +171,15 @@ class EndogenousThoughtGenerator:
                 kind="self_reflection",
                 novelty=0.4,
                 urgency=0.2,
-                metadata={"trigger": "self_status", **{k: str(v) for k, v in self_status.items() if k != "last_cycle"}},
+                metadata={
+                    "trigger": "self_status",
+                    **{k: str(v) for k, v in self_status.items() if k != "last_cycle"},
+                },
             )
 
         return self._seed_self_reflection()
 
     def _seed_self_reflection(self) -> EndogenousStimulus:
-        """Bootstrap thought when the mind is empty — first spark of endogenous activity."""
         return EndogenousStimulus(
             content=(
                 "I am a continuous cognitive process. I have no external stimulus right now. "
@@ -194,7 +197,6 @@ class EndogenousThoughtGenerator:
 
 
 def seed_foundational_beliefs() -> list[Belief]:
-    """Minimal prior so the first endogenous cycles have material to recombine."""
     return [
         Belief(
             statement="I am a continuous cognitive process that updates beliefs under uncertainty",
