@@ -156,6 +156,7 @@ class ContinuousCognitionRunner:
             pass
         if self.auto_predict and self.learning is not None:
             self._emit_prediction(claim=claim, result=result, source_key=source_key)
+        self._update_self_model(claim=claim, beliefs=beliefs)
         try:
             self.mind.refresh_policy(
                 belief_count=len(beliefs),
@@ -240,6 +241,32 @@ class ContinuousCognitionRunner:
                 beliefs=beliefs,
                 event_store=getattr(self.cycle, "event_store", None)
                 or getattr(self, "event_store", None),
+                learning=self.learning,
+            )
+        except Exception:
+            pass
+
+    def _update_self_model(self, *, claim: str, beliefs: list[Any]) -> None:
+        try:
+            sm = self.mind.self_model
+            contested = sum(
+                1
+                for b in beliefs
+                if getattr(b, "state", None) is not None
+                and "contest" in str(getattr(b, "state", "")).lower()
+            )
+            unknowns = sum(len(getattr(b, "unknowns", None) or []) for b in beliefs)
+            n = max(1, len(beliefs))
+            sm.create_snapshot(
+                current_focus_summary=(claim or self.mind._active_focus or "endogenous")[:200],
+                belief_count=len(beliefs),
+                uncertainty_load=min(1.0, unknowns / (n * 2)),
+                contradiction_load=min(1.0, contested / n),
+                curiosity_pressure=min(1.0, self.mind.curiosity_open_count() / 5),
+                memory_pressure=min(1.0, len(beliefs) / 50),
+                action_backlog_pressure=float(
+                    (self.status_provider() or {}).get("resource_pressure") or 0.0
+                ),
             )
         except Exception:
             pass
