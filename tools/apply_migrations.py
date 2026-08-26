@@ -175,6 +175,18 @@ def _grant_tenant_runtime_memberships(
         )
     )
 
+    # Commit before verifying. The verification below opens brand-new
+    # connections (as the actual runtime/worker roles, to prove those exact
+    # credentials pass the safety check - not just that the grant statement
+    # ran). A separate connection can never see this connection's
+    # uncommitted work, so without this commit the verification below fails
+    # deterministically every time, regardless of environment, because the
+    # grants above were never actually visible outside this transaction.
+    # This call site is no longer nested inside a caller-owned
+    # `with conn.transaction():` block (see the two call sites in main()),
+    # so this is a real commit, not a no-op savepoint release.
+    conn.commit()
+
     runtime_dsn = os.environ["DATABASE_URL"]
     worker_dsn = os.environ["BRAIN_WORKER_DATABASE_URL"]
     with psycopg.connect(runtime_dsn, autocommit=True) as runtime_conn:
@@ -255,8 +267,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 if version > TENANT_RLS_FIRST_VERSION and not memberships_granted:
                     if release_state is None:
                         raise RuntimeError("tenant RLS release state is unavailable")
-                    with conn.transaction():
-                        _grant_tenant_runtime_memberships(conn, release_state)
+                    _grant_tenant_runtime_memberships(conn, release_state)
                     memberships_granted = True
 
                 print(f"apply {path.name}", flush=True)
@@ -271,8 +282,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 if version == TENANT_RLS_FIRST_VERSION:
                     if release_state is None:
                         raise RuntimeError("tenant RLS release state is unavailable")
-                    with conn.transaction():
-                        _grant_tenant_runtime_memberships(conn, release_state)
+                    _grant_tenant_runtime_memberships(conn, release_state)
                     memberships_granted = True
 
             _verify_required_schema(conn)
