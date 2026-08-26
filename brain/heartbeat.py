@@ -222,14 +222,19 @@ class HeartbeatService:
         prediction_accuracy: float = 0.5,
         prediction_id: UUID | None = None,
         action_id: UUID | None = None,
+        edge_ids: list[UUID] | None = None,
+        source_keys: list[str] | None = None,
     ) -> Any:
         return self.inject_outcome(
             value_created=value_created,
             prediction_accuracy=prediction_accuracy,
             prediction_id=prediction_id,
             action_id=action_id,
+            source_keys=source_keys,
+            edge_ids=edge_ids,
         )
 
+    @property
     def mind(self) -> Any:
         return self._runner.mind
 
@@ -258,6 +263,7 @@ class HeartbeatService:
         prediction_accuracy: float = 0.5,
         action_id: UUID | None = None,
         source_keys: list[str] | None = None,
+        edge_ids: list[UUID] | None = None,
     ) -> Any:
         return self._runner.inject_outcome(
             value_created=value_created,
@@ -265,6 +271,7 @@ class HeartbeatService:
             prediction_accuracy=prediction_accuracy,
             action_id=action_id,
             source_keys=source_keys,
+            edge_ids=edge_ids,
         )
 
 
