@@ -7,6 +7,7 @@ import time
 from datetime import timedelta
 from typing import Any
 
+
 try:
     from temporalio import activity, workflow
     from temporalio.client import Client
@@ -25,20 +26,32 @@ except ImportError:
     _HAS_TENANT = False
 
 
+_verified_worker_dsn: str | None = None
+
+
 def worker_database_url() -> str:
-    dedicated = os.environ.get("BRAIN_WORKER_DATABASE_URL")
-    dsn = dedicated or os.environ.get("DATABASE_URL") or ""
-    if _HAS_TENANT and dsn:
-        try:
-            if tenant_rls_enforced() and not dedicated:
-                raise RuntimeError(
-                    "BRAIN_WORKER_DATABASE_URL required when tenant RLS is enforced"
-                )
-            require_safe_runtime_role(dsn)
-        except Exception:
-            if os.environ.get("BRAIN_REQUIRE_WORKER_DSN", "").lower() in {"1", "true"}:
-                raise
-            return dsn
+    """Validate worker DSN topology; require dedicated trusted-service login under RLS."""
+    global _verified_worker_dsn
+    if _verified_worker_dsn is not None:
+        return _verified_worker_dsn
+
+    dedicated_dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL")
+    dsn = dedicated_dsn or os.environ.get("DATABASE_URL")
+    if not dsn:
+        raise RuntimeError("DATABASE_URL or BRAIN_WORKER_DATABASE_URL is required")
+
+    if _HAS_TENANT:
+        import psycopg
+
+        with psycopg.connect(dsn, autocommit=True) as conn:
+            if tenant_rls_enforced(conn):
+                if not dedicated_dsn:
+                    raise RuntimeError(
+                        "BRAIN_WORKER_DATABASE_URL is required when tenant RLS is enforced"
+                    )
+                require_safe_runtime_role(conn, require_trusted_service=True)
+
+    _verified_worker_dsn = dsn
     return dsn
 
 

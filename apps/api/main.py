@@ -300,10 +300,13 @@ def health():
         "beliefs": len(runtime.store.beliefs),
         "money_lanes": len(money_spine.lanes),
         "heartbeat": {
-            "ticks": hb["ticks"],
-            "total_processed": hb["total_processed"],
-            "inbox": hb["inbox"],
-            "working_memory_size": hb["working_memory_size"],
+            "ticks": hb.get("ticks", 0),
+            "total_processed": hb.get("total_processed", 0),
+            "inbox": hb.get("inbox", {}),
+            "working_memory_size": hb.get(
+                "working_memory_size",
+                hb.get("belief_cache_size", 0),
+            ),
         },
     }
     if not database_ok:
