@@ -9,7 +9,10 @@ primary_region = 'yyz'
   BRAIN_EXTERNAL_ACTIONS_ENABLED = 'false'
 
 [processes]
-  app = 'sh -c "uvicorn apps.api.main:app --host 0.0.0.0 --port ${PORT:-8000}"'
+  # Same entrypoint as every Railway path: apps.api.tenant_app wrapped in the
+  # Vercel OIDC bridge. Naming apps.api.main here bypassed the tenant
+  # membership/RLS boundary and the deployment-identity bridge alike.
+  app = 'sh -c "python -m uvicorn tools.live_cockpit_routes:app --host 0.0.0.0 --port ${PORT:-8000}"'
   worker = 'python -m apps.worker.main'
 
 [http_service]

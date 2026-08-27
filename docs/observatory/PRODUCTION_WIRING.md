@@ -93,9 +93,25 @@ Production runtime variables include:
 - `BRAIN_VERCEL_OIDC_PROJECT`
 - `BRAIN_VERCEL_OIDC_ENVIRONMENT`
 
-Railway should run the canonical API image (`Dockerfile` → `apps.api.main` / tenant app). Observatory cockpit read routes (`/signals`, `/edges`, `/contradictions`, `/curiosity`, `/sources`, and empty-state collection routes) are registered on that canonical surface as of #160. A Railway redeploy of `main` after #160 is required before live OBS 18/18 can be claimed.
+Railway runs the canonical API image (`Dockerfile` → `tools.live_cockpit_routes:app`, which is `apps.api.tenant_app` wrapped in the Vercel OIDC bridge). Observatory cockpit read routes (`/signals`, `/edges`, `/contradictions`, `/curiosity`, `/sources`, and empty-state collection routes) are registered on that surface as of #160. A Railway redeploy of `main` is required before live OBS 18/18 can be claimed.
 
-`Dockerfile.railway` remains a compatibility path (OIDC bridge); it is not the sole home of the cockpit read model.
+Until this change, that redeploy could not have delivered OBS 18/18 by either
+route. The canonical image did not copy `tools/`, so it carried neither the OIDC
+bridge nor `apply_migrations.py`: a service switched to `railway.toml` would have
+rejected the BFF's `Authorization: Bearer <OIDC token>` and applied no
+migrations. A service left on `railway.brain-api-live.toml` kept the bridge but
+was pinned to `Dockerfile.railway`. `railway.toml`,
+`railway.brain-api-live.toml`, `Dockerfile`, `Dockerfile.railway` and `fly.toml`
+now all resolve to one image and one entrypoint, so the live surface no longer
+depends on which of them the host selects.
+
+`Dockerfile.railway` remains a compatibility path; it builds the same runtime as `Dockerfile`.
+
+**Still required outside the repository:** confirm in the Railway dashboard which
+config path or Dockerfile path the `brain-api-live` service is pinned to, and
+that `BRAIN_VERCEL_OIDC_TEAM_SLUG`, `BRAIN_VERCEL_OIDC_PROJECT` and
+`BRAIN_VERCEL_OIDC_ENVIRONMENT` are set there. The repository cannot read those
+settings, and no repository change can substitute for them.
 
 ### Vercel: `brain`
 
