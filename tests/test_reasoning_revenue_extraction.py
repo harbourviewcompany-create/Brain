@@ -58,6 +58,7 @@ def test_http_llm_reasoner_marks_source_untrusted_and_requires_verbatim_evidence
     assert "evidence_quote" in prompt
     assert "verbatim" in prompt
     assert "must NOT invent" in prompt
+    assert "value must appear inside the evidence_quote" in prompt
 
 
 def test_cortex_router_registers_revenue_entity_extraction_task():
