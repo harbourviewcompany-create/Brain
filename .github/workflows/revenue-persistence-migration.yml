@@ -1,0 +1,98 @@
+name: Revenue Persistence Migration
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Brain runtime
+        run: pip install -c constraints.txt -e '.[dev]'
+
+      - name: Start isolated PostgreSQL
+        run: |
+          docker run -d --name brain-revenue-postgres -p 55434:5432 \
+            -e POSTGRES_USER=brain \
+            -e POSTGRES_PASSWORD=brain \
+            -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 60); do
+            if docker exec -e PGPASSWORD=brain brain-revenue-postgres \
+                 psql -h 127.0.0.1 -U brain -d brain -tAc 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            if [ "${i}" = "60" ]; then docker logs brain-revenue-postgres; exit 1; fi
+            sleep 1
+          done
+          docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          SQL
+
+      - name: Replay production-compatible baseline through migration 018
+        run: |
+          for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            version=$(basename "${migration}" | cut -d_ -f1)
+            if [ "$((10#${version}))" -gt 18 ]; then
+              continue
+            fi
+            echo "Applying ${migration}"
+            docker exec -i brain-revenue-postgres \
+              psql -v ON_ERROR_STOP=1 -U brain -d brain < "${migration}"
+          done
+
+      - name: Verify pre-024 scoring safely degrades on legacy UUID layout
+        env:
+          DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
+        run: python tools/verify_revenue_persistence_migration.py --expect pre024
+
+      - name: Apply migration 024
+        run: |
+          docker exec -i brain-revenue-postgres \
+            psql -v ON_ERROR_STOP=1 -U brain -d brain \
+            < db/migrations/024_revenue_signal_source_lane_text_keys.sql
+
+      - name: Verify post-024 signal to score to offer persistence
+        env:
+          DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
+        run: python tools/verify_revenue_persistence_migration.py --expect post024
+
+      - name: Prove migration 024 replay is idempotent
+        run: |
+          docker exec -i brain-revenue-postgres \
+            psql -v ON_ERROR_STOP=1 -U brain -d brain \
+            < db/migrations/024_revenue_signal_source_lane_text_keys.sql
+          text_columns=$(docker exec brain-revenue-postgres psql -At -U brain -d brain -c "
+            select count(*) from information_schema.columns
+            where table_schema='public' and data_type='text' and (
+              (table_name='revenue_signals' and column_name in ('source_id','money_lane_id'))
+              or (table_name='scored_revenue_opportunities' and column_name='money_lane_id')
+            );")
+          test "${text_columns}" = "3"
+          legacy_fks=$(docker exec brain-revenue-postgres psql -At -U brain -d brain -c "
+            select count(*) from information_schema.table_constraints
+            where table_schema='public' and constraint_type='FOREIGN KEY'
+              and constraint_name in (
+                'revenue_signals_source_id_fkey',
+                'revenue_signals_money_lane_id_fkey',
+                'scored_revenue_opportunities_money_lane_id_fkey'
+              );")
+          test "${legacy_fks}" = "0"
+
+      - name: PostgreSQL logs on failure
+        if: failure()
+        run: docker logs brain-revenue-postgres || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f brain-revenue-postgres >/dev/null 2>&1 || true
