@@ -286,3 +286,66 @@ def test_revenue_execution_spine_without_store_still_works():
         operator_hours=0.5, lesson="worked",
     )
     assert entry.revenue == 100.0
+
+
+def test_loaded_lanes_drop_source_targets_and_nothing_may_depend_on_them():
+    """`_row_to_lane` hardcodes empty source_targets/search_queries.
+
+    The `select` in `load_lanes` reads `public.money_lanes` only, so the two
+    list fields come back empty for every lane loaded from the database, while
+    the in-code seed in `money_spine.py` populates them. Migration 006 does
+    define `money_lane_sources` and `money_lane_search_queries` for exactly
+    this data; the adapter simply does not read them.
+
+    That is survivable only because nothing consumes either field at runtime
+    today. This test pins both halves: the round trip is lossy, and no runtime
+    module reads the fields. Add a consumer and this fails, pointing at the
+    adapter rather than at a lane that mysteriously has no search queries.
+    """
+    import re
+    from pathlib import Path
+
+    from brain.money_spine import MoneySpineService
+
+    row = {
+        "lane_key": "high_intent_lead_pack",
+        "title": "High-intent lead pack",
+        "opportunity_class": "high_intent_lead",
+        "packaged_offer": "High-Intent Lead Pack",
+        "buyer_type": "agency",
+        "seller_or_target_type": "companies",
+        "first_48_hour_action": "Build 25 leads",
+        "price_low": 150.0,
+        "price_high": 900.0,
+        "repeatability": 0.8,
+        "fulfillment_difficulty": 0.3,
+        "time_to_cash_days": 2.0,
+        "automation_readiness": "semi_automated",
+        "legal_access_risk": 0.0,
+        "priority_score": 0.73,
+    }
+    loaded = PostgresRevenueStore._row_to_lane(row)
+    assert loaded.source_targets == []
+    assert loaded.search_queries == []
+
+    seeded = {lane.lane_id: lane for lane in MoneySpineService().lanes.values()}
+    assert seeded["high_intent_lead_pack"].search_queries, (
+        "the in-code seed populates what the database round trip drops"
+    )
+
+    root = Path(__file__).resolve().parents[1]
+    reader = re.compile(r"\.(source_targets|search_queries)\b")
+    consumers = []
+    for package in ("brain", "apps", "tools"):
+        for path in (root / package).rglob("*.py"):
+            if path.name == "money_spine.py":
+                continue  # declares and seeds the fields; does not read them back
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                if reader.search(line):
+                    consumers.append(f"{path.relative_to(root)}:{number}")
+
+    assert not consumers, (
+        "a runtime module now reads lane.source_targets/search_queries, which "
+        "load_lanes() returns empty; teach the adapter to read "
+        "money_lane_sources/money_lane_search_queries first: " + ", ".join(consumers)
+    )
