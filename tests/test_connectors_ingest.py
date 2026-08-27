@@ -172,6 +172,51 @@ def test_prohibited_source_not_due_and_forced_skip():
     assert forced.status == FetchStatus.SKIPPED.value
 
 
+def test_unknown_access_not_due_and_forced_skip():
+    inbox = InMemorySensoryInbox()
+    svc = IngestService(inbox=inbox)
+    svc.register_source(
+        ConnectorSource(
+            source_key="unclassified",
+            url="https://example.com/feed.xml",
+            kind=ConnectorKind.RSS,
+            access=AccessDisposition.UNKNOWN,
+            enabled=True,
+        )
+    )
+    src = svc.registry.get("unclassified")
+    assert src is not None
+    assert src.enabled is False
+    assert src.is_due() is False
+
+    batch = svc.ingest_due_sources()
+    assert batch.sources_due == 0
+
+    forced = svc.ingest_source("unclassified")
+    assert forced.status == FetchStatus.SKIPPED.value
+    assert forced.error == "access_unknown"
+
+
+def test_allowed_and_rate_limited_remain_due():
+    now = utcnow()
+    allowed = ConnectorSource(
+        source_key="ok",
+        url="https://example.com/a",
+        kind=ConnectorKind.RSS,
+        access=AccessDisposition.ALLOWED,
+        next_due_at=now - timedelta(seconds=1),
+    )
+    limited = ConnectorSource(
+        source_key="slow",
+        url="https://example.com/b",
+        kind=ConnectorKind.RSS,
+        access=AccessDisposition.RATE_LIMITED,
+        next_due_at=now - timedelta(seconds=1),
+    )
+    assert allowed.is_due(now) is True
+    assert limited.is_due(now) is True
+
+
 def test_ingest_due_sources_enqueues_and_dedupes():
     url = "https://example.com/feed.xml"
     client = FakeHttpClient({url: _resp(url, SAMPLE_RSS)})
