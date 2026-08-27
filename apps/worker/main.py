@@ -380,22 +380,62 @@ else:
         raise RuntimeError("temporalio not installed")
 
 
+def temporal_address() -> str:
+    """The Temporal endpoint this deployment was actually given, if any.
+
+    run_temporal_worker() falls back to localhost:7233, which is never right in
+    a container: nothing listens on the worker's own loopback. Treating that
+    default as "configured" is what let a Temporal-mode worker crash-loop
+    against itself instead of thinking.
+    """
+    return (
+        os.environ.get("TEMPORAL_ADDRESS") or os.environ.get("TEMPORAL_HOST") or ""
+    ).strip()
+
+
+def run_cognition_loop() -> None:
+    """The durable in-process cognition loop, with env-tunable cadence."""
+    run_forever_with_maintenance(
+        tick_sleep=float(os.environ.get("BRAIN_TICK_SLEEP", "1")),
+        ingest_every=int(os.environ.get("BRAIN_INGEST_EVERY", "30")),
+        maintenance_every=int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
+    )
+
+
 def main() -> None:
     mode = (os.environ.get("BRAIN_WORKER_MODE") or "cognition").lower()
     if mode == "verify":
         worker_database_url()
         print("worker database topology verification passed")
         return
-    if mode in {"temporal", "worker"} or os.environ.get("TEMPORAL_ADDRESS"):
-        asyncio.run(run_temporal_worker())
-    elif mode in {"maintenance", "ingest", "ingest_loop"}:
-        run_forever_with_maintenance(
-            tick_sleep=float(os.environ.get("BRAIN_TICK_SLEEP", "1")),
-            ingest_every=int(os.environ.get("BRAIN_INGEST_EVERY", "30")),
-            maintenance_every=int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
-        )
-    else:
-        run_forever_with_maintenance()
+
+    if mode in {"temporal", "worker"} or temporal_address():
+        # A worker that cannot reach its orchestrator must still think. Exiting
+        # here means the deployment restarts, dials an address nothing answers,
+        # and exits again -- a crash loop that records no cognition at all,
+        # which is indistinguishable from a healthy-but-idle Brain in the
+        # cockpit. Degrading to the in-process loop keeps the system alive and
+        # says so loudly.
+        if not temporal_address():
+            log.error(
+                "temporal worker mode requested without TEMPORAL_ADDRESS; "
+                "running in-process cognition instead of dialling localhost",
+                extra={"mode": mode},
+            )
+            run_cognition_loop()
+            return
+        try:
+            asyncio.run(run_temporal_worker())
+            return
+        except Exception:
+            log.exception(
+                "temporal worker could not run; falling back to in-process cognition",
+                extra={"temporal_address": temporal_address()},
+            )
+            run_cognition_loop()
+            return
+
+    run_cognition_loop()
 
 
 if __name__ == "__main__":
