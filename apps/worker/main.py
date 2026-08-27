@@ -80,6 +80,25 @@ def build_runner(*, enable_endogenous: bool = True) -> Any:
     return runner
 
 
+def build_revenue_spine() -> Any:
+    """Build a RevenueExecutionSpine, Postgres-backed when DATABASE_URL is
+    set. Never raises — ingestion should still run in-memory if the DB
+    isn't reachable at boot; this only degrades persistence, not ingest."""
+    from brain.money_spine import MoneySpineService, RevenueExecutionSpine
+
+    dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    if dsn:
+        try:
+            from brain.adapters.revenue_store import PostgresRevenueStore
+
+            store = PostgresRevenueStore(dsn)
+            money = MoneySpineService(store=store)
+            return RevenueExecutionSpine(money=money, store=store)
+        except Exception:
+            pass
+    return RevenueExecutionSpine()
+
+
 def build_ingest_service(
     *, inbox: Any | None = None, event_store: Any | None = None, revenue: Any | None = None
 ) -> Any:
@@ -87,14 +106,13 @@ def build_ingest_service(
     from brain.connectors.rss import RssConnector
     from brain.connectors.service import IngestService
     from brain.memory import InMemoryBrainStore
-    from brain.money_spine import RevenueExecutionSpine
     from brain.sensory_inbox import InMemorySensoryInbox
 
     svc = IngestService(
         inbox=inbox or InMemorySensoryInbox(),
         event_store=event_store or InMemoryBrainStore(),
         connectors=[RssConnector(), HttpJsonConnector()],
-        revenue=revenue if revenue is not None else RevenueExecutionSpine(),
+        revenue=revenue if revenue is not None else build_revenue_spine(),
     )
     raw = os.environ.get("BRAIN_RSS_SOURCES") or ""
     for part in raw.split(","):
