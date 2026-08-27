@@ -1,5 +1,6 @@
 """Ingest service — fetch due sources and enqueue sensory inbox."""
 from __future__ import annotations
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -79,16 +80,10 @@ class IngestService:
         self.max_sources_per_tick = max(1, max_sources_per_tick)
         self.max_enqueue_per_source = max(1, max_enqueue_per_source)
         self.default_source_reliability = default_source_reliability
-        # Optional RevenueExecutionSpine. When set, every ingested item is
-        # also run through the revenue adapter; a queued action is always
-        # created in APPROVAL_REQUIRED state — ingestion can propose a
-        # candidate revenue action, it can never approve or execute one.
         self.revenue = revenue
-        # Optional Reasoner (see brain/connectors/entity_extractor.py). Off
-        # by default — nothing spends an API call unless this is passed in
-        # explicitly. When set, a classified-but-non-actionable candidate
-        # gets one extraction attempt before being logged as scored-only,
-        # bounded by max_extractions_per_batch per ingest_due_sources call.
+        # Optional Reasoner. Off by default. The limit is scoped to one public
+        # ingest operation: a scheduled batch shares one budget across its due
+        # sources, while every forced ingest_source() call gets a fresh budget.
         self.entity_extractor = entity_extractor
         self.max_extractions_per_batch = max(0, max_extractions_per_batch)
         self._extractions_this_batch = 0
@@ -144,6 +139,9 @@ class IngestService:
         return batch
 
     def ingest_source(self, source_key: str) -> IngestSourceResult:
+        # Forced/manual ingests are distinct operations and therefore receive
+        # their own extraction budget instead of inheriting service lifetime state.
+        self._extractions_this_batch = 0
         source = self.registry.get(source_key)
         if source is None:
             return IngestSourceResult(source_key=source_key, status=FetchStatus.SKIPPED.value, error="source_not_found")
@@ -213,22 +211,7 @@ class IngestService:
                 content_hash=item.content_hash, enqueued=False, deduped=False)
 
     def _maybe_queue_revenue_action(self, source: ConnectorSource, item: RawObservationItem) -> str | None:
-        """Best-effort: classify the item and queue a draft revenue action.
-
-        Never raises — a classification/queueing failure must not break
-        ingestion of the underlying observation. Always lands the action
-        in APPROVAL_REQUIRED state; nothing here can approve or execute.
-
-        When a lane is inferred but the signal fails NoFantasyFilter (the
-        common case for unenriched automated feeds — no named buyer,
-        seller, or contact channel), and self.entity_extractor is set and
-        this batch's extraction budget isn't exhausted, one extraction
-        attempt is made and the signal is re-scored with any fields it
-        found. Whether or not that changes the outcome, a
-        `revenue.signal_scored` event is emitted with the final rejection
-        reasons so the candidate is visible to an operator instead of
-        silently disappearing.
-        """
+        """Best-effort classification, evidence-grounded enrichment, and action queueing."""
         if self.revenue is None:
             return None
         try:
@@ -239,10 +222,11 @@ class IngestService:
             if not scored.actionable:
                 signal, scored = self._maybe_extract_and_rescore(source, item, signal, scored)
             if not scored.actionable:
-                self._emit_scored_signal_event(source, item, scored)
+                self._emit_scored_signal_event(source, item, scored, signal=signal)
                 return None
             offer = self.revenue.money.package_offer(signal, scored)
             action = self.revenue.queue_action_from_scored(signal, scored, offer)
+            self._attach_extraction_review_evidence(action, signal)
             return str(action.id)
         except Exception:
             return None
@@ -256,36 +240,87 @@ class IngestService:
             return signal, scored
         self._extractions_this_batch += 1
         try:
-            from .entity_extractor import extract_revenue_entities
+            from .entity_extractor import EXTRACTABLE_FIELDS, extract_revenue_entities
 
-            enrichment = extract_revenue_entities(item, reasoner=self.entity_extractor)
+            extraction = extract_revenue_entities(item, reasoner=self.entity_extractor)
         except Exception:
             return signal, scored
-        confidences = enrichment.pop("extraction_confidence", {})
+
+        confidences = extraction.pop("extraction_confidence", {})
+        provenance = extraction.pop("extraction_provenance", {})
+
+        # Connector/source metadata is authoritative. Model extraction may fill
+        # missing fields, never replace a non-empty source-provided value.
+        enrichment = {
+            field: value
+            for field, value in extraction.items()
+            if field in EXTRACTABLE_FIELDS
+            and not (isinstance(item.metadata.get(field), str) and item.metadata[field].strip())
+        }
         if not enrichment:
             return signal, scored
+
+        used_provenance = {
+            field: provenance[field]
+            for field in enrichment
+            if isinstance(provenance.get(field), dict)
+        }
+        used_confidences = {
+            field: confidences[field]
+            for field in enrichment
+            if field in confidences
+        }
         enriched_item = RawObservationItem(
             title=item.title, content=item.content, claim=item.claim,
             source_url=item.source_url, item_id=item.item_id, content_hash=item.content_hash,
             observed_at=item.observed_at, confidence=item.confidence,
             signal_hints=list(item.signal_hints), entities=list(item.entities),
-            metadata={**item.metadata, **enrichment, "extraction_confidence": confidences},
+            metadata={**item.metadata, **enrichment},
         )
-        re_signal = revenue_signal_from_observation(enriched_item, source_id=source.source_key)
+        re_signal = revenue_signal_from_observation(
+            enriched_item,
+            source_id=source.source_key,
+            extra_metadata={
+                "extraction_grounded": True,
+                "extraction_confidence": used_confidences,
+                "extraction_provenance": used_provenance,
+            },
+        )
         if re_signal is None:
             return signal, scored
         re_scored = self.revenue.money.score_signal(re_signal)
         return re_signal, re_scored
 
-    def _emit_scored_signal_event(self, source: ConnectorSource, item: RawObservationItem, scored: Any) -> None:
+    def _attach_extraction_review_evidence(self, action: Any, signal: Any) -> None:
+        """Persist extraction provenance on the approval action without schema changes."""
+        provenance = signal.metadata.get("extraction_provenance") if hasattr(signal, "metadata") else None
+        if not isinstance(provenance, dict) or not provenance:
+            return
+        review_ref = "extraction_provenance:" + json.dumps(
+            provenance, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+        )
+        if review_ref not in action.evidence_refs:
+            action.evidence_refs.append(review_ref)
+        store = getattr(self.revenue, "store", None)
+        if store is not None:
+            store.save_action(action)
+
+    def _emit_scored_signal_event(
+        self, source: ConnectorSource, item: RawObservationItem, scored: Any, *, signal: Any | None = None,
+    ) -> None:
         if self.event_store is None or not hasattr(self.event_store, "append"):
             return
         try:
-            self.event_store.append(BrainEvent("revenue.signal_scored", "connector", source.id, {
+            payload: dict[str, Any] = {
                 "source_key": source.source_key, "item_id": item.item_id,
                 "money_lane_id": scored.lane_id, "score": scored.score,
                 "actionable": scored.actionable, "rejection_reasons": list(scored.rejection_reasons),
-            }))
+            }
+            if signal is not None and isinstance(getattr(signal, "metadata", None), dict):
+                provenance = signal.metadata.get("extraction_provenance")
+                if isinstance(provenance, dict) and provenance:
+                    payload["extraction_provenance"] = provenance
+            self.event_store.append(BrainEvent("revenue.signal_scored", "connector", source.id, payload))
         except Exception:
             pass
 
