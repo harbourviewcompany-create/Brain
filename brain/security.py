@@ -4,6 +4,49 @@ import hashlib
 import hmac
 import os
 from dataclasses import dataclass
+from typing import Mapping
+
+#: Every header a caller may present a Brain credential in. All of them are
+#: checked; none of them takes precedence over the others.
+CREDENTIAL_HEADERS = ("x-brain-api-key", "x-api-key", "authorization")
+
+
+def credential_candidates(headers: Mapping[str, str]) -> list[str]:
+    """Return every credential a request presents, in no particular order.
+
+    A caller can legitimately present more than one credential at once -- the
+    Observatory BFF, for example, may carry both a platform identity token in
+    ``authorization`` and the Brain API key in ``X-Brain-Api-Key``. Treating any
+    single header as authoritative means an unrelated bearer token silently
+    masks a valid API key, so every presented value is collected and the caller
+    is authorized if *any* of them matches.
+    """
+
+    normalized = {key.lower(): value for key, value in headers.items()}
+    candidates: list[str] = []
+    for header in CREDENTIAL_HEADERS:
+        raw = (normalized.get(header) or "").strip()
+        if not raw:
+            continue
+        if header == "authorization":
+            if raw.lower().startswith("bearer "):
+                raw = raw[7:].strip()
+            else:
+                continue
+        if raw:
+            candidates.append(raw)
+    return candidates
+
+
+def presented_credentials(headers: Mapping[str, str], expected: str) -> bool:
+    """Return true when any credential the request presents matches ``expected``."""
+
+    if not expected:
+        return False
+    return any(
+        hmac.compare_digest(candidate, expected)
+        for candidate in credential_candidates(headers)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,10 +95,11 @@ class ApiKeyAuthenticator:
         expected = self.config.api_key
         if not expected:
             return not self.config.production
-        candidate = x_api_key or ""
-        if authorization and authorization.lower().startswith("bearer "):
-            candidate = authorization[7:].strip()
-        return bool(candidate) and hmac.compare_digest(candidate, expected)
+        headers = {
+            "authorization": authorization or "",
+            "x-api-key": x_api_key or "",
+        }
+        return presented_credentials(headers, expected)
 
     @staticmethod
     def fingerprint(value: str) -> str:
