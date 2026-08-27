@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import type { CSSProperties } from "react";
+import { birthFlash, isStillBirthing, visualScale, type BirthMap } from "@/field/births";
+import { createCamera, projectPoint, resolveCameraTarget, stepCamera } from "@/field/camera";
+import type { FieldDiff } from "@/field/diffScene";
+import { flareColor, type FieldFlare } from "@/field/flares";
 import type { CognitiveScene, SceneEdge, SceneKind, SceneNode, SceneZone } from "@/types/observatory";
 
 const COLORS: Record<SceneKind, string> = {
@@ -97,17 +101,25 @@ function nodeColor(node: SceneNode): string {
 
 export function CognitiveField({
   scene,
+  diff,
+  births,
+  flares,
   selectedId,
   onSelect,
 }: {
   scene: CognitiveScene;
+  diff: FieldDiff;
+  births: BirthMap;
+  flares: FieldFlare[];
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const cameraRef = useRef(createCamera());
+  const lastFrameRef = useRef<number>(performance.now());
   const nodeMap = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene.nodes]);
-  const animationKey = `${scene.activity}:${scene.nodes.length}:${scene.edges.length}:${scene.organism.stress}:${scene.organism.dominantGoalPressure}`;
+  const animationKey = `${scene.activity}:${scene.nodes.length}:${scene.edges.length}:${scene.organism.stress}:${diff.cameraHintId}:${selectedId}:${flares.length}`;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -122,7 +134,8 @@ export function CognitiveField({
     let dpr = 1;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const isMobile = window.matchMedia("(max-width: 760px)").matches;
-    const animate = !reduced && scene.activity > 0;
+    // Always tick lightly so substrate breathes and births can complete.
+    const animate = !reduced;
 
     const resize = () => {
       const bounds = container.getBoundingClientRect();
@@ -136,16 +149,17 @@ export function CognitiveField({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
-    const point = (node: SceneNode) => ({ x: node.x * width, y: node.y * height });
-    const center = () => ({ x: width * 0.5, y: height * 0.49 });
+    const point = (node: SceneNode) => projectPoint(node.x, node.y, width, height, cameraRef.current);
+    const center = () => projectPoint(0.5, 0.49, width, height, cameraRef.current);
 
-    const drawReferenceField = () => {
+    const drawReferenceField = (time: number) => {
       const c = center();
       const min = Math.min(width, height);
+      const breath = 0.5 + 0.5 * Math.sin(time / 2800);
       ctx.save();
 
-      const fieldGradient = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, min * 0.43);
-      fieldGradient.addColorStop(0, "rgba(55, 68, 92, .19)");
+      const fieldGradient = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, min * (0.42 + breath * 0.02));
+      fieldGradient.addColorStop(0, `rgba(55, 68, 92, ${0.16 + scene.activity * 0.08 + scene.organism.stress * 0.05})`);
       fieldGradient.addColorStop(0.42, "rgba(25, 34, 50, .10)");
       fieldGradient.addColorStop(1, "rgba(4, 8, 14, 0)");
       ctx.fillStyle = fieldGradient;
@@ -153,8 +167,8 @@ export function CognitiveField({
 
       ctx.lineWidth = 1;
       [0.12, 0.195, 0.285].forEach((radiusFactor, index) => {
-        const radius = min * radiusFactor;
-        ctx.strokeStyle = `rgba(142, 165, 192, ${0.105 - index * 0.022})`;
+        const radius = min * (radiusFactor + breath * 0.004);
+        ctx.strokeStyle = `rgba(142, 165, 192, ${0.09 - index * 0.018 + scene.activity * 0.04})`;
         ctx.setLineDash(index === 2 ? [2, 8] : []);
         ctx.beginPath();
         ctx.ellipse(c.x, c.y, radius * 1.17, radius, 0, 0, Math.PI * 2);
@@ -162,7 +176,6 @@ export function CognitiveField({
       });
       ctx.setLineDash([]);
 
-      // The central organism reads as a pressure instrument, not a decorative target.
       const pressureEntries = Object.entries(scene.organism.pressures);
       pressureEntries.forEach(([key, value], index) => {
         const angle = -Math.PI / 2 + (index / pressureEntries.length) * Math.PI * 2;
@@ -209,6 +222,17 @@ export function CognitiveField({
         ctx.stroke();
       }
 
+      // Unformed self-state: hollow core ring (honest absence).
+      if (!scene.organism.phase) {
+        ctx.strokeStyle = "rgba(142,165,192,.28)";
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([3, 5]);
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, min * 0.048, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
       ctx.restore();
     };
 
@@ -217,6 +241,7 @@ export function CognitiveField({
       ctx.textBaseline = "top";
       scene.zones.forEach((zone) => {
         const [x, y] = zonePosition(zone.id, isMobile);
+        const projected = projectPoint(x, y, width, height, cameraRef.current);
         const active = zone.count > 0;
         const stateColor = zone.id === "diagnostic"
           ? "rgba(113,132,154,.68)"
@@ -225,13 +250,12 @@ export function CognitiveField({
             : "rgba(116,137,161,.55)";
         ctx.fillStyle = stateColor;
         ctx.font = `${isMobile ? 8 : 9}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-        ctx.letterSpacing = "0px";
-        ctx.fillText(`${zone.label}  ${zone.count} · ${zone.state.toUpperCase()}`, x * width, y * height);
+        ctx.fillText(`${zone.label}  ${zone.count} · ${zone.state.toUpperCase()}`, projected.x, projected.y);
         if (!isMobile && !active && zone.id !== "diagnostic") {
           ctx.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
           ctx.fillStyle = "rgba(97,116,138,.42)";
           const short = zone.detail.length > 54 ? `${zone.detail.slice(0, 53)}…` : zone.detail;
-          ctx.fillText(short, x * width, y * height + 15);
+          ctx.fillText(short, projected.x, projected.y + 15);
         }
       });
       ctx.restore();
@@ -252,6 +276,45 @@ export function CognitiveField({
       ctx.restore();
     };
 
+    const drawFlares = (time: number) => {
+      if (!flares.length) return;
+      const pulse = 0.55 + 0.45 * Math.sin(time / 420);
+      ctx.save();
+      for (const flare of flares) {
+        const { x, y } = projectPoint(flare.x, flare.y, width, height, cameraRef.current);
+        const color = flareColor(flare.kind);
+        const radius = 10 + pulse * 4;
+        const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius * 2.4);
+        gradient.addColorStop(0, `${color}55`);
+        gradient.addColorStop(1, `${color}00`);
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.4;
+        ctx.globalAlpha = 0.7 + pulse * 0.25;
+        ctx.beginPath();
+        ctx.moveTo(x - radius, y);
+        ctx.lineTo(x + radius, y);
+        ctx.moveTo(x, y - radius);
+        ctx.lineTo(x, y + radius);
+        ctx.stroke();
+
+        if (!isMobile) {
+          ctx.globalAlpha = 0.75;
+          ctx.font = "8px ui-monospace, SFMono-Regular, Menlo, monospace";
+          ctx.fillStyle = color;
+          ctx.textAlign = "left";
+          const label = flare.kind === "auth" ? "UPSTREAM IDENTITY" : flare.kind === "missing_route" ? "ROUTE ABSENT" : "PARTIAL READ";
+          ctx.fillText(label, x + radius + 6, y - 2);
+        }
+        ctx.globalAlpha = 1;
+      }
+      ctx.restore();
+    };
+
     const drawArrow = (from: { x: number; y: number }, to: { x: number; y: number }, color: string, alpha: number) => {
       const angle = Math.atan2(to.y - from.y, to.x - from.x);
       const size = 5;
@@ -267,7 +330,7 @@ export function CognitiveField({
       ctx.restore();
     };
 
-    const drawEdge = (edge: SceneEdge, time: number) => {
+    const drawEdge = (edge: SceneEdge, time: number, now: number) => {
       const sourceNode = nodeMap.get(edge.source);
       const targetNode = nodeMap.get(edge.target);
       if (!sourceNode || !targetNode) return;
@@ -275,9 +338,10 @@ export function CognitiveField({
       const target = point(targetNode);
       const diagnostic = sourceNode.layer === "diagnostic" || targetNode.layer === "diagnostic";
       const color = edge.tension ? "#ff7066" : diagnostic ? DIAGNOSTIC : "#8fa9c8";
-      const alpha = diagnostic ? 0.16 : 0.16 + edge.strength * 0.28;
+      const scale = Math.min(visualScale(edge.source, births, now), visualScale(edge.target, births, now));
+      const alpha = (diagnostic ? 0.16 : 0.16 + edge.strength * 0.28) * scale;
       ctx.save();
-      ctx.lineWidth = edge.tension ? 1.4 + edge.strength : 0.7 + edge.strength * 1.1;
+      ctx.lineWidth = (edge.tension ? 1.4 + edge.strength : 0.7 + edge.strength * 1.1) * scale;
       ctx.strokeStyle = edge.tension ? `rgba(255,112,102,${0.28 + edge.strength * 0.45})` : diagnostic ? "rgba(104,121,142,.20)" : `rgba(143,169,200,${alpha})`;
       if (edge.tension) {
         ctx.setLineDash([5, 6]);
@@ -318,17 +382,32 @@ export function CognitiveField({
       ctx2.strokeStyle = color;
     };
 
-    const drawNode = (node: SceneNode, time: number) => {
+    const drawNode = (node: SceneNode, time: number, now: number) => {
       const { x, y } = point(node);
       const color = nodeColor(node);
       const pulse = nodePulse(node);
       const phase = pulse > 0 && animate ? (Math.sin(time / (620 - pulse * 300)) + 1) / 2 : 0;
-      const radius = node.size + phase * pulse * 4;
+      const scale = visualScale(node.id, births, now);
+      const flash = birthFlash(node.id, births, now);
+      const radius = (node.size + phase * pulse * 4) * scale;
       const selected = node.id === selectedId;
       const diagnostic = node.layer === "diagnostic";
 
       ctx.save();
-      ctx.globalAlpha = diagnostic ? 0.72 : 1;
+      ctx.globalAlpha = (diagnostic ? 0.72 : 1) * Math.min(1, 0.35 + scale * 0.65);
+
+      if (flash > 0 && !diagnostic) {
+        ctx.globalCompositeOperation = "lighter";
+        const flashGradient = ctx.createRadialGradient(x, y, 0, x, y, radius * (2.5 + flash));
+        flashGradient.addColorStop(0, `${color}${Math.floor(40 + flash * 50).toString(16).padStart(2, "0")}`);
+        flashGradient.addColorStop(1, `${color}00`);
+        ctx.fillStyle = flashGradient;
+        ctx.beginPath();
+        ctx.arc(x, y, radius * (2.5 + flash), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+      }
+
       if ((node.importance > 0.58 || selected) && !diagnostic) {
         ctx.globalCompositeOperation = "lighter";
         const haloRadius = radius * (2 + node.importance * 0.7);
@@ -399,7 +478,7 @@ export function CognitiveField({
           break;
         case "idea":
           for (let index = 0; index < 6; index += 1) {
-            const angle = index / 6 * Math.PI * 2;
+            const angle = (index / 6) * Math.PI * 2;
             ctx.beginPath(); ctx.moveTo(x + Math.cos(angle) * radius * 0.35, y + Math.sin(angle) * radius * 0.35); ctx.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius); ctx.stroke();
           }
           ctx.beginPath(); ctx.arc(x, y, radius * 0.32, 0, Math.PI * 2); ctx.fill();
@@ -427,7 +506,7 @@ export function CognitiveField({
       ctx.restore();
     };
 
-    const drawLabels = () => {
+    const drawLabels = (now: number) => {
       ctx.save();
       ctx.textBaseline = "top";
       scene.nodes.forEach((node) => {
@@ -435,6 +514,7 @@ export function CognitiveField({
         if (node.layer === "diagnostic" && !selected) return;
         if (isMobile && !selected && node.kind !== "organism" && node.kind !== "goal") return;
         if (!selected && node.importance < 0.68) return;
+        if (visualScale(node.id, births, now) < 0.55) return;
         const { x, y } = point(node);
         const max = isMobile ? 20 : 38;
         const label = node.label.length > max ? `${node.label.slice(0, max - 1)}…` : node.label;
@@ -446,21 +526,37 @@ export function CognitiveField({
     };
 
     const draw = (time = 0) => {
+      const now = Date.now();
+      const dt = Math.min(48, time - lastFrameRef.current || 16);
+      lastFrameRef.current = time;
+
+      const target = resolveCameraTarget(scene, selectedId, diff.cameraHintId);
+      stepCamera(cameraRef.current, target, dt);
+
       ctx.clearRect(0, 0, width, height);
-      drawReferenceField();
+      drawReferenceField(time);
       drawZones();
-      scene.edges.forEach((edge) => drawEdge(edge, time));
-      scene.nodes.forEach((node) => drawNode(node, time));
+      scene.edges.forEach((edge) => drawEdge(edge, time, now));
+      scene.nodes.forEach((node) => drawNode(node, time, now));
+      drawFlares(time);
       drawCoreText();
-      drawLabels();
-      if (animate) frame = requestAnimationFrame(draw);
+      drawLabels(now);
+
+      const stillMorphing = scene.nodes.some((node) => isStillBirthing(node.id, births, now));
+      if (animate && (scene.activity > 0 || stillMorphing || flares.length > 0 || selectedId)) {
+        frame = requestAnimationFrame(draw);
+      } else if (animate) {
+        // Quiet field still breathes slowly.
+        frame = requestAnimationFrame(draw);
+      }
     };
 
     resize();
-    draw();
+    lastFrameRef.current = performance.now();
+    draw(performance.now());
     const observer = new ResizeObserver(() => {
       resize();
-      if (!animate) draw();
+      if (!animate) draw(performance.now());
     });
     observer.observe(container);
 
@@ -468,7 +564,7 @@ export function CognitiveField({
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [animationKey, nodeMap, scene, selectedId]);
+  }, [animationKey, births, diff.cameraHintId, flares, nodeMap, scene, selectedId]);
 
   const quiet = scene.cognitiveCount === 0;
 
@@ -506,7 +602,16 @@ export function CognitiveField({
         <div className="cognitive-field__quiet-state" role="status">
           <span>COGNITIVE FIELD QUIET</span>
           <strong>No non-diagnostic cognitive objects are currently active in the exposed read models.</strong>
-          {scene.diagnosticCount ? <em>{scene.diagnosticCount} operational record{scene.diagnosticCount === 1 ? " is" : "s are"} isolated in the diagnostic channel.</em> : null}
+          {scene.diagnosticCount ? (
+            <em>
+              {scene.diagnosticCount} operational record{scene.diagnosticCount === 1 ? " is" : "s are"} isolated in the diagnostic channel.
+            </em>
+          ) : null}
+          {flares.length ? (
+            <em className="cognitive-field__flare-note">
+              {flares.length} upstream diagnostic flare{flares.length === 1 ? "" : "s"} marked on the field.
+            </em>
+          ) : null}
         </div>
       ) : null}
     </div>
