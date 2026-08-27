@@ -66,19 +66,43 @@ def _stable_uuid(namespace: str, key: str) -> str:
 
 
 class VercelOidcAuthBridge:
-    """Railway deployment-identity bridge with durable tenant membership.
+    """Railway deployment-identity bridge with tenant-aware escalation.
 
-    A verified Vercel deployment token is exchanged for the local API key and
-    bound to a server-owned tenant/actor identity. The actor's role is resolved
-    from tenant_memberships before the request runs. Neither API key, tenant, role,
-    nor service context is accepted from untrusted request headers through this
-    bridge. Canonical legacy ownership remains quarantined until the separate
-    Observatory compatibility release action has been explicitly applied.
+    A verified Vercel deployment token is exchanged for the local API key. When
+    tenant mode is disabled, that is the complete authentication boundary: the
+    canonical app intentionally has no tenant membership requirement in this
+    mode, so the bridge must not invent one. When tenant mode is enabled, the
+    verified deployment identity is additionally bound to the durable
+    Observatory tenant membership before the request runs.
+
+    Neither API key, tenant, role, nor service context is accepted from
+    untrusted request headers through this bridge. Canonical legacy ownership
+    remains quarantined until the separate Observatory compatibility release
+    action has been explicitly applied.
     """
 
     def __init__(self, inner_app) -> None:
         self.inner_app = inner_app
         self.verifier = VercelOidcVerifier.from_env()
+
+    @staticmethod
+    def _translated_scope(scope, headers, local_key: str):
+        blocked = {
+            b"authorization",
+            b"x-api-key",
+            b"x-brain-api-key",
+            b"x-brain-tenant-id",
+            b"x-brain-actor-id",
+            b"x-brain-tenant-timestamp",
+            b"x-brain-tenant-signature",
+            b"x-brain-roles",
+            b"x-brain-service-context",
+        }
+        translated = dict(scope)
+        translated["headers"] = [
+            (name, value) for name, value in headers if name.lower() not in blocked
+        ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
+        return translated
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") != "http":
@@ -106,6 +130,17 @@ class VercelOidcAuthBridge:
                         content={"detail": "brain_local_api_key_not_configured"},
                     )
                     await response(scope, receive, send)
+                    return
+
+                translated_scope = self._translated_scope(scope, headers, local_key)
+
+                # Legacy/single-tenant production explicitly disables the tenant
+                # membership boundary in apps.api.tenant_app. A verified Vercel
+                # deployment identity is therefore sufficient here as well. This
+                # also removes the fragile requirement that Vercel and Railway
+                # share a second static API-key value for Observatory reads.
+                if tenant_api.tenant_security.mode == "disabled":
+                    await self.inner_app(translated_scope, receive, send)
                     return
 
                 identity_context = _observatory_identity_context()
@@ -151,24 +186,8 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
-                blocked = {
-                    b"authorization",
-                    b"x-api-key",
-                    b"x-brain-api-key",
-                    b"x-brain-tenant-id",
-                    b"x-brain-actor-id",
-                    b"x-brain-tenant-timestamp",
-                    b"x-brain-tenant-signature",
-                    b"x-brain-roles",
-                    b"x-brain-service-context",
-                }
-                scope = dict(scope)
-                scope["headers"] = [
-                    (name, value) for name, value in headers if name.lower() not in blocked
-                ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
-
                 with tenant_context_scope(context):
-                    await self.inner_app(scope, receive, send)
+                    await self.inner_app(translated_scope, receive, send)
                 return
             if reason != "vercel_oidc_not_configured":
                 _logger.info("vercel_oidc_auth_rejected reason=%s", reason)
