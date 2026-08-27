@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CognitiveField } from "@/components/observatory/CognitiveField";
+import dynamic from "next/dynamic";
 import { CognitionTimeline } from "@/components/observatory/CognitionTimeline";
 import { ObservatoryDock } from "@/components/observatory/ObservatoryDock";
 import { SystemPulse } from "@/components/observatory/SystemPulse";
@@ -9,6 +9,19 @@ import { ThoughtInspector } from "@/components/observatory/ThoughtInspector";
 import { useBrainObservatory } from "@/hooks/useBrainObservatory";
 import { buildCognitiveScene } from "@/lib/observatory";
 import type { CognitiveScene } from "@/types/observatory";
+
+// CognitiveField is pure <canvas> drawing (all rendering happens in a
+// useEffect, nothing meaningful reaches the DOM on the server) and is the
+// single largest component in this bundle. Loading it as its own chunk
+// keeps it off the critical path for first paint of the surrounding
+// cockpit chrome (SystemPulse, ObservatoryDock, ThoughtInspector).
+const CognitiveField = dynamic(
+  () => import("@/components/observatory/CognitiveField").then((mod) => mod.CognitiveField),
+  {
+    ssr: false,
+    loading: () => <div className="observatory-field-shell__loading" aria-hidden="true" />,
+  }
+);
 
 const EMPTY_SCENE: CognitiveScene = {
   nodes: [],

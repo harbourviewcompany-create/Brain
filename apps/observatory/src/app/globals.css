@@ -20,7 +20,7 @@
   --obs-green: #58dfa8;
   --obs-diagnostic: #71859c;
   --obs-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  --obs-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --obs-sans: var(--obs-inter), Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -104,6 +104,12 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 
 .observatory-stage { position: absolute; inset: 82px 0 0; }
 .observatory-field-shell { position: absolute; inset: 0 0 126px 92px; overflow: hidden; }
+.observatory-field-shell__loading {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(77, 156, 255, 0.05), transparent 60%);
+}
 .cognitive-field { position: absolute; inset: 0; }
 .cognitive-field__canvas, .cognitive-field__targets { position: absolute; inset: 0; width: 100%; height: 100%; }
 .cognitive-field__canvas { display: block; }
