@@ -41,7 +41,10 @@ BELIEFS = (
         "Production Observatory transport reaches all 18 canonical Brain read surfaces.",
         0.92,
         "established",
-        ("Does every successful read surface render its full semantic state in the current Observatory UI?",),
+        (
+            "Does every successful read surface render its full semantic state in the "
+            "current Observatory UI?",
+        ),
     ),
     BeliefSeed(
         "durability",
@@ -68,14 +71,20 @@ BELIEFS = (
         "A dedicated worker is strictly required for Brain cognition to progress.",
         0.50,
         "contested",
-        ("Does lease-controlled inline cognition provide equivalent continuity under current production load?",),
+        (
+            "Does lease-controlled inline cognition provide equivalent continuity under "
+            "current production load?",
+        ),
     ),
     BeliefSeed(
         "tenant-release",
         "Tenant-RLS migrations 019-022 must remain release-gated until split identities and legacy-data strategy are verified.",
         0.91,
         "established",
-        ("What evidence will prove the production role split and Strategy A quarantine are ready for release?",),
+        (
+            "What evidence will prove the production role split and Strategy A quarantine "
+            "are ready for release?",
+        ),
     ),
 )
 
@@ -89,12 +98,60 @@ SOURCES = (
 
 # belief key, evidence key, source key, claim, reliability, relation, evidence class
 EVIDENCE = (
-    ("transport", "transport-live", "observatory-runtime", "Repeated production polling has returned HTTP 200 on all 18 canonical read surfaces.", 0.96, "supports", "verified_internal_fact"),
-    ("durability", "durability-db", "repository-contract", "PostgreSQL is the authoritative durable state store for production cognition and read models.", 0.94, "supports", "verified_internal_fact"),
-    ("source-quality", "source-next", "architecture-review", "A populated baseline without verified source ingestion improves observability but does not create fresh external intelligence.", 0.88, "supports", "architecture_inference"),
-    ("worker-required", "worker-preferred", "repository-contract", "The two-process API plus worker architecture remains the preferred steady-state production shape.", 0.82, "supports", "architecture_fact"),
-    ("worker-required", "inline-counterexample", "production-runtime", "Lease-controlled inline cognition can progress when no dedicated worker owns the cognition lease.", 0.93, "contradicts", "verified_internal_fact"),
-    ("tenant-release", "tenant-gate", "deployment-control", "Production ordinary deploys are intentionally pinned through migration 018 while 019-022 require explicit tenant release authorization.", 0.97, "supports", "verified_internal_fact"),
+    (
+        "transport",
+        "transport-live",
+        "observatory-runtime",
+        "Repeated production polling has returned HTTP 200 on all 18 canonical read surfaces.",
+        0.96,
+        "supports",
+        "verified_internal_fact",
+    ),
+    (
+        "durability",
+        "durability-db",
+        "repository-contract",
+        "PostgreSQL is the authoritative durable state store for production cognition and read models.",
+        0.94,
+        "supports",
+        "verified_internal_fact",
+    ),
+    (
+        "source-quality",
+        "source-next",
+        "architecture-review",
+        "A populated baseline without verified source ingestion improves observability but does not create fresh external intelligence.",
+        0.88,
+        "supports",
+        "architecture_inference",
+    ),
+    (
+        "worker-required",
+        "worker-preferred",
+        "repository-contract",
+        "The two-process API plus worker architecture remains the preferred steady-state production shape.",
+        0.82,
+        "supports",
+        "architecture_fact",
+    ),
+    (
+        "worker-required",
+        "inline-counterexample",
+        "production-runtime",
+        "Lease-controlled inline cognition can progress when no dedicated worker owns the cognition lease.",
+        0.93,
+        "contradicts",
+        "verified_internal_fact",
+    ),
+    (
+        "tenant-release",
+        "tenant-gate",
+        "deployment-control",
+        "Production ordinary deploys are intentionally pinned through migration 018 while 019-022 require explicit tenant release authorization.",
+        0.97,
+        "supports",
+        "verified_internal_fact",
+    ),
 )
 
 NODES = (
@@ -109,12 +166,52 @@ NODES = (
 
 # key, source node, target node, relation, weight, confidence, evidence key
 EDGES = (
-    ("obs-polls-api", "vercel-observatory", "railway-api", "polls", 0.96, 0.96, "transport-live"),
-    ("identity-auth-api", "deployment-identity", "railway-api", "authenticates_to", 0.94, 0.94, "transport-live"),
+    (
+        "obs-polls-api",
+        "vercel-observatory",
+        "railway-api",
+        "polls",
+        0.96,
+        0.96,
+        "transport-live",
+    ),
+    (
+        "identity-auth-api",
+        "deployment-identity",
+        "railway-api",
+        "authenticates_to",
+        0.94,
+        0.94,
+        "transport-live",
+    ),
     ("api-db", "railway-api", "postgres", "reads_writes", 0.95, 0.95, "durability-db"),
-    ("inline-db", "inline-cognition", "postgres", "persists_to", 0.88, 0.88, "durability-db"),
-    ("tenant-gate-api", "tenant-release-gate", "railway-api", "constrains", 0.97, 0.97, "tenant-gate"),
-    ("sources-feed-cognition", "verified-source-ingestion", "inline-cognition", "feeds", 0.72, 0.72, "source-next"),
+    (
+        "inline-db",
+        "inline-cognition",
+        "postgres",
+        "persists_to",
+        0.88,
+        0.88,
+        "durability-db",
+    ),
+    (
+        "tenant-gate-api",
+        "tenant-release-gate",
+        "railway-api",
+        "constrains",
+        0.97,
+        0.97,
+        "tenant-gate",
+    ),
+    (
+        "sources-feed-cognition",
+        "verified-source-ingestion",
+        "inline-cognition",
+        "feeds",
+        0.72,
+        0.72,
+        "source-next",
+    ),
 )
 
 PREDICTIONS = (
@@ -196,7 +293,8 @@ def _required_tables_present(conn: psycopg.Connection) -> bool:
         "sensory_inbox",
     )
     row = conn.execute(
-        "select count(*) from unnest(%s::text[]) n where to_regclass('public.' || n) is not null",
+        "select count(*) from unnest(%s::text[]) n "
+        "where to_regclass('public.' || n) is not null",
         (list(names),),
     ).fetchone()
     return bool(row and int(row[0]) == len(names))
@@ -207,7 +305,15 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
         raise RuntimeError("observatory_seed_requires_migrations_001_through_018")
 
     now = datetime.now(UTC)
-    counts = {"sources": 0, "beliefs": 0, "evidence": 0, "edges": 0, "predictions": 0, "signals": 0, "inbox": 0}
+    counts = {
+        "sources": 0,
+        "beliefs": 0,
+        "evidence": 0,
+        "edges": 0,
+        "predictions": 0,
+        "signals": 0,
+        "inbox": 0,
+    }
 
     for key, name, trust in SOURCES:
         result = conn.execute(
@@ -220,11 +326,17 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
               historical_utility=excluded.historical_utility,
               metadata=public.sources.metadata || excluded.metadata
             """,
-            (sid(f"source:{key}"), f"seed:{key}", name, trust, trust, Jsonb({"seed_pack": SEED_PACK, "source_class": "internal_system_evidence"})),
+            (
+                sid(f"source:{key}"),
+                f"seed:{key}",
+                name,
+                trust,
+                trust,
+                Jsonb({"seed_pack": SEED_PACK, "source_class": "internal_system_evidence"}),
+            ),
         )
         counts["sources"] += result.rowcount
 
-    belief_index = {item.key: item for item in BELIEFS}
     for belief in BELIEFS:
         result = conn.execute(
             """
@@ -237,7 +349,14 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
               unknowns=excluded.unknowns,
               updated_at=excluded.updated_at
             """,
-            (sid(f"belief:{belief.key}"), belief.statement, belief.confidence, belief.state, Jsonb(list(belief.unknowns)), now),
+            (
+                sid(f"belief:{belief.key}"),
+                belief.statement,
+                belief.confidence,
+                belief.state,
+                Jsonb(list(belief.unknowns)),
+                now,
+            ),
         )
         counts["beliefs"] += result.rowcount
 
@@ -259,7 +378,13 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
                 claim,
                 reliability,
                 now,
-                Jsonb({"source_id": f"seed:{source_key}", "seed_pack": SEED_PACK, "evidence_class": evidence_class}),
+                Jsonb(
+                    {
+                        "source_id": f"seed:{source_key}",
+                        "seed_pack": SEED_PACK,
+                        "evidence_class": evidence_class,
+                    }
+                ),
             ),
         )
         counts["evidence"] += result.rowcount
@@ -277,16 +402,25 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
             """
             insert into public.graph_nodes (id, kind, node_key, properties)
             values (%s,%s,%s,%s)
-            on conflict (id) do update set kind=excluded.kind, node_key=excluded.node_key, properties=excluded.properties
+            on conflict (id) do update set
+              kind=excluded.kind,
+              node_key=excluded.node_key,
+              properties=excluded.properties
             """,
-            (sid(f"node:{key}"), kind, key, Jsonb({"label": label, "seed_pack": SEED_PACK})),
+            (
+                sid(f"node:{key}"),
+                kind,
+                f"seed:{key}",
+                Jsonb({"label": label, "seed_pack": SEED_PACK}),
+            ),
         )
 
     for key, source_key, target_key, relation, weight, confidence, evidence_key in EDGES:
         result = conn.execute(
             """
-            insert into public.graph_edges (id, source_id, target_id, relation, weight, confidence, evidence_ids, updated_at)
-            values (%s,%s,%s,%s,%s,%s,%s,%s)
+            insert into public.graph_edges (
+              id, source_id, target_id, relation, weight, confidence, evidence_ids, updated_at
+            ) values (%s,%s,%s,%s,%s,%s,%s,%s)
             on conflict (id) do update set
               source_id=excluded.source_id,
               target_id=excluded.target_id,
@@ -297,8 +431,14 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
               updated_at=excluded.updated_at
             """,
             (
-                sid(f"edge:{key}"), sid(f"node:{source_key}"), sid(f"node:{target_key}"), relation,
-                weight, confidence, [evidence_ids[evidence_key]], now,
+                sid(f"edge:{key}"),
+                sid(f"node:{source_key}"),
+                sid(f"node:{target_key}"),
+                relation,
+                weight,
+                confidence,
+                [evidence_ids[evidence_key]],
+                now,
             ),
         )
         counts["edges"] += result.rowcount
@@ -309,18 +449,28 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
             insert into public.predictions (
               id, statement, expected_value, confidence, horizon_seconds, belief_id,
               action_id, edge_ids, source_keys, status, created_at, resolve_by, metadata
-            ) values (%s,%s,%s,%s,%s,%s,null,'{}','{observatory-production-seed-v1}','open',%s,%s,%s)
+            ) values (%s,%s,%s,%s,%s,%s,null,'{}','{observatory-production-seed-v1}',
+                      'open',%s,%s,%s)
             on conflict (id) do update set
               statement=excluded.statement,
               expected_value=excluded.expected_value,
               confidence=excluded.confidence,
               belief_id=excluded.belief_id,
-              status=case when public.predictions.status='open' then 'open' else public.predictions.status end,
+              status=case
+                when public.predictions.status='open' then 'open'
+                else public.predictions.status
+              end,
               metadata=public.predictions.metadata || excluded.metadata
             """,
             (
-                sid(f"prediction:{key}"), statement, expected_value, confidence, horizon_seconds,
-                sid(f"belief:{belief_key}"), now, now + timedelta(seconds=horizon_seconds),
+                sid(f"prediction:{key}"),
+                statement,
+                expected_value,
+                confidence,
+                horizon_seconds,
+                sid(f"belief:{belief_key}"),
+                now,
+                now + timedelta(seconds=horizon_seconds),
                 Jsonb({"seed_pack": SEED_PACK, "prediction_class": "system_validation"}),
             ),
         )
@@ -340,12 +490,16 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
             "uncertainty_reduction": 0.72,
             "noise_probability": 0.04,
             "operator_burden": 0.02,
-            "metadata": {"seed_pack": SEED_PACK, "source_class": "internal_system_evidence"},
+            "metadata": {
+                "seed_pack": SEED_PACK,
+                "source_class": "internal_system_evidence",
+            },
         }
         result = conn.execute(
             """
-            insert into public.sensory_inbox (id, source_key, content, claim, payload, status, attempts, available_at, created_at)
-            values (%s,%s,%s,%s,%s,'pending',0,%s,%s)
+            insert into public.sensory_inbox (
+              id, source_key, content, claim, payload, status, attempts, available_at, created_at
+            ) values (%s,%s,%s,%s,%s,'pending',0,%s,%s)
             on conflict (id) do nothing
             """,
             (inbox_id, f"seed:{source_key}", content, claim, Jsonb(payload), now, now),
@@ -360,7 +514,20 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
             ) values (%s,'signal.enqueued','sensory_inbox',%s,null,null,%s,%s)
             on conflict (id) do nothing
             """,
-            (event_id, inbox_id, Jsonb({"source_key": f"seed:{source_key}", "content": content, "claim": claim, "payload": payload, "seed_pack": SEED_PACK}), now),
+            (
+                event_id,
+                inbox_id,
+                Jsonb(
+                    {
+                        "source_key": f"seed:{source_key}",
+                        "content": content,
+                        "claim": claim,
+                        "payload": payload,
+                        "seed_pack": SEED_PACK,
+                    }
+                ),
+                now,
+            ),
         )
         counts["signals"] += result.rowcount
 
@@ -373,21 +540,34 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
             on conflict (id) do nothing
             """,
             (
-                sid(f"event:belief:{belief.key}"), sid(f"belief:{belief.key}"),
-                Jsonb({"statement": belief.statement, "confidence": belief.confidence, "state": belief.state, "seed_pack": SEED_PACK}), now,
+                sid(f"event:belief:{belief.key}"),
+                sid(f"belief:{belief.key}"),
+                Jsonb(
+                    {
+                        "statement": belief.statement,
+                        "confidence": belief.confidence,
+                        "state": belief.state,
+                        "seed_pack": SEED_PACK,
+                    }
+                ),
+                now,
             ),
         )
 
-    # One audit event proves which pack initialized the database without implying
-    # that the seeded internal facts originated from an external intelligence feed.
     if conn.execute("select to_regclass('public.organism_audit_events')").fetchone()[0]:
         conn.execute(
             """
-            insert into public.organism_audit_events (id,event_type,object_type,object_id,payload,created_at)
-            values (%s,'OBSERVATORY_PRODUCTION_SEED_APPLIED','seed_pack',%s,%s,%s)
+            insert into public.organism_audit_events (
+              id,event_type,object_type,object_id,payload,created_at
+            ) values (%s,'OBSERVATORY_PRODUCTION_SEED_APPLIED','seed_pack',%s,%s,%s)
             on conflict (id) do nothing
             """,
-            (sid("audit:applied"), SEED_PACK, Jsonb({"seed_pack": SEED_PACK, "external_intelligence": False}), now),
+            (
+                sid("audit:applied"),
+                SEED_PACK,
+                Jsonb({"seed_pack": SEED_PACK, "external_intelligence": False}),
+                now,
+            ),
         )
 
     conn.commit()
