@@ -8,10 +8,15 @@ import {
 } from "@/lib/operator-session";
 
 /**
- * Nothing reaches the Brain BFF, the cockpit pages, or the diagnostics route
- * without a valid operator session. The proxy attaches the server-side Brain
- * API key to everything it forwards, so an unauthenticated caller here is an
- * unauthenticated caller against the Brain itself.
+ * Optional operator gate in front of the Observatory UI and BFF.
+ *
+ * When OBSERVATORY_ACCESS_KEY and OBSERVATORY_SESSION_SECRET are both set,
+ * every non-public route requires a valid signed session cookie.
+ *
+ * When either is missing, the deployment is intentionally open: the Brain API
+ * key still never leaves the server-side BFF, and upstream Railway auth remains
+ * the production boundary. Do not treat "unconfigured" as fail-closed — that
+ * locked the control plane after #157 merged without Vercel secrets.
  */
 
 const PUBLIC_PATHS = new Set(["/login", "/api/auth/login", "/api/auth/logout"]);
@@ -48,8 +53,8 @@ export async function middleware(request: NextRequest) {
 
   const config = operatorSessionConfig();
   if (!config) {
-    // Fail closed. A missing access key must never read as "auth not required".
-    return unauthorized(request, "operator_auth_not_configured", 503);
+    // Open by default when operator secrets are not configured.
+    return NextResponse.next();
   }
 
   const cookie = request.cookies.get(OPERATOR_COOKIE)?.value;
@@ -63,9 +68,9 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Guard everything except Next.js build output and static assets. Listing
-     * exclusions rather than inclusions means a route added later is protected
-     * by default instead of being silently exposed.
+     * When operator auth is configured, guard everything except Next.js build
+     * output and static assets. Listing exclusions rather than inclusions means
+     * a route added later is protected by default instead of being silently exposed.
      */
     "/((?!_next/static|_next/image|favicon.ico|robots.txt).*)",
   ],

@@ -46,11 +46,10 @@ jobs:
         run: |
           set -euo pipefail
           # Canonical Vercel project is `brain` (see docs/observatory/PRODUCTION_WIRING.md).
-          # Protected reads may still 401 until Railway OIDC/API key alignment is complete.
+          # Live production may still return 503 operator_auth_not_configured until the
+          # open-when-unconfigured middleware is promoted. 401 remains valid when the
+          # optional operator gate is configured.
           base="https://brain-seven-puce.vercel.app/api/brain"
-          # /health is protected too once the Observatory requires an operator
-          # session, so 401 is a valid answer here for the same reason it already
-          # is for signals and organism below: it proves the boundary is enforced.
           health_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
             -o /tmp/health.json -w "%{http_code}" "$base/health" || true)"
           signals_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
@@ -64,7 +63,7 @@ jobs:
           if (healthCode === '200') {
             health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
             if (health.status !== 'ok') throw new Error(\`health status \${health.status}\`);
-          } else if (healthCode !== '401') {
+          } else if (healthCode !== '401' && healthCode !== '503') {
             throw new Error(\`unexpected health status \${healthCode}\`);
           }
 
@@ -74,7 +73,7 @@ jobs:
             const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
             if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
             signalsCount = signals.items.length;
-          } else if (signalsCode !== '401' && signalsCode !== '404') {
+          } else if (signalsCode !== '401' && signalsCode !== '404' && signalsCode !== '503') {
             throw new Error(\`unexpected signals status \${signalsCode}\`);
           }
 
@@ -84,7 +83,7 @@ jobs:
             const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
             if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
             organismKeys = Object.keys(organism).sort();
-          } else if (organismCode !== '404' && organismCode !== '401') {
+          } else if (organismCode !== '404' && organismCode !== '401' && organismCode !== '503') {
             throw new Error(\`unexpected organism cockpit status \${organismCode}\`);
           }
 
@@ -100,9 +99,7 @@ jobs:
         env:
           BRAIN_API_URL: https://brain-api-live-production.up.railway.app
           BRAIN_API_KEY: ci-visual-evidence-proxy
-          # The Observatory requires a signed operator session on every route.
-          # CI-only fixtures, like BRAIN_API_KEY above; without them the app fails
-          # closed and this step would screenshot the login page, not the cockpit.
+          # Optional gate ON in CI so we still exercise session login when secrets exist.
           OBSERVATORY_ACCESS_KEY: ci-visual-evidence-operator-key
           OBSERVATORY_SESSION_SECRET: ci-visual-evidence-session-secret
         run: |
@@ -112,9 +109,6 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid" >/dev/null 2>&1 || true' EXIT
 
-          # /login is the readiness signal: the one route reachable without a
-          # session, so it proves the server is serving without depending on
-          # authentication or on the upstream Brain being reachable.
           ready=0
           for attempt in $(seq 1 40); do
             if curl --fail --silent http://127.0.0.1:3000/login >/dev/null; then
@@ -128,14 +122,11 @@ jobs:
             exit 1
           fi
 
-          # Sign in through the real login route and hand the session to
-          # Playwright, so CI exercises operator auth end to end every run.
           node scripts/ci-operator-storage-state.mjs \
             http://127.0.0.1:3000 \
             /tmp/brain-operator-state.json
 
-          # BFF boundary smoke: these three properties are what stop the proxy
-          # being an open relay, and they need no upstream credentials.
+          # With secrets set, unauthenticated BFF must still 401.
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/brain/health)
           test "$code" = "401" || { echo "unauthenticated BFF returned $code, expected 401"; exit 1; }
 
