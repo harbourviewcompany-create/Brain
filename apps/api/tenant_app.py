@@ -174,11 +174,23 @@ if _DATABASE_URL:
     base.heartbeat = BundleAttributeProxy(_service_registry, "heartbeat")
     base.money_spine = BundleAttributeProxy(_service_registry, "money_spine")
 
+    organism_routes.organism_store = TenantAwareCognitiveOrganismStore(pool=_scoped_pool)
+
+    def _build_organism() -> CognitiveOrganism:
+        instance = CognitiveOrganism()
+        # Build under TenantPartitionedFactory.current(), where the verified tenant
+        # context is already active. The tenant-aware store therefore checkpoints
+        # the baseline into the same partition that will serve /organism/* routes.
+        organism_routes.seed_observatory_organism_baseline(
+            target=instance,
+            store=organism_routes.organism_store,
+        )
+        return instance
+
     # Not evictable: CognitiveOrganism is constructed empty and is never
     # hydrated from organism_store, so dropping a tenant's instance would reset
     # its workspace, agency actions and curiosity tasks rather than reload them.
-    organism_routes.organism = TenantPartitionedFactory(CognitiveOrganism, evictable=False)
-    organism_routes.organism_store = TenantAwareCognitiveOrganismStore(pool=_scoped_pool)
+    organism_routes.organism = TenantPartitionedFactory(_build_organism, evictable=False)
     organism_routes.startup_checkpoint = None
 
 
