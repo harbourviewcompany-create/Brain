@@ -74,6 +74,7 @@
     {
       "record_id": "TRACE-OBSERVATORY-BFF",
       "paths": [
+        "apps/api/cockpit_read_routes.py",
         "apps/observatory/src/app/api/brain/[...path]/route.ts",
         "apps/observatory/src/lib/brain-upstream.ts"
       ],
