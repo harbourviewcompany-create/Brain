@@ -97,7 +97,7 @@ heartbeat = HeartbeatService(event_store=_brain_store, learning=learning)
 
 
 def _configure_from_env() -> None:
-    global _brain_store, runtime, learning, heartbeat
+    global _brain_store, runtime, learning, heartbeat, money_spine, revenue_spine
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
@@ -109,6 +109,7 @@ def _configure_from_env() -> None:
         PostgresPredictionStore,
         PostgresSourceStore,
     )
+    from brain.adapters.revenue_store import PostgresRevenueStore
 
     store = PostgresBrainStore(dsn)
     _brain_store = store
@@ -121,6 +122,10 @@ def _configure_from_env() -> None:
         sources=PostgresSourceStore(store.pool),
     )
     heartbeat = HeartbeatService(event_store=store.event_store, learning=learning)
+
+    revenue_store = PostgresRevenueStore(pool=store.pool)
+    money_spine = MoneySpineService(store=revenue_store)
+    revenue_spine = RevenueExecutionSpine(money=money_spine, store=revenue_store)
 
 
 _configure_from_env()
