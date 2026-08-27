@@ -45,6 +45,11 @@
       "requirement_id": "REQ-INFRA-NATIVE-HEALTH",
       "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
       "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-INFRA-SINGLE-COGNITION-WRITER",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "label": "APPROVED"
     }
   ],
   "code_module_records": [
@@ -125,6 +130,24 @@
       "audit_events": ["INFRA_HEALTH_CHECKED"],
       "source_preservation": "preserved; health inspection is read-only and additive",
       "unresolved_gaps": ["live managed-service health evidence remains HOLD"]
+    },
+    {
+      "record_id": "TRACE-INFRA-COGNITION-LEASE",
+      "paths": ["brain/cognition_lease.py", "apps/api/inline_cognition.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-INFRA-ARCHITECTURE", "SRC-INFRA-CONTROL"],
+      "requirement_ids": ["REQ-INFRA-SINGLE-COGNITION-WRITER", "REQ-INFRA-POSTGRES-CANONICAL"],
+      "owner_object": "The right to run the cognition loop against one canonical database",
+      "schema": "PostgreSQL session-level advisory lock on a fixed key, held for the lifetime of a dedicated connection",
+      "runtime_service": "brain.cognition_lease.CognitionLease, apps.api.inline_cognition.InlineCognition and apps.worker.main.acquire_cognition_lease",
+      "state_machine": "request lease -> granted: tick cognition until yield interval or connection loss -> release -> re-request; denied: retry on an interval without ticking",
+      "fixtures": ["tests/test_cognition_lease.py", "tests/test_inline_cognition.py"],
+      "tests": ["tests/test_cognition_lease.py", "tests/test_inline_cognition.py", "tests/test_worker_runs_cognition.py", "python -m pytest -q"],
+      "acceptance_criteria": ["at most one process per database drives cognition", "a dead holder's lock is released by Postgres without operator action", "a worker that cannot take the lease waits rather than double-writing", "the API stops ticking the moment it loses the lease", "the API yields periodically so a dedicated worker takes over without a restart"],
+      "audit_events": ["COGNITION_LEASE_ACQUIRED", "COGNITION_LEASE_RELEASED"],
+      "source_preservation": "preserved; the two-process API/worker split is unchanged and the worker remains the intended cognition host. In-process cognition is a fallback for deployments that have no worker, not a replacement for one.",
+      "unresolved_gaps": ["live evidence of a worker taking the lease from a running API remains HOLD until a worker service exists", "the API's inline loop does not run connector ingest or prediction-expiry maintenance, which remain worker-only"]
     }
   ]
 }
