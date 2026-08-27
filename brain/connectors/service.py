@@ -1,18 +1,28 @@
-"""Ingest service — fetch due sources and enqueue sensory inbox."""
+"""Ingest service — fetch due sources and enqueue provenance-preserved observations."""
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
+
 from ..events import BrainEvent
 from .http_json import HttpJsonConnector
 from .protocol import (
-    AccessDisposition, ConnectorKind, ConnectorSource, FetchResult, FetchStatus,
-    InboxEnqueuer, RawObservationItem, SourceConnector, utcnow,
+    AccessDisposition,
+    ConnectorKind,
+    ConnectorSource,
+    FetchResult,
+    FetchStatus,
+    InboxEnqueuer,
+    RawObservationItem,
+    SourceConnector,
+    utcnow,
 )
 from .revenue_adapter import revenue_signal_from_observation
 from .rss import RssConnector
 from .store import InMemoryConnectorRegistry
+
 
 @dataclass(slots=True)
 class IngestItemResult:
@@ -22,7 +32,9 @@ class IngestItemResult:
     enqueued: bool
     deduped: bool
     inbox_id: str | None = None
+    observation_id: str | None = None
     revenue_action_id: str | None = None
+
 
 @dataclass(slots=True)
 class IngestSourceResult:
@@ -34,7 +46,10 @@ class IngestSourceResult:
     error: str | None = None
     duration_ms: float = 0.0
     http_status: int | None = None
+    ingestion_run_id: str | None = None
+    retrieved_at: datetime | None = None
     items: list[IngestItemResult] = field(default_factory=list)
+
 
 @dataclass(slots=True)
 class IngestBatchResult:
@@ -46,6 +61,7 @@ class IngestBatchResult:
     observations_deduped: int
     failures: int
     results: list[IngestSourceResult] = field(default_factory=list)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "started_at": self.started_at.isoformat(),
@@ -56,20 +72,36 @@ class IngestBatchResult:
             "observations_deduped": self.observations_deduped,
             "failures": self.failures,
             "results": [
-                {"source_key": r.source_key, "status": r.status, "fetched": r.fetched,
-                 "enqueued": r.enqueued, "deduped": r.deduped, "error": r.error,
-                 "duration_ms": r.duration_ms, "http_status": r.http_status}
+                {
+                    "source_key": r.source_key,
+                    "status": r.status,
+                    "fetched": r.fetched,
+                    "enqueued": r.enqueued,
+                    "deduped": r.deduped,
+                    "error": r.error,
+                    "duration_ms": r.duration_ms,
+                    "http_status": r.http_status,
+                    "ingestion_run_id": r.ingestion_run_id,
+                    "retrieved_at": r.retrieved_at.isoformat() if r.retrieved_at else None,
+                }
                 for r in self.results
             ],
         }
 
+
 class IngestService:
-    def __init__(self, registry: InMemoryConnectorRegistry | None = None,
-                 inbox: InboxEnqueuer | None = None, event_store: Any | None = None,
-                 connectors: list[SourceConnector] | None = None, *,
-                 max_sources_per_tick: int = 10, max_enqueue_per_source: int = 25,
-                 default_source_reliability: float = 0.65,
-                 revenue: Any | None = None) -> None:
+    def __init__(
+        self,
+        registry: Any | None = None,
+        inbox: InboxEnqueuer | None = None,
+        event_store: Any | None = None,
+        connectors: list[SourceConnector] | None = None,
+        *,
+        max_sources_per_tick: int = 10,
+        max_enqueue_per_source: int = 25,
+        default_source_reliability: float = 0.65,
+        revenue: Any | None = None,
+    ) -> None:
         self.registry = registry or InMemoryConnectorRegistry()
         self.inbox = inbox
         self.event_store = event_store
@@ -89,36 +121,84 @@ class IngestService:
             source.enabled = False
         return self.registry.upsert(source)
 
-    def register_rss(self, *, source_key: str, url: str, name: str = "",
-                     refresh_seconds: int = 300, access: AccessDisposition = AccessDisposition.ALLOWED,
-                     max_items: int = 25) -> ConnectorSource:
-        return self.register_source(ConnectorSource(
-            source_key=source_key, url=url, kind=ConnectorKind.RSS, name=name or source_key,
-            refresh_seconds=refresh_seconds, access=access, max_items_per_fetch=max_items))
+    def register_rss(
+        self,
+        *,
+        source_key: str,
+        url: str,
+        name: str = "",
+        refresh_seconds: int = 300,
+        access: AccessDisposition = AccessDisposition.ALLOWED,
+        max_items: int = 25,
+    ) -> ConnectorSource:
+        return self.register_source(
+            ConnectorSource(
+                source_key=source_key,
+                url=url,
+                kind=ConnectorKind.RSS,
+                name=name or source_key,
+                refresh_seconds=refresh_seconds,
+                access=access,
+                max_items_per_fetch=max_items,
+            )
+        )
 
-    def register_http_json(self, *, source_key: str, url: str, name: str = "",
-                           refresh_seconds: int = 300, items_path: str = "",
-                           title_field: str = "title", body_field: str = "body",
-                           url_field: str = "url", id_field: str = "id",
-                           access: AccessDisposition = AccessDisposition.ALLOWED,
-                           headers: dict[str, str] | None = None) -> ConnectorSource:
-        return self.register_source(ConnectorSource(
-            source_key=source_key, url=url, kind=ConnectorKind.HTTP_JSON, name=name or source_key,
-            refresh_seconds=refresh_seconds, access=access, json_items_path=items_path,
-            json_title_field=title_field, json_body_field=body_field, json_url_field=url_field,
-            json_id_field=id_field, headers=dict(headers or {})))
+    def register_http_json(
+        self,
+        *,
+        source_key: str,
+        url: str,
+        name: str = "",
+        refresh_seconds: int = 300,
+        items_path: str = "",
+        title_field: str = "title",
+        body_field: str = "body",
+        url_field: str = "url",
+        id_field: str = "id",
+        access: AccessDisposition = AccessDisposition.ALLOWED,
+        headers: dict[str, str] | None = None,
+    ) -> ConnectorSource:
+        return self.register_source(
+            ConnectorSource(
+                source_key=source_key,
+                url=url,
+                kind=ConnectorKind.HTTP_JSON,
+                name=name or source_key,
+                refresh_seconds=refresh_seconds,
+                access=access,
+                json_items_path=items_path,
+                json_title_field=title_field,
+                json_body_field=body_field,
+                json_url_field=url_field,
+                json_id_field=id_field,
+                headers=dict(headers or {}),
+            )
+        )
 
     def _connector_for(self, source: ConnectorSource) -> SourceConnector | None:
-        for c in self.connectors:
-            if c.supports(source):
-                return c
+        for connector in self.connectors:
+            if connector.supports(source):
+                return connector
         return None
+
+    def _due_sources(self, now: datetime) -> list[ConnectorSource]:
+        claimer = getattr(self.registry, "claim_due_sources", None)
+        if callable(claimer):
+            return list(claimer(limit=self.max_sources_per_tick, now=now))
+        return list(self.registry.due_sources(now))[: self.max_sources_per_tick]
 
     def ingest_due_sources(self, *, now: datetime | None = None) -> IngestBatchResult:
         started = now or utcnow()
-        due = self.registry.due_sources(started)[: self.max_sources_per_tick]
-        batch = IngestBatchResult(started_at=started, finished_at=started, sources_due=len(due),
-            sources_fetched=0, observations_enqueued=0, observations_deduped=0, failures=0)
+        due = self._due_sources(started)
+        batch = IngestBatchResult(
+            started_at=started,
+            finished_at=started,
+            sources_due=len(due),
+            sources_fetched=0,
+            observations_enqueued=0,
+            observations_deduped=0,
+            failures=0,
+        )
         for source in due:
             result = self._ingest_one(source)
             batch.results.append(result)
@@ -135,86 +215,241 @@ class IngestService:
     def ingest_source(self, source_key: str) -> IngestSourceResult:
         source = self.registry.get(source_key)
         if source is None:
-            return IngestSourceResult(source_key=source_key, status=FetchStatus.SKIPPED.value, error="source_not_found")
+            return IngestSourceResult(
+                source_key=source_key,
+                status=FetchStatus.SKIPPED.value,
+                error="source_not_found",
+            )
         return self._ingest_one(source)
+
+    def _start_ingestion_run(self, source: ConnectorSource) -> UUID | None:
+        starter = getattr(self.registry, "start_ingestion_run", None)
+        if not callable(starter):
+            return None
+        return starter(source)
+
+    def _finish_ingestion_run(self, run_id: UUID | None, result: IngestSourceResult) -> None:
+        if run_id is None:
+            return
+        finisher = getattr(self.registry, "finish_ingestion_run", None)
+        if not callable(finisher):
+            return
+        finisher(
+            run_id,
+            status=result.status,
+            retrieved_at=result.retrieved_at,
+            fetched_count=result.fetched,
+            enqueued_count=result.enqueued,
+            deduped_count=result.deduped,
+            http_status=result.http_status,
+            duration_ms=result.duration_ms,
+            error_message=result.error,
+        )
 
     def _ingest_one(self, source: ConnectorSource) -> IngestSourceResult:
         if source.access in {AccessDisposition.PROHIBITED, AccessDisposition.MANUAL_ONLY}:
             self.registry.mark_fetch(source.source_key, success=True)
-            return IngestSourceResult(source_key=source.source_key, status=FetchStatus.SKIPPED.value,
-                error=f"access_{source.access.value}")
+            return IngestSourceResult(
+                source_key=source.source_key,
+                status=FetchStatus.SKIPPED.value,
+                error=f"access_{source.access.value}",
+            )
+
         connector = self._connector_for(source)
         if connector is None:
             self.registry.mark_fetch(source.source_key, success=False)
-            return IngestSourceResult(source_key=source.source_key, status=FetchStatus.FAILED.value,
-                error=f"no_connector_for_kind:{source.kind}")
-        fetch: FetchResult = connector.fetch(source)
-        out = IngestSourceResult(source_key=source.source_key, status=fetch.status.value,
-            fetched=len(fetch.items), error=fetch.error, duration_ms=fetch.duration_ms, http_status=fetch.http_status)
+            return IngestSourceResult(
+                source_key=source.source_key,
+                status=FetchStatus.FAILED.value,
+                error=f"no_connector_for_kind:{source.kind}",
+            )
+
+        try:
+            run_id = self._start_ingestion_run(source)
+        except Exception as exc:
+            # A durable registry that cannot open its provenance ledger must not
+            # fetch and silently degrade to untracked observations.
+            self.registry.mark_fetch(source.source_key, success=False)
+            return IngestSourceResult(
+                source_key=source.source_key,
+                status=FetchStatus.FAILED.value,
+                error=f"ingestion_run_start_failed:{type(exc).__name__}",
+            )
+
+        try:
+            fetch: FetchResult = connector.fetch(source)
+        except Exception as exc:  # connector contract guard
+            result = IngestSourceResult(
+                source_key=source.source_key,
+                status=FetchStatus.FAILED.value,
+                error=f"connector_exception:{type(exc).__name__}",
+                ingestion_run_id=str(run_id) if run_id else None,
+            )
+            self.registry.mark_fetch(source.source_key, success=False)
+            self._finish_ingestion_run(run_id, result)
+            return result
+
+        out = IngestSourceResult(
+            source_key=source.source_key,
+            status=fetch.status.value,
+            fetched=len(fetch.items),
+            error=fetch.error,
+            duration_ms=fetch.duration_ms,
+            http_status=fetch.http_status,
+            ingestion_run_id=str(run_id) if run_id else None,
+            retrieved_at=fetch.retrieved_at,
+        )
         if not fetch.ok:
             self.registry.mark_fetch(source.source_key, success=False)
             self._emit_fetch_event(source, fetch, enqueued=0)
+            self._finish_ingestion_run(run_id, out)
             return out
-        enqueued = 0
+
         for item in fetch.items[: self.max_enqueue_per_source]:
-            item_result = self._enqueue_item(source, item)
+            item_result = self._enqueue_item(
+                source,
+                item,
+                retrieved_at=fetch.retrieved_at,
+                ingestion_run_id=run_id,
+            )
             out.items.append(item_result)
             if item_result.deduped:
                 out.deduped += 1
             elif item_result.enqueued:
-                enqueued += 1
-        out.enqueued = enqueued
+                out.enqueued += 1
+
         self.registry.mark_fetch(source.source_key, success=True)
-        self._emit_fetch_event(source, fetch, enqueued=enqueued)
+        self._emit_fetch_event(source, fetch, enqueued=out.enqueued)
+        self._finish_ingestion_run(run_id, out)
         return out
 
-    def _enqueue_item(self, source: ConnectorSource, item: RawObservationItem) -> IngestItemResult:
-        is_new = self.registry.remember_hash(item.content_hash)
-        if not is_new:
-            return IngestItemResult(source_key=source.source_key, item_id=item.item_id,
-                content_hash=item.content_hash, enqueued=False, deduped=True)
+    def _enqueue_item(
+        self,
+        source: ConnectorSource,
+        item: RawObservationItem,
+        *,
+        retrieved_at: datetime,
+        ingestion_run_id: UUID | None,
+    ) -> IngestItemResult:
+        try:
+            receipt = self.registry.record_fetched_item(
+                source,
+                item,
+                retrieved_at=retrieved_at,
+                ingestion_run_id=ingestion_run_id,
+            )
+        except Exception:
+            # Provenance is part of correctness. Never enqueue an item after a
+            # durable raw-observation write failed, because the sensory event
+            # would no longer be replayable or auditable.
+            return IngestItemResult(
+                source_key=source.source_key,
+                item_id=item.item_id,
+                content_hash=item.content_hash,
+                enqueued=False,
+                deduped=False,
+            )
+
+        observation_id = str(receipt.observation_id) if receipt.observation_id else None
+        if not receipt.is_new:
+            return IngestItemResult(
+                source_key=source.source_key,
+                item_id=item.item_id,
+                content_hash=item.content_hash,
+                enqueued=False,
+                deduped=True,
+                observation_id=observation_id,
+            )
         if self.inbox is None:
-            return IngestItemResult(source_key=source.source_key, item_id=item.item_id,
-                content_hash=item.content_hash, enqueued=False, deduped=False)
+            return IngestItemResult(
+                source_key=source.source_key,
+                item_id=item.item_id,
+                content_hash=item.content_hash,
+                enqueued=False,
+                deduped=False,
+                observation_id=observation_id,
+            )
+
         payload = {
-            "source_reliability": self.default_source_reliability, "supports": True,
-            "belief_statement": item.claim, "belief_confidence": min(0.7, max(0.2, item.confidence)),
-            "novelty": 0.55, "urgency": 0.25, "commercial_upside": 0.0, "contradiction_value": 0.0,
-            "uncertainty_reduction": 0.5, "noise_probability": 0.15, "operator_burden": 0.0,
+            "source_reliability": self.default_source_reliability,
+            "supports": True,
+            "belief_statement": item.claim,
+            "belief_confidence": min(0.7, max(0.2, item.confidence)),
+            "novelty": 0.55,
+            "urgency": 0.25,
+            "commercial_upside": 0.0,
+            "contradiction_value": 0.0,
+            "uncertainty_reduction": 0.5,
+            "noise_probability": 0.15,
+            "operator_burden": 0.0,
             "source_type": "external_observation",
             "metadata": {
-                "source_type": "external_observation", "connector": source.kind.value,
-                "item_id": item.item_id, "content_hash": item.content_hash, "source_url": item.source_url,
-                "title": item.title, "observed_at": item.observed_at.isoformat(),
-                "signal_hints": list(item.signal_hints), "entities": list(item.entities),
+                "source_type": "external_observation",
+                "connector": source.kind.value,
+                "item_id": item.item_id,
+                "content_hash": item.content_hash,
+                "source_url": item.source_url,
+                "title": item.title,
+                "observed_at": item.observed_at.isoformat(),
+                "retrieved_at": retrieved_at.isoformat(),
+                "connector_observation_id": observation_id,
+                "ingestion_run_id": str(ingestion_run_id) if ingestion_run_id else None,
+                "signal_hints": list(item.signal_hints),
+                "entities": list(item.entities),
                 "source_name": source.name,
-                **{k: v for k, v in item.metadata.items() if isinstance(v, (str, int, float, bool))},
+                **{
+                    k: v
+                    for k, v in item.metadata.items()
+                    if isinstance(v, (str, int, float, bool))
+                    and k.lower()
+                    not in {
+                        "authorization",
+                        "api_key",
+                        "apikey",
+                        "token",
+                        "cookie",
+                        "password",
+                        "secret",
+                    }
+                },
             },
         }
         try:
-            enqueued = self.inbox.enqueue(source_key=source.source_key, content=item.content, claim=item.claim, payload=payload)
+            enqueued = self.inbox.enqueue(
+                source_key=source.source_key,
+                content=item.content,
+                claim=item.claim,
+                payload=payload,
+            )
+            inbox_id = getattr(enqueued, "id", enqueued)
+            marker = getattr(self.registry, "mark_observation_enqueued", None)
+            if receipt.observation_id is not None and callable(marker):
+                marker(receipt.observation_id, inbox_id)
             revenue_action_id = self._maybe_queue_revenue_action(source, item)
-            return IngestItemResult(source_key=source.source_key, item_id=item.item_id,
-                content_hash=item.content_hash, enqueued=True, deduped=False,
-                inbox_id=str(getattr(enqueued, "id", enqueued)), revenue_action_id=revenue_action_id)
+            return IngestItemResult(
+                source_key=source.source_key,
+                item_id=item.item_id,
+                content_hash=item.content_hash,
+                enqueued=True,
+                deduped=False,
+                inbox_id=str(inbox_id),
+                observation_id=observation_id,
+                revenue_action_id=revenue_action_id,
+            )
         except Exception:
-            return IngestItemResult(source_key=source.source_key, item_id=item.item_id,
-                content_hash=item.content_hash, enqueued=False, deduped=False)
+            return IngestItemResult(
+                source_key=source.source_key,
+                item_id=item.item_id,
+                content_hash=item.content_hash,
+                enqueued=False,
+                deduped=False,
+                observation_id=observation_id,
+            )
 
-    def _maybe_queue_revenue_action(self, source: ConnectorSource, item: RawObservationItem) -> str | None:
-        """Best-effort: classify the item and queue a draft revenue action.
-
-        Never raises — a classification/queueing failure must not break
-        ingestion of the underlying observation. Always lands the action
-        in APPROVAL_REQUIRED state; nothing here can approve or execute.
-
-        When a lane is inferred but the signal fails NoFantasyFilter (the
-        common case for unenriched automated feeds — no named buyer,
-        seller, or contact channel), no action is queued, but a
-        `revenue.signal_scored` event is emitted with the rejection
-        reasons so the candidate is visible to an operator for
-        enrichment instead of silently disappearing.
-        """
+    def _maybe_queue_revenue_action(
+        self, source: ConnectorSource, item: RawObservationItem
+    ) -> str | None:
+        """Best-effort classify and queue an approval-required revenue candidate."""
         if self.revenue is None:
             return None
         try:
@@ -231,27 +466,56 @@ class IngestService:
         except Exception:
             return None
 
-    def _emit_scored_signal_event(self, source: ConnectorSource, item: RawObservationItem, scored: Any) -> None:
+    def _emit_scored_signal_event(
+        self, source: ConnectorSource, item: RawObservationItem, scored: Any
+    ) -> None:
         if self.event_store is None or not hasattr(self.event_store, "append"):
             return
         try:
-            self.event_store.append(BrainEvent("revenue.signal_scored", "connector", source.id, {
-                "source_key": source.source_key, "item_id": item.item_id,
-                "money_lane_id": scored.lane_id, "score": scored.score,
-                "actionable": scored.actionable, "rejection_reasons": list(scored.rejection_reasons),
-            }))
+            self.event_store.append(
+                BrainEvent(
+                    "revenue.signal_scored",
+                    "connector",
+                    source.id,
+                    {
+                        "source_key": source.source_key,
+                        "item_id": item.item_id,
+                        "money_lane_id": scored.lane_id,
+                        "score": scored.score,
+                        "actionable": scored.actionable,
+                        "rejection_reasons": list(scored.rejection_reasons),
+                    },
+                )
+            )
         except Exception:
             pass
 
-    def _emit_fetch_event(self, source: ConnectorSource, fetch: FetchResult, *, enqueued: int) -> None:
+    def _emit_fetch_event(
+        self, source: ConnectorSource, fetch: FetchResult, *, enqueued: int
+    ) -> None:
         if self.event_store is None or not hasattr(self.event_store, "append"):
             return
         try:
-            self.event_store.append(BrainEvent("ingest.fetch_completed", "connector", source.id, {
-                "source_key": source.source_key, "kind": source.kind.value, "status": fetch.status.value,
-                "url": source.url, "items": len(fetch.items), "enqueued": enqueued, "error": fetch.error,
-                "http_status": fetch.http_status, "duration_ms": fetch.duration_ms, "bytes_read": fetch.bytes_read,
-            }))
+            self.event_store.append(
+                BrainEvent(
+                    "ingest.fetch_completed",
+                    "connector",
+                    source.id,
+                    {
+                        "source_key": source.source_key,
+                        "kind": source.kind.value,
+                        "status": fetch.status.value,
+                        "url": source.url,
+                        "items": len(fetch.items),
+                        "enqueued": enqueued,
+                        "error": fetch.error,
+                        "http_status": fetch.http_status,
+                        "retrieved_at": fetch.retrieved_at.isoformat(),
+                        "duration_ms": fetch.duration_ms,
+                        "bytes_read": fetch.bytes_read,
+                    },
+                )
+            )
         except Exception:
             pass
 
@@ -259,15 +523,20 @@ class IngestService:
         if self.event_store is None or not hasattr(self.event_store, "append"):
             return
         try:
-            self.event_store.append(BrainEvent("ingest.batch_completed", "connector", uuid4(), batch.as_dict()))
+            self.event_store.append(
+                BrainEvent("ingest.batch_completed", "connector", uuid4(), batch.as_dict())
+            )
         except Exception:
             pass
 
     def status(self) -> dict[str, Any]:
         sources = self.registry.list_sources()
         return {
-            "sources": len(sources), "enabled": sum(1 for s in sources if s.enabled),
-            "due": len(self.registry.due_sources()), "seen_hashes": self.registry.seen_count(),
+            "sources": len(sources),
+            "enabled": sum(1 for s in sources if s.enabled),
+            "due": len(self.registry.due_sources()),
+            "seen_hashes": self.registry.seen_count(),
+            "durable_registry": self.registry.__class__.__name__ == "PostgresConnectorRegistry",
             "batches_run": len(self._runs),
             "last_batch": self._runs[-1].as_dict() if self._runs else None,
         }
