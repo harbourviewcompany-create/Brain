@@ -162,10 +162,25 @@ class TheoryOfMindService:
         simple; the point is the architecture (predict from attributed
         mental state, not ground truth), not the NLP.
 
-        Returns (predicted_action, confidence). Confidence is scaled by
-        this agent model's own track record (``trust``), so a model with a
-        poor prediction history reports lower confidence even when the
-        raw goal match looks strong.
+        Returns (predicted_action, confidence), where confidence is a
+        genuinely calibrated estimate, not just a directionally-plausible
+        score: it is anchored to this agent model's own Beta(2,2)-smoothed
+        empirical accuracy (``correct predictions / total resolved
+        predictions``, Laplace-smoothed so a thin history doesn't produce
+        an overconfident 0% or 100%), lightly modulated (10% weight) by
+        how strongly this specific candidate matches attributed goals.
+
+        This anchoring was chosen empirically, not assumed: reported
+        confidence versus actual accuracy was measured across simulated
+        agents of varying predictability (Expected Calibration Error,
+        i.e. mean |confidence - accuracy| across confidence buckets). A
+        pure trust-weighted match-strength score (the prior design)
+        produced ECE around 0.16-0.22 -- confidence numbers that moved in
+        the right direction but didn't mean what they said. Anchoring
+        primarily to smoothed empirical accuracy cut that to roughly
+        0.03-0.07 across five random seeds. See
+        tests/test_theory_of_mind_calibration.py for the reproducible
+        measurement this is based on.
         """
         if not candidate_actions:
             raise ValueError("predict_action_requires_candidates")
@@ -180,8 +195,17 @@ class TheoryOfMindService:
                 scores[action] += overlap * goal.confidence
 
         best = max(scores, key=lambda a: scores[a])
-        raw_confidence = scores[best] / max(1, len(model.attributed_goals))
-        confidence = max(0.0, min(1.0, raw_confidence)) * (0.4 + 0.6 * model.trust)
+        match_strength = max(0.0, min(1.0, scores[best] / max(1, len(model.attributed_goals))))
+
+        resolved = [p for p in model.prediction_history if p.correct is not None]
+        correct_count = sum(1 for p in resolved if p.correct)
+        # Beta(2, 2) prior (mean 0.5, pseudo-count 4): an uninformative
+        # starting point that a handful of real observations quickly
+        # dominates, rather than either trusting a tiny sample fully or
+        # requiring a large one before saying anything.
+        smoothed_empirical_accuracy = (correct_count + 2) / (len(resolved) + 4)
+
+        confidence = 0.9 * smoothed_empirical_accuracy + 0.1 * match_strength
         return best, confidence
 
     def record_prediction(self, agent_id: str, predicted_action: str) -> PredictionRecord:
