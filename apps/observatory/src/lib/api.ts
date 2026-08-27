@@ -193,6 +193,13 @@ export async function listOrganismAgencyActions(): Promise<OrganismAgencyAction[
   return data?.items ?? [];
 }
 
+export async function approveOrganismAgencyAction(actionId: string, approvedBy: string) {
+  return request<Record<string, unknown>>("/organism/agency/approve", {
+    method: "POST",
+    body: JSON.stringify({ action_id: actionId, approved_by: approvedBy }),
+  });
+}
+
 export async function listOrganismQuarantine(): Promise<OrganismQuarantineItem[]> {
   const data = await requestOptional<{ items: OrganismQuarantineItem[] }>("/organism/quarantine");
   return data?.items ?? [];

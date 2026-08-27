@@ -152,6 +152,13 @@ def validate_issue_template(path: str) -> None:
     )
 
 
+#: Directory names whose contents are installed dependencies or local
+#: environments rather than repository source.
+_VENDORED_DIRECTORIES = frozenset(
+    {"node_modules", "site-packages", ".venv", "venv", "build", "dist", ".next"}
+)
+
+
 def discover_code_modules(roots: Iterable[str], excluded_filenames: set[str]) -> set[str]:
     modules: set[str] = set()
     for root in roots:
@@ -163,6 +170,11 @@ def discover_code_modules(roots: Iterable[str], excluded_filenames: set[str]) ->
             if path.name in excluded_filenames:
                 continue
             if "/__pycache__/" in rel or rel.startswith("tests/"):
+                continue
+            # Third-party trees are not ours to trace. Without this, running
+            # `npm install` in apps/observatory makes the validator demand a
+            # traceability record for vendored Python inside node_modules.
+            if any(part in _VENDORED_DIRECTORIES for part in path.parts):
                 continue
             modules.add(rel)
     return modules

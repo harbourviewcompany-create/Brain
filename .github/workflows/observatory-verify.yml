@@ -48,15 +48,25 @@ jobs:
           # Canonical Vercel project is `brain` (see docs/observatory/PRODUCTION_WIRING.md).
           # Protected reads may still 401 until Railway OIDC/API key alignment is complete.
           base="https://brain-seven-puce.vercel.app/api/brain"
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/health" -o /tmp/health.json
+          # /health is protected too once the Observatory requires an operator
+          # session, so 401 is a valid answer here for the same reason it already
+          # is for signals and organism below: it proves the boundary is enforced.
+          health_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
+            -o /tmp/health.json -w "%{http_code}" "$base/health" || true)"
           signals_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
             -o /tmp/signals.json -w "%{http_code}" "$base/signals" || true)"
           organism_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
             -o /tmp/organism.json -w "%{http_code}" "$base/organism/cockpit" || true)"
           node - <<NODE
           const fs = require('fs');
-          const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
-          if (health.status !== 'ok') throw new Error(\`health status \${health.status}\`);
+          const healthCode = "${health_code}";
+          let health = { status: null, version: null, database: null, persistence: null, heartbeat: null };
+          if (healthCode === '200') {
+            health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
+            if (health.status !== 'ok') throw new Error(\`health status \${health.status}\`);
+          } else if (healthCode !== '401') {
+            throw new Error(\`unexpected health status \${healthCode}\`);
+          }
 
           const signalsCode = "${signals_code}";
           let signalsCount = null;
@@ -79,7 +89,7 @@ jobs:
           }
 
           console.log(JSON.stringify({
-            health: { status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
+            health: { code: healthCode, status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
             signals: { status: signalsCode, count: signalsCount },
             organism: { status: organismCode, keys: organismKeys }
           }, null, 2));
@@ -90,6 +100,11 @@ jobs:
         env:
           BRAIN_API_URL: https://brain-api-live-production.up.railway.app
           BRAIN_API_KEY: ci-visual-evidence-proxy
+          # The Observatory requires a signed operator session on every route.
+          # CI-only fixtures, like BRAIN_API_KEY above; without them the app fails
+          # closed and this step would screenshot the login page, not the cockpit.
+          OBSERVATORY_ACCESS_KEY: ci-visual-evidence-operator-key
+          OBSERVATORY_SESSION_SECRET: ci-visual-evidence-session-secret
         run: |
           set -euo pipefail
           mkdir -p evidence
@@ -97,9 +112,12 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid" >/dev/null 2>&1 || true' EXIT
 
+          # /login is the readiness signal: the one route reachable without a
+          # session, so it proves the server is serving without depending on
+          # authentication or on the upstream Brain being reachable.
           ready=0
           for attempt in $(seq 1 40); do
-            if curl --fail --silent http://127.0.0.1:3000/api/brain/health >/tmp/local-health.json; then
+            if curl --fail --silent http://127.0.0.1:3000/login >/dev/null; then
               ready=1
               break
             fi
@@ -110,17 +128,40 @@ jobs:
             exit 1
           fi
 
+          # Sign in through the real login route and hand the session to
+          # Playwright, so CI exercises operator auth end to end every run.
+          node scripts/ci-operator-storage-state.mjs \
+            http://127.0.0.1:3000 \
+            /tmp/brain-operator-state.json
+
+          # BFF boundary smoke: these three properties are what stop the proxy
+          # being an open relay, and they need no upstream credentials.
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/brain/health)
+          test "$code" = "401" || { echo "unauthenticated BFF returned $code, expected 401"; exit 1; }
+
+          cookie=$(node -e "console.log(JSON.parse(require('fs').readFileSync('/tmp/brain-operator-state.json','utf8')).cookies[0].value)")
+
+          code=$(curl -s -o /dev/null -w '%{http_code}' -b "brain_operator=$cookie" http://127.0.0.1:3000/api/brain/health)
+          test "$code" != "401" || { echo "authenticated BFF still returned 401"; exit 1; }
+
+          body=$(curl -s -b "brain_operator=$cookie" http://127.0.0.1:3000/api/brain/not-an-allowed-path)
+          echo "$body" | grep -q 'path_not_allowed' || { echo "allowlist did not reject an unlisted path: $body"; exit 1; }
+
+          echo "BFF boundary: unauthenticated 401, authenticated reaches proxy, allowlist enforced"
+
           npx --yes playwright@1.55.0 install --with-deps chromium
           npx --yes playwright@1.55.0 screenshot \
             --browser chromium \
             --viewport-size="1440,1000" \
             --wait-for-timeout=10000 \
+            --load-storage=/tmp/brain-operator-state.json \
             http://127.0.0.1:3000 \
             evidence/brain-observatory-desktop.png
           npx --yes playwright@1.55.0 screenshot \
             --browser chromium \
             --viewport-size="390,844" \
             --wait-for-timeout=10000 \
+            --load-storage=/tmp/brain-operator-state.json \
             http://127.0.0.1:3000 \
             evidence/brain-observatory-mobile.png
 

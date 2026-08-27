@@ -1,0 +1,94 @@
+{
+  "registry_id": "REGISTRY-BRAIN-RUNTIME-HARDENING",
+  "status": "ACTIVE",
+  "purpose": "Traceability for the runtime hardening pass that closed the repository review findings still owned by this branch: operator authentication in front of the Observatory BFF, evidence deduplication and recomputed belief state, durable worker cognition, bounded tenant partitions, and structured logging. Credential precedence and the canonical cockpit read surface shipped separately in PR #160 and are deliberately absent here.",
+  "rules": [
+    "Every finding fixed here is covered by an executable regression test, not only by review.",
+    "Security-relevant defaults fail closed: absent configuration refuses requests rather than disabling the check.",
+    "Derived state (belief evidence fingerprints) is reconstructed from durable rows and never becomes a second source of truth."
+  ],
+  "sources": [
+    {
+      "source_id": "SRC-RUNTIME-REVIEW-FINDINGS",
+      "path": "docs/control/RUNTIME_HARDENING_REVIEW.md",
+      "label": "SOURCE"
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-BFF-OPERATOR-AUTHENTICATION",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-EVIDENCE-DEDUPLICATION",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-DURABLE-WORKER-COGNITION",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-BOUNDED-TENANT-PARTITIONS",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-DIAGNOSABLE-COGNITION-LOOP",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "label": "APPROVED"
+    }
+  ],
+  "code_module_records": [
+    {
+      "record_id": "TRACE-RUNTIME-LOGGING",
+      "paths": [
+        "brain/logging_config.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": [
+        "SRC-RUNTIME-REVIEW-FINDINGS"
+      ],
+      "requirement_ids": [
+        "REQ-DIAGNOSABLE-COGNITION-LOOP"
+      ],
+      "owner_object": "Brain runtime observability",
+      "schema": "one JSON object per line carrying ts, level, logger, message, promoted extra fields and any exception traceback",
+      "runtime_service": "brain.logging_config, configured by every Brain entrypoint",
+      "state_machine": "unconfigured -> configure_logging attaches exactly one stderr handler to the brain logger tree -> get_logger returns namespaced loggers",
+      "fixtures": [
+        "tests/test_worker_persistence.py"
+      ],
+      "tests": [
+        "pytest tests/test_worker_persistence.py",
+        "ruff check brain apps"
+      ],
+      "acceptance_criteria": [
+        "configuration is idempotent and never attaches a duplicate handler",
+        "no handler is attached to the root logger, so embedding an application is not hijacked",
+        "the continuous cognition loop reports every swallowed failure instead of passing silently",
+        "BRAIN_LOG_PROPAGATE forwards records to root when an aggregator needs them"
+      ],
+      "audit_events": [
+        "COGNITION_STEP_FAILED"
+      ],
+      "source_preservation": "new module; no prior logging configuration existed in the repository",
+      "unresolved_gaps": [
+        "handlers that fall back to a computed default outside the cognition loop remain unlogged by design"
+      ]
+    }
+  ]
+}

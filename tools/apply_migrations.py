@@ -56,6 +56,43 @@ def _migration_version(path: Path) -> int:
         raise RuntimeError(f"invalid migration filename: {path.name}") from exc
 
 
+#: The exact colliding filenames that already shipped. Apply order between them
+#: is fixed by filename sort and both are long applied in production, so renaming
+#: either would orphan its `brain_schema_migrations` row.
+#:
+#: Keyed by the exact filename set rather than the version number: exempting
+#: version 6 wholesale would also accept a *third* `006_*.sql` added later, which
+#: `--max-version` still could not isolate -- silently recreating the collision
+#: this validator exists to prevent. Mirrors ALLOWED_MIGRATION_COLLISIONS in
+#: scripts/validate_build_ready_traceability.py.
+GRANDFATHERED_DUPLICATE_FILENAMES = {
+    6: frozenset({"006_money_spine.sql", "006_working_memory_predictions_learning.sql"}),
+}
+
+
+def _assert_unique_versions(files: Sequence[Path]) -> None:
+    """Refuse a new migration that reuses an existing version number.
+
+    ``--max-version`` and the CI baseline gate both select migrations by this
+    number, so two files sharing one version cannot be separated by either.
+    """
+
+    seen: dict[int, list[str]] = {}
+    for path in files:
+        seen.setdefault(_migration_version(path), []).append(path.name)
+
+    collisions = {
+        version: names
+        for version, names in seen.items()
+        if len(names) > 1 and set(names) != GRANDFATHERED_DUPLICATE_FILENAMES.get(version)
+    }
+    if collisions:
+        detail = "; ".join(
+            f"{version:03d}: {', '.join(sorted(names))}" for version, names in sorted(collisions.items())
+        )
+        raise RuntimeError(f"duplicate migration version numbers are not allowed -- {detail}")
+
+
 def _ensure_compatibility_roles(conn: psycopg.Connection) -> None:
     # These NOLOGIN roles are part of the repository migration contract and
     # are created by CI before migrations are applied.
@@ -216,6 +253,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise RuntimeError("DATABASE_URL or BRAIN_MIGRATION_DATABASE_URL is required")
 
     files = sorted(MIGRATIONS_DIR.glob("*.sql"), key=lambda path: path.name)
+    _assert_unique_versions(files)
     if args.max_version is not None:
         files = [path for path in files if _migration_version(path) <= args.max_version]
     if not files:

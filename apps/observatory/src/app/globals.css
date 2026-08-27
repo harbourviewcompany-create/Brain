@@ -402,3 +402,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Sign-out sits outside the section nav so it survives the mobile breakpoint
+   below, where `.detail-shell__header nav` is hidden entirely. */
+.detail-shell__signout { margin-left: 4px; padding: 8px 9px; border: 0; background: transparent; font: inherit; font-size: 10px; color: var(--obs-dim); white-space: nowrap; cursor: pointer; }
+.detail-shell__signout:hover, .detail-shell__signout:focus-visible { color: white; background: rgba(255,255,255,.04); }
+@media (max-width: 720px) { .detail-shell__signout { margin-left: auto; } }
