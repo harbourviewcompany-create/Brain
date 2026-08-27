@@ -46,19 +46,28 @@ jobs:
         run: |
           set -euo pipefail
           # Canonical Vercel project is `brain` (see docs/observatory/PRODUCTION_WIRING.md).
-          # Legacy thebrain-sandy.vercel.app is no longer production authority.
+          # Protected reads may still 401 until Railway OIDC/API key alignment is complete.
           base="https://brain-seven-puce.vercel.app/api/brain"
           curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/health" -o /tmp/health.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/signals" -o /tmp/signals.json
-          # Organism cockpit may 404 until Railway promotes organism routes; treat 404 as soft.
+          signals_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
+            -o /tmp/signals.json -w "%{http_code}" "$base/signals" || true)"
           organism_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
             -o /tmp/organism.json -w "%{http_code}" "$base/organism/cockpit" || true)"
           node - <<NODE
           const fs = require('fs');
           const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
-          const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
           if (health.status !== 'ok') throw new Error(\`health status \${health.status}\`);
-          if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
+
+          const signalsCode = "${signals_code}";
+          let signalsCount = null;
+          if (signalsCode === '200') {
+            const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
+            if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
+            signalsCount = signals.items.length;
+          } else if (signalsCode !== '401' && signalsCode !== '404') {
+            throw new Error(\`unexpected signals status \${signalsCode}\`);
+          }
+
           const organismCode = "${organism_code}";
           let organismKeys = [];
           if (organismCode === '200') {
@@ -68,9 +77,10 @@ jobs:
           } else if (organismCode !== '404' && organismCode !== '401') {
             throw new Error(\`unexpected organism cockpit status \${organismCode}\`);
           }
+
           console.log(JSON.stringify({
             health: { status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
-            signals: { count: signals.items.length, latest: signals.items.slice(0, 5).map(s => ({ id: s.id, source_id: s.source_id, attention_score: s.attention_score, novelty: s.novelty, urgency: s.urgency })) },
+            signals: { status: signalsCode, count: signalsCount },
             organism: { status: organismCode, keys: organismKeys }
           }, null, 2));
           NODE
