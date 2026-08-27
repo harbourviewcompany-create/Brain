@@ -104,15 +104,20 @@ def test_verified_oidc_uses_durable_membership_and_strips_spoofed_headers(monkey
     assert active_tenant_context() is None
 
 
-def test_verified_oidc_logs_only_non_secret_verified_identity(monkeypatch, caplog):
+def test_verified_oidc_logs_only_non_secret_verified_identity_once(monkeypatch, caplog):
     bridge = _bridge_with_probe(monkeypatch, _OperatorResolver())
+    client = TestClient(bridge)
 
     with caplog.at_level(logging.INFO, logger="tools.live_cockpit_routes"):
-        response = TestClient(bridge).get(
+        first = client.get(
+            "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+        )
+        second = client.get(
             "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
         )
 
-    assert response.status_code == 200
+    assert first.status_code == 200
+    assert second.status_code == 200
     accepted = [
         json.loads(record.getMessage())
         for record in caplog.records
