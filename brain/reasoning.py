@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -39,6 +40,8 @@ class LocalHeuristicReasoner:
             return self._contradiction(request, ctx)
         if request.task_type == "dream_skeptic":
             return self._dream_skeptic(request, ctx)
+        if request.task_type == "revenue_entity_extraction":
+            return self._revenue_entity_extraction(request, ctx)
         return self._general(request, ctx)
     def _curiosity(self, request: ReasonRequest, ctx: dict[str, Any]) -> ReasonResult:
         question = str(ctx.get("question") or request.prompt)
@@ -80,10 +83,58 @@ class LocalHeuristicReasoner:
             "- Gate: promotion requires independent observation or successful prediction.",
         ]
         return ReasonResult(content="\n".join(lines), confidence=min(0.4, dream_conf * 0.5), task_type=request.task_type, model_id=self.model_id, metadata={"reasoner": "local_heuristic", "mode": "dream_skeptic", "verdict": "hold_as_hypothesis"})
+    def _revenue_entity_extraction(self, request: ReasonRequest, ctx: dict[str, Any]) -> ReasonResult:
+        """Zero-cost fallback extractor used when no HTTP LLM is configured.
+
+        Deliberately does the least a rule can honestly do: pull an email
+        address out of the raw text via regex, if one is visibly present,
+        as a low-confidence contact_channel. Never guesses a name, a
+        payment path, or a pain point — those require actual language
+        understanding this heuristic doesn't have. Returning nothing for
+        a field it can't support is the correct behavior here, matching
+        NoFantasyFilter's standard: an empty field beats an invented one.
+        """
+        text = str(ctx.get("raw_text") or request.prompt)
+        email_match = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text)
+        fields: dict[str, Any] = {}
+        if email_match:
+            fields["contact_channel"] = {"value": email_match.group(0), "confidence": 0.4}
+        content = json.dumps(fields)
+        return ReasonResult(
+            content=content,
+            confidence=0.4 if fields else 0.1,
+            task_type=request.task_type,
+            model_id=self.model_id,
+            metadata={"reasoner": "local_heuristic", "mode": "revenue_entity_extraction"},
+        )
+
     def _general(self, request: ReasonRequest, ctx: dict[str, Any]) -> ReasonResult:
         return ReasonResult(content=f"Structured reflection on: {request.prompt[:200]}\n- Status: acknowledged; no external model invoked.\n- Action: keep as working note until evidence arrives.", confidence=0.35, task_type=request.task_type, model_id=self.model_id, metadata={"reasoner": "local_heuristic", "mode": "general"})
-
 class HttpLLMReasoner:
+    #: Task-specific system prompts. Extraction tasks need much stricter
+    #: instructions than the generic cortex prompt — an LLM asked to be
+    #: "evidence-aware" in a general sense will still happily invent a
+    #: plausible-sounding buyer name if not told explicitly not to.
+    SYSTEM_PROMPTS: dict[str, str] = {
+        "revenue_entity_extraction": (
+            "You extract commercial contact facts from a single piece of text. "
+            "You must NOT invent, infer, or guess any name, contact detail, or "
+            "payment path that is not explicitly present in the text. "
+            "Respond with ONLY a JSON object, no prose, no markdown fences. "
+            "Keys: named_buyer, named_seller, decision_maker, visible_pain, "
+            "urgency_reason, payment_path, contact_channel. Each present key's "
+            "value must be an object {\"value\": <string from the text verbatim "
+            "or a faithful short paraphrase>, \"confidence\": <0.0-1.0>}. "
+            "Omit any key you cannot support with text actually present. "
+            "An empty JSON object {} is a correct and expected answer for text "
+            "with no such facts — do not pad it with a low-confidence guess."
+        ),
+    }
+    DEFAULT_SYSTEM_PROMPT = (
+        "You are the Brain reasoning cortex. Be concise, evidence-aware, and "
+        "mark uncertainty. Prefer structured bullet answers."
+    )
+
     def __init__(self, *, base_url: str | None = None, api_key: str | None = None, model: str | None = None, timeout: float = 30.0) -> None:
         self.base_url = (base_url or os.environ.get("BRAIN_LLM_URL") or "").rstrip("/")
         self.api_key = api_key or os.environ.get("BRAIN_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
@@ -100,7 +151,7 @@ class HttpLLMReasoner:
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-        system = "You are the Brain reasoning cortex. Be concise, evidence-aware, and mark uncertainty. Prefer structured bullet answers."
+        system = self.SYSTEM_PROMPTS.get(request.task_type, self.DEFAULT_SYSTEM_PROMPT)
         user = f"Task: {request.task_type}\nPrompt: {request.prompt}\nContext: {json.dumps(request.context)[:2000]}"
         body = json.dumps({"model": self.model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "max_tokens": request.max_tokens, "temperature": 0.3}).encode()
         try:
@@ -120,11 +171,11 @@ class CortexReasoner:
         self.router = ModelCortexRouter()
         self.local = LocalHeuristicReasoner()
         self.http = HttpLLMReasoner()
-        local_profile = ModelProfile(provider="local", model="heuristic-v1", task_strengths={"curiosity_answer": 0.7, "contradiction": 0.75, "dream_skeptic": 0.8, "general": 0.6}, calibration=0.6, historical_accuracy=0.55, latency_score=0.95, cost_score=0.95)
+        local_profile = ModelProfile(provider="local", model="heuristic-v1", task_strengths={"curiosity_answer": 0.7, "contradiction": 0.75, "dream_skeptic": 0.8, "revenue_entity_extraction": 0.25, "general": 0.6}, calibration=0.6, historical_accuracy=0.55, latency_score=0.95, cost_score=0.95)
         self.router.register(local_profile)
         self._local_id = local_profile.id
         if self.http.available:
-            http_profile = ModelProfile(provider="http", model=self.http.model, task_strengths={"curiosity_answer": 0.85, "contradiction": 0.85, "dream_skeptic": 0.8, "general": 0.9}, calibration=0.55, historical_accuracy=0.6, latency_score=0.4, cost_score=0.3)
+            http_profile = ModelProfile(provider="http", model=self.http.model, task_strengths={"curiosity_answer": 0.85, "contradiction": 0.85, "dream_skeptic": 0.8, "revenue_entity_extraction": 0.8, "general": 0.9}, calibration=0.55, historical_accuracy=0.6, latency_score=0.4, cost_score=0.3)
             self.router.register(http_profile)
             self._http_id = http_profile.id
         else:

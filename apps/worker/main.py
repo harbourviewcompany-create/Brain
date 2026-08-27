@@ -152,6 +152,26 @@ def build_revenue_spine() -> Any:
     return RevenueExecutionSpine()
 
 
+def build_entity_extractor() -> Any:
+    """Return a Reasoner for revenue entity extraction, or None.
+
+    Deliberately requires an explicit opt-in env var
+    (BRAIN_REVENUE_EXTRACTION_ENABLED=1) even though brain.reasoning
+    already has graceful local/HTTP fallback — the decision to start
+    spending real API calls per classified ingest item is a cost/product
+    decision, not something that should silently turn on just because
+    BRAIN_LLM_API_KEY happens to be set for other reasoning tasks.
+    """
+    if os.environ.get("BRAIN_REVENUE_EXTRACTION_ENABLED", "").strip().lower() not in {"1", "true", "yes"}:
+        return None
+    try:
+        from brain.reasoning import default_reasoner
+
+        return default_reasoner()
+    except Exception:
+        return None
+
+
 def build_ingest_service(
     *, inbox: Any | None = None, event_store: Any | None = None, revenue: Any | None = None
 ) -> Any:
@@ -166,6 +186,8 @@ def build_ingest_service(
         event_store=event_store or InMemoryBrainStore(),
         connectors=[RssConnector(), HttpJsonConnector()],
         revenue=revenue if revenue is not None else build_revenue_spine(),
+        entity_extractor=build_entity_extractor(),
+        max_extractions_per_batch=int(os.environ.get("BRAIN_REVENUE_EXTRACTION_BATCH_LIMIT", "20")),
     )
     raw = os.environ.get("BRAIN_RSS_SOURCES") or ""
     for part in raw.split(","):

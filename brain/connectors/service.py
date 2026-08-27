@@ -69,7 +69,9 @@ class IngestService:
                  connectors: list[SourceConnector] | None = None, *,
                  max_sources_per_tick: int = 10, max_enqueue_per_source: int = 25,
                  default_source_reliability: float = 0.65,
-                 revenue: Any | None = None) -> None:
+                 revenue: Any | None = None,
+                 entity_extractor: Any | None = None,
+                 max_extractions_per_batch: int = 20) -> None:
         self.registry = registry or InMemoryConnectorRegistry()
         self.inbox = inbox
         self.event_store = event_store
@@ -82,6 +84,14 @@ class IngestService:
         # created in APPROVAL_REQUIRED state — ingestion can propose a
         # candidate revenue action, it can never approve or execute one.
         self.revenue = revenue
+        # Optional Reasoner (see brain/connectors/entity_extractor.py). Off
+        # by default — nothing spends an API call unless this is passed in
+        # explicitly. When set, a classified-but-non-actionable candidate
+        # gets one extraction attempt before being logged as scored-only,
+        # bounded by max_extractions_per_batch per ingest_due_sources call.
+        self.entity_extractor = entity_extractor
+        self.max_extractions_per_batch = max(0, max_extractions_per_batch)
+        self._extractions_this_batch = 0
         self._runs: list[IngestBatchResult] = []
 
     def register_source(self, source: ConnectorSource) -> ConnectorSource:
@@ -116,6 +126,7 @@ class IngestService:
 
     def ingest_due_sources(self, *, now: datetime | None = None) -> IngestBatchResult:
         started = now or utcnow()
+        self._extractions_this_batch = 0
         due = self.registry.due_sources(started)[: self.max_sources_per_tick]
         batch = IngestBatchResult(started_at=started, finished_at=started, sources_due=len(due),
             sources_fetched=0, observations_enqueued=0, observations_deduped=0, failures=0)
@@ -210,10 +221,13 @@ class IngestService:
 
         When a lane is inferred but the signal fails NoFantasyFilter (the
         common case for unenriched automated feeds — no named buyer,
-        seller, or contact channel), no action is queued, but a
-        `revenue.signal_scored` event is emitted with the rejection
-        reasons so the candidate is visible to an operator for
-        enrichment instead of silently disappearing.
+        seller, or contact channel), and self.entity_extractor is set and
+        this batch's extraction budget isn't exhausted, one extraction
+        attempt is made and the signal is re-scored with any fields it
+        found. Whether or not that changes the outcome, a
+        `revenue.signal_scored` event is emitted with the final rejection
+        reasons so the candidate is visible to an operator instead of
+        silently disappearing.
         """
         if self.revenue is None:
             return None
@@ -223,6 +237,8 @@ class IngestService:
                 return None
             scored = self.revenue.money.score_signal(signal)
             if not scored.actionable:
+                signal, scored = self._maybe_extract_and_rescore(source, item, signal, scored)
+            if not scored.actionable:
                 self._emit_scored_signal_event(source, item, scored)
                 return None
             offer = self.revenue.money.package_offer(signal, scored)
@@ -230,6 +246,36 @@ class IngestService:
             return str(action.id)
         except Exception:
             return None
+
+    def _maybe_extract_and_rescore(
+        self, source: ConnectorSource, item: RawObservationItem, signal: Any, scored: Any,
+    ) -> tuple[Any, Any]:
+        if self.entity_extractor is None:
+            return signal, scored
+        if self._extractions_this_batch >= self.max_extractions_per_batch:
+            return signal, scored
+        self._extractions_this_batch += 1
+        try:
+            from .entity_extractor import extract_revenue_entities
+
+            enrichment = extract_revenue_entities(item, reasoner=self.entity_extractor)
+        except Exception:
+            return signal, scored
+        confidences = enrichment.pop("extraction_confidence", {})
+        if not enrichment:
+            return signal, scored
+        enriched_item = RawObservationItem(
+            title=item.title, content=item.content, claim=item.claim,
+            source_url=item.source_url, item_id=item.item_id, content_hash=item.content_hash,
+            observed_at=item.observed_at, confidence=item.confidence,
+            signal_hints=list(item.signal_hints), entities=list(item.entities),
+            metadata={**item.metadata, **enrichment, "extraction_confidence": confidences},
+        )
+        re_signal = revenue_signal_from_observation(enriched_item, source_id=source.source_key)
+        if re_signal is None:
+            return signal, scored
+        re_scored = self.revenue.money.score_signal(re_signal)
+        return re_signal, re_scored
 
     def _emit_scored_signal_event(self, source: ConnectorSource, item: RawObservationItem, scored: Any) -> None:
         if self.event_store is None or not hasattr(self.event_store, "append"):

@@ -1063,6 +1063,54 @@
         "auto-classified signals require human or extraction enrichment before they can queue as actions",
         "live external revenue action remains approval-gated and HOLD"
       ]
+    },
+    {
+      "record_id": "TRACE-REVENUE-ENTITY-EXTRACTION",
+      "paths": [
+        "brain/connectors/entity_extractor.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": [
+        "SRC-README",
+        "SRC-BUILD-PLAN",
+        "SRC-V1-MONEY-SPINE"
+      ],
+      "requirement_ids": [
+        "REQ-V1-MONEY-SPINE"
+      ],
+      "owner_object": "LLM-backed (graceful local-heuristic fallback) entity extraction for auto-classified revenue signals",
+      "schema": "consumes RawObservationItem (brain/connectors/protocol.py); produces the same enrichment-field shape revenue_adapter.py already reads from item.metadata (named_buyer, named_seller, decision_maker, visible_pain, urgency_reason, payment_path, contact_channel), each gated by a per-field confidence score",
+      "runtime_service": "extract_revenue_entities, routed through brain/reasoning.py's CortexReasoner (revenue_entity_extraction task type, registered with its own router task_strengths/cost_score) and a dedicated strict-extraction system prompt on HttpLLMReasoner",
+      "state_machine": "classified-but-non-actionable RevenueSignal -> (if IngestService.entity_extractor is set and batch budget remains) one extraction attempt -> confidence-gated field merge into item.metadata -> RevenueSignal rebuilt and re-scored -> queued action or scored-only event, same as any other classified signal",
+      "fixtures": [
+        "tests/test_reasoning_revenue_extraction.py",
+        "tests/test_entity_extractor.py",
+        "tests/test_ingest_entity_extraction.py"
+      ],
+      "tests": [
+        "tests/test_reasoning_revenue_extraction.py",
+        "tests/test_entity_extractor.py",
+        "tests/test_ingest_entity_extraction.py",
+        "python -m pytest -q",
+        "ruff check ."
+      ],
+      "acceptance_criteria": [
+        "extraction is off by default: IngestService never calls the reasoner unless entity_extractor= is passed explicitly",
+        "a field below confidence_threshold is dropped, never passed through at a discount",
+        "malformed or non-JSON reasoner output produces an empty result, never a crash and never a guess",
+        "a single ingest batch never exceeds max_extractions_per_batch reasoner calls",
+        "an already-actionable signal (enriched via item.metadata by the source itself) never triggers an extraction call"
+      ],
+      "audit_events": [
+        "revenue.signal_scored (final rejection reasons emitted whether or not extraction changed the outcome)"
+      ],
+      "source_preservation": "preserved",
+      "unresolved_gaps": [
+        "no live cost/latency budget has been measured against a real BRAIN_LLM_URL-backed provider yet; max_extractions_per_batch bounds call count but not $ spend directly",
+        "BRAIN_REVENUE_EXTRACTION_ENABLED requires an explicit operator opt-in in apps/worker/main.py; the live ingest loop does not extract anything until that flag and a reasoner are both configured",
+        "extraction quality against real RSS/HTTP JSON feed text is unverified beyond unit tests with a fake reasoner; no evaluation against a labeled sample of real ingested items has been run"
+      ]
     }
   ]
 }
