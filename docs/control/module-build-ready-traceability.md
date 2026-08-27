@@ -35,6 +35,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/adapters/economic_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/learning_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/adapters/postgres.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/adapters/revenue_store.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/affect.py | partial | present | partial | missing | present | missing | present | HOLD |
 | brain/agency.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/attention.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
@@ -48,6 +49,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/connectors/http_client.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/connectors/http_json.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/connectors/protocol.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/revenue_adapter.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/connectors/rss.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/connectors/service.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/connectors/store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |

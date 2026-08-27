@@ -207,10 +207,21 @@ class NoFantasyFilter:
 class MoneySpineService:
     """Converts signals into sellable offers, experiments, outcomes, and learning updates."""
 
-    def __init__(self, lanes: list[MoneyLane] | None = None):
-        self.lanes: dict[str, MoneyLane] = {lane.lane_id: lane for lane in lanes or default_money_lanes()}
+    def __init__(self, lanes: list[MoneyLane] | None = None, *, store: Any | None = None):
+        self.store = store
         self.no_fantasy = NoFantasyFilter()
-        self.source_scores: dict[str, float] = {}
+        if store is not None:
+            existing = store.load_lanes()
+            if existing:
+                self.lanes = existing
+            else:
+                seed = lanes or default_money_lanes()
+                store.seed_lanes(seed)
+                self.lanes = {lane.lane_id: lane for lane in seed}
+            self.source_scores = store.load_source_scores()
+        else:
+            self.lanes = {lane.lane_id: lane for lane in lanes or default_money_lanes()}
+            self.source_scores = {}
 
     def score_signal(self, signal: RevenueSignal) -> ScoredOpportunity:
         lane = self.lanes[signal.money_lane_id]
@@ -332,7 +343,11 @@ class MoneySpineService:
         updated = replace(lane, priority_score=round(updated_priority, 4))
         self.lanes[lane_id] = updated
         previous_source = self.source_scores.get(source_id, 0.5)
-        self.source_scores[source_id] = round(max(0.0, min(1.0, previous_source + delta)), 4)
+        new_source_score = round(max(0.0, min(1.0, previous_source + delta)), 4)
+        self.source_scores[source_id] = new_source_score
+        if self.store is not None:
+            self.store.save_lane_priority(updated)
+            self.store.save_source_score(source_id, new_source_score)
         return updated
 
 
@@ -404,11 +419,17 @@ class RevenueOutcomeLedgerEntry:
 class RevenueExecutionSpine:
     """Approval-gated cash-action loop. It queues work; it never sends or spends."""
 
-    def __init__(self, money: MoneySpineService | None = None) -> None:
+    def __init__(self, money: MoneySpineService | None = None, *, store: Any | None = None) -> None:
         self.money = money or MoneySpineService()
-        self.actions: dict[UUID, RevenueExecutionAction] = {}
-        self.followups: dict[UUID, RevenueFollowUp] = {}
-        self.outcomes: dict[UUID, RevenueOutcomeLedgerEntry] = {}
+        self.store = store
+        if store is not None:
+            self.actions = store.load_actions()
+            self.followups = store.load_followups()
+            self.outcomes = store.load_outcomes()
+        else:
+            self.actions = {}
+            self.followups = {}
+            self.outcomes = {}
 
     def queue_action_from_signal(
         self,
@@ -418,6 +439,23 @@ class RevenueExecutionSpine:
     ) -> tuple[ScoredOpportunity, PackagedOffer, RevenueExecutionAction]:
         scored = self.money.score_signal(signal)
         offer = self.money.package_offer(signal, scored)
+        action = self.queue_action_from_scored(signal, scored, offer, action_type=action_type)
+        return scored, offer, action
+
+    def queue_action_from_scored(
+        self,
+        signal: RevenueSignal,
+        scored: ScoredOpportunity,
+        offer: PackagedOffer,
+        *,
+        action_type: str = "outreach_draft",
+    ) -> RevenueExecutionAction:
+        """Queue an action from an already-scored, already-packaged offer.
+
+        Lets callers (e.g. the ingest pipeline) check ``scored.actionable``
+        themselves before packaging/queueing, instead of relying on
+        ``package_offer`` raising for non-actionable signals.
+        """
         action = RevenueExecutionAction(
             opportunity_id=scored.id,
             offer_id=offer.id,
@@ -429,7 +467,9 @@ class RevenueExecutionSpine:
             evidence_refs=list(offer.evidence_refs),
         )
         self.actions[action.id] = action
-        return scored, offer, action
+        if self.store is not None:
+            self.store.save_action(action)
+        return action
 
     def approve_action(self, action_id: UUID, *, approved_by: str) -> RevenueExecutionAction:
         action = self.actions[action_id]
@@ -438,6 +478,8 @@ class RevenueExecutionSpine:
         action.state = RevenueActionState.APPROVED
         action.approved_by = approved_by
         action.updated_at = datetime.now(timezone.utc)
+        if self.store is not None:
+            self.store.save_action(action)
         return action
 
     def log_manual_action(self, action_id: UUID, *, manual_proof_ref: str) -> RevenueExecutionAction:
@@ -447,6 +489,8 @@ class RevenueExecutionSpine:
         action.state = RevenueActionState.MANUAL_ACTION_LOGGED
         action.manual_proof_ref = manual_proof_ref
         action.updated_at = datetime.now(timezone.utc)
+        if self.store is not None:
+            self.store.save_action(action)
         return action
 
     def schedule_follow_up(
@@ -465,6 +509,8 @@ class RevenueExecutionSpine:
             script=script,
         )
         self.followups[followup.id] = followup
+        if self.store is not None:
+            self.store.save_followup(followup)
         return followup
 
     def due_followups(self, *, now: datetime | None = None) -> list[RevenueFollowUp]:
@@ -511,6 +557,9 @@ class RevenueExecutionSpine:
         self.outcomes[entry.id] = entry
         action.state = RevenueActionState.OUTCOME_LOGGED
         action.updated_at = datetime.now(timezone.utc)
+        if self.store is not None:
+            self.store.save_outcome(entry)
+            self.store.save_action(action)
         self.money.apply_outcome_learning(
             action.lane_id,
             action.source_id,
