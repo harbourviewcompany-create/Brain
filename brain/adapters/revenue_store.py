@@ -31,9 +31,11 @@ from typing import Any
 from uuid import UUID
 
 try:
+    from psycopg import errors as psycopg_errors
     from psycopg.types.json import Jsonb
     from psycopg_pool import ConnectionPool
 except ImportError:  # pragma: no cover - exercised only without psycopg installed
+    psycopg_errors = None
     Jsonb = None
     ConnectionPool = Any  # type: ignore[misc,assignment]
 
@@ -51,6 +53,14 @@ from ..money_spine import (
     RevenueFollowUp,
     RevenueOutcomeLedgerEntry,
     RevenueOutcomeType,
+)
+
+# Used to catch "relation does not exist" specifically (not swallowing
+# other DB errors) when a table hasn't reached this deploy target's
+# migration ceiling yet. An empty tuple if psycopg isn't installed means
+# the except clause below simply never matches, which is correct.
+_UndefinedTable: tuple[type[BaseException], ...] = (
+    (psycopg_errors.UndefinedTable,) if psycopg_errors is not None else ()
 )
 
 
@@ -149,23 +159,38 @@ class PostgresRevenueStore:
             conn.commit()
 
     # --- source reliability scores ----------------------------------------
+    #
+    # revenue_source_scores ships in db/migrations/023_revenue_source_scores.sql,
+    # which is *above* the production migration ceiling some deploy targets
+    # pin (see railway.brain-api-live.toml, --max-version). Rather than make
+    # every deploy of this adapter depend on that ceiling being raised, these
+    # two methods degrade to a no-op when the table doesn't exist yet: the
+    # rest of persistence (lanes, actions, followups, outcomes — all from
+    # migrations already within any current baseline) keeps working, and
+    # source-score learning silently resumes once the migration lands.
 
     def load_source_scores(self) -> dict[str, float]:
-        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("select source_id, score from public.revenue_source_scores")
-            return {row["source_id"]: float(row["score"]) for row in cur.fetchall()}
+        try:
+            with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+                cur.execute("select source_id, score from public.revenue_source_scores")
+                return {row["source_id"]: float(row["score"]) for row in cur.fetchall()}
+        except _UndefinedTable:
+            return {}
 
     def save_source_score(self, source_id: str, score: float) -> None:
-        with self.pool.connection() as conn:
-            conn.execute(
-                """
-                insert into public.revenue_source_scores (source_id, score, updated_at)
-                values (%s, %s, now())
-                on conflict (source_id) do update set score = excluded.score, updated_at = now()
-                """,
-                (source_id, score),
-            )
-            conn.commit()
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    """
+                    insert into public.revenue_source_scores (source_id, score, updated_at)
+                    values (%s, %s, now())
+                    on conflict (source_id) do update set score = excluded.score, updated_at = now()
+                    """,
+                    (source_id, score),
+                )
+                conn.commit()
+        except _UndefinedTable:
+            pass
 
     # --- revenue execution actions -----------------------------------------
 

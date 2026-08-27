@@ -12,6 +12,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
+from psycopg import errors as psycopg_errors
+
 from brain.adapters.revenue_store import PostgresRevenueStore
 from brain.money_spine import (
     AutomationReadiness,
@@ -24,6 +26,59 @@ from brain.money_spine import (
     RevenueOutcomeType,
     RevenueSignal,
 )
+
+
+# --- graceful degradation when revenue_source_scores is pre-migration ----
+#
+# db/migrations/023_revenue_source_scores.sql can legitimately be ahead of
+# a deploy target's migration ceiling (see railway.brain-api-live.toml,
+# which pins --max-version 18). load_source_scores / save_source_score
+# must degrade to a no-op rather than crash MoneySpineService.__init__ or
+# the outcome-recording path when that specific table doesn't exist yet.
+
+class _FakeUndefinedTableCursor:
+    def __enter__(self):
+        raise psycopg_errors.UndefinedTable("relation revenue_source_scores does not exist")
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeUndefinedTableConn:
+    def cursor(self, **kwargs):
+        return _FakeUndefinedTableCursor()
+
+    def execute(self, *args, **kwargs):
+        raise psycopg_errors.UndefinedTable("relation revenue_source_scores does not exist")
+
+    def commit(self):
+        pass
+
+
+class _FakeUndefinedTableConnCtx:
+    def __enter__(self):
+        return _FakeUndefinedTableConn()
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakePoolMissingSourceScoresTable:
+    def connection(self):
+        return _FakeUndefinedTableConnCtx()
+
+
+def test_load_source_scores_degrades_gracefully_when_table_missing():
+    store = PostgresRevenueStore.__new__(PostgresRevenueStore)
+    store.pool = _FakePoolMissingSourceScoresTable()
+    assert store.load_source_scores() == {}
+
+
+def test_save_source_score_degrades_gracefully_when_table_missing():
+    store = PostgresRevenueStore.__new__(PostgresRevenueStore)
+    store.pool = _FakePoolMissingSourceScoresTable()
+    # Must not raise.
+    store.save_source_score("demo-source", 0.7)
 
 
 # --- row <-> object translation -----------------------------------------
