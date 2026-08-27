@@ -1,7 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CognitiveField } from "@/components/observatory/CognitiveField";
 import { CognitionTimeline } from "@/components/observatory/CognitionTimeline";
 import { ObservatoryDock } from "@/components/observatory/ObservatoryDock";
 import { SystemPulse } from "@/components/observatory/SystemPulse";
@@ -12,6 +12,21 @@ import { flaresFromErrors } from "@/field/flares";
 import { useBrainObservatory } from "@/hooks/useBrainObservatory";
 import { buildCognitiveScene } from "@/lib/observatory";
 import type { CognitiveScene } from "@/types/observatory";
+
+const CognitiveField = dynamic(
+  () => import("@/components/observatory/CognitiveField").then((mod) => mod.CognitiveField),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="cognitive-field cognitive-field--loading" role="status" aria-label="Loading cognitive field">
+        <div className="cognitive-field__quiet-state">
+          <span>FIELD INITIALIZING</span>
+          <strong>Loading cognitive field canvas…</strong>
+        </div>
+      </div>
+    ),
+  },
+);
 
 const EMPTY_SCENE: CognitiveScene = {
   nodes: [],
@@ -111,7 +126,10 @@ export function BrainObservatory() {
     [displayedSnapshot?.errors],
   );
 
-  const selectedNode = scene.nodes.find((node) => node.id === selectedId) ?? null;
+  const selectedNode = useMemo(
+    () => scene.nodes.find((node) => node.id === selectedId) ?? null,
+    [scene.nodes, selectedId],
+  );
 
   useEffect(() => {
     if (selectedId && !scene.nodes.some((node) => node.id === selectedId)) setSelectedId(null);
