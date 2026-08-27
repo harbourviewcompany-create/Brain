@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any
 from uuid import UUID
 
@@ -37,7 +39,11 @@ class PostgresBrainStore(InMemoryBrainStore):
         self._owns_pool = pool is None
         self.pool = pool or ConnectionPool(conninfo=dsn, min_size=1, max_size=10, open=True)
         self.event_store = PostgresEventStore(dsn, pool=self.pool)
+        self._refresh_lock = threading.Lock()
         self.hydrate()
+        # The constructor's hydrate is the first refresh; without stamping it
+        # here the first refresh_if_stale would immediately hydrate again.
+        self._hydrated_at: float | None = time.monotonic()
 
     def close(self) -> None:
         if self._owns_pool:
@@ -164,6 +170,63 @@ class PostgresBrainStore(InMemoryBrainStore):
                         created_at=row["created_at"],
                     )
                 )
+
+    #: Durable markers of cognition. Counted through brain_events_type_idx
+    #: (event_type, occurred_at) from migration 001, so this stays an indexed
+    #: grouped count rather than the full brain_events scan #75 removed.
+    COGNITION_EVENT_TYPES = (
+        "cycle.completed",
+        "signal.enqueued",
+        "observation.received",
+        "belief.created",
+        "belief.updated",
+    )
+
+    def cognition_counters(self) -> dict[str, int]:
+        """Counts of cognition events actually recorded in the database.
+
+        The API process runs no cognition loop: every tick happens in the
+        worker, in a different process, against a different in-memory
+        HeartbeatService. Reporting this process's counters therefore always
+        answered zero no matter what the worker was doing. These counts come
+        from the shared event stream, so they describe the system rather than
+        the process that happens to be answering.
+        """
+        with self.pool.connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                select event_type, count(*)
+                from public.brain_events
+                where event_type = any(%s)
+                group by event_type
+                """,
+                (list(self.COGNITION_EVENT_TYPES),),
+            )
+            return {str(row[0]): int(row[1]) for row in cur.fetchall()}
+
+    def refresh_if_stale(self, max_age_seconds: float) -> bool:
+        """Re-read the belief/graph projection when the cached copy has aged out.
+
+        hydrate() runs once at startup, so a long-lived API process served the
+        snapshot it booted with and never saw anything the worker wrote
+        afterwards. Refreshing on a TTL keeps reads live without paying a full
+        hydrate per request: the Observatory polls every 5s, so at the default
+        TTL this costs about one hydrate per poll interval regardless of how
+        many readers there are.
+
+        Returns True when a refresh actually ran.
+        """
+        if max_age_seconds < 0:
+            return False
+        now = time.monotonic()
+        with self._refresh_lock:
+            if self._hydrated_at is not None and now - self._hydrated_at < max_age_seconds:
+                return False
+            # Claim the slot before the slow call so concurrent readers do not
+            # stampede the database with duplicate hydrates.
+            self._hydrated_at = now
+        self.hydrate()
+        return True
 
     def append(self, event) -> None:
         self.event_store.append(event)
