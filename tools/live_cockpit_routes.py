@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import logging
 import os
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -8,7 +9,6 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from fastapi.responses import JSONResponse
 
 import apps.api.tenant_app as tenant_api
-from brain.logging_config import get_logger
 from brain.tenant_auth import TenantRole
 from brain.tenant_context import TenantScopeViolation, trusted_tenant_context
 from brain.tenant_runtime import tenant_context_scope
@@ -23,7 +23,7 @@ app = tenant_api.app
 runtime = brain_api.runtime
 _learning_store = brain_api._learning_store
 
-_logger = get_logger("live_cockpit_routes")
+_logger = logging.getLogger(__name__)
 
 # This identifier is inert unless the explicit Observatory compatibility release
 # SQL has created the tenant + durable membership. Canonical migrations 019-022

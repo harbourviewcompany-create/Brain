@@ -113,6 +113,19 @@ def build_runner(*, enable_endogenous: bool = True, event_store: Any | None = No
         )
 
     hb = build_default_heartbeat(with_learning=True, event_store=store)
+
+    if store is not None:
+        # Resume from the durable projection before seeding. bootstrap_mind()
+        # only seeds foundational beliefs into the cycle's cache; without this a
+        # restarted worker would re-seed over a database that already holds the
+        # tenant's beliefs and would not see anything it wrote previously.
+        for belief in getattr(store, "beliefs", {}).values():
+            hb._cycle.register_belief(belief)
+        log.info(
+            "worker resumed durable beliefs",
+            extra={"beliefs": len(getattr(store, "beliefs", {}))},
+        )
+
     hb.bootstrap_mind()
     runner = hb._runner
     runner.enable_endogenous = enable_endogenous

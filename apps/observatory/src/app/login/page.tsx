@@ -9,11 +9,27 @@ const REASONS: Record<string, string> = {
     "This deployment has no operator access key set. Set OBSERVATORY_ACCESS_KEY and OBSERVATORY_SESSION_SECRET, then redeploy.",
 };
 
+/**
+ * Restrict `next` to a single-leading-slash local path.
+ *
+ * `/login?next=//attacker.example` starts with "/" but is a scheme-relative
+ * URL, so assigning it to window.location.href navigates cross-origin. That
+ * would let the public login page act as an open redirect after a genuine
+ * sign-in. Backslashes are rejected too, since some browsers normalise "/\" to
+ * "//".
+ */
+function safeNext(raw: string | null): string {
+  if (!raw) return "/";
+  if (!raw.startsWith("/")) return "/";
+  if (raw.startsWith("//") || raw.startsWith("/\\")) return "/";
+  return raw;
+}
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const reason = params.get("reason") || "";
-  const next = params.get("next") || "/";
+  const next = safeNext(params.get("next"));
 
   const [accessKey, setAccessKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +49,7 @@ function LoginForm() {
       });
       if (res.ok) {
         // Full navigation, so middleware re-runs with the new cookie.
-        window.location.href = next.startsWith("/") ? next : "/";
+        window.location.href = next;
         return;
       }
       const body = await res.json().catch(() => ({}));

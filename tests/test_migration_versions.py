@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from tools.apply_migrations import (
-    GRANDFATHERED_DUPLICATE_VERSIONS,
+    GRANDFATHERED_DUPLICATE_FILENAMES,
     MIGRATIONS_DIR,
     _assert_unique_versions,
     _migration_version,
@@ -33,9 +33,26 @@ def test_a_new_duplicate_version_is_refused(tmp_path: Path):
 def test_grandfathered_collision_is_still_allowed(tmp_path: Path):
     # 006 shipped twice and both files are applied in production; renaming
     # either would orphan its brain_schema_migrations row.
-    files = [tmp_path / "006_money_spine.sql", tmp_path / "006_working_memory.sql"]
+    files = [
+        tmp_path / "006_money_spine.sql",
+        tmp_path / "006_working_memory_predictions_learning.sql",
+    ]
     _assert_unique_versions(files)
-    assert 6 in GRANDFATHERED_DUPLICATE_VERSIONS
+    assert GRANDFATHERED_DUPLICATE_FILENAMES[6] == {
+        "006_money_spine.sql",
+        "006_working_memory_predictions_learning.sql",
+    }
+
+
+def test_a_third_006_is_refused_even_though_006_is_grandfathered(tmp_path: Path):
+    """Exempting the version number would let a new 006 recreate the collision."""
+    files = [
+        tmp_path / "006_money_spine.sql",
+        tmp_path / "006_working_memory_predictions_learning.sql",
+        tmp_path / "006_something_new.sql",
+    ]
+    with pytest.raises(RuntimeError, match="duplicate migration version"):
+        _assert_unique_versions(files)
 
 
 def test_apply_order_is_total_even_within_a_shared_version():

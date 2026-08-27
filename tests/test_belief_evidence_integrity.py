@@ -178,3 +178,23 @@ def test_replaying_one_claim_through_learn_cannot_manufacture_certainty():
 
     assert len(set(confidences)) == 1, "replays must not compound"
     assert confidences[0] < 0.85
+
+
+def test_approvable_state_matches_the_agency_state_the_backend_uses():
+    """The cockpit filters approvals on `state`, which must stay in step.
+
+    AgencyAction serializes `state` and `approval_status`, never `status`, and
+    GovernedAgency.approve() accepts only AgencyState.APPROVAL_REQUIRED. A
+    cockpit filtering on any other field or value shows an empty inbox and
+    leaves real pending actions unapprovable.
+    """
+    from pathlib import Path
+
+    from brain.cognitive_organism import AgencyState
+
+    page = Path(__file__).resolve().parents[1] / "apps/observatory/src/app/approvals/page.tsx"
+    source = page.read_text(encoding="utf-8")
+
+    assert f'"{AgencyState.APPROVAL_REQUIRED.value}"' in source
+    assert "a.state" in source, "the filter must read the state field"
+    assert "a.status" not in source, "AgencyAction has no status field"

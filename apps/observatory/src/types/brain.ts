@@ -303,7 +303,11 @@ export interface OrganismAgencyAction {
   action_type?: string;
   proposal?: string;
   tier?: string;
-  status?: string;
+  /** AgencyState: observed | ... | approval_required | approved | executed | ... */
+  state?: string;
+  /** "approval_required" until an operator approves, then "approved". */
+  approval_status?: string;
+  approved_by?: string | null;
   risk_score?: number;
   [key: string]: unknown;
 }

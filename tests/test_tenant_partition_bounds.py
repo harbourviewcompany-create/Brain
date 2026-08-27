@@ -141,3 +141,33 @@ def test_invalid_partition_limit_is_rejected(monkeypatch, raw):
 def test_partition_limit_comes_from_the_environment(monkeypatch):
     monkeypatch.setenv("BRAIN_TENANT_BUNDLE_LIMIT", "5")
     assert TenantPartitionedFactory(Counter).limit == 5
+
+
+def test_non_evictable_factories_are_never_dropped():
+    """State that cannot be rebuilt must not be silently discarded.
+
+    CognitiveOrganism is constructed empty and is never hydrated from
+    organism_store, so evicting a tenant's instance would reset its workspace,
+    agency actions and curiosity tasks rather than reload them. Growing unbounded
+    is the safer failure: memory pressure is visible, lost operator state is not.
+    """
+    factory = TenantPartitionedFactory(Counter, limit=1, evictable=False)
+
+    first_context = _context()
+    with tenant_context_scope(first_context):
+        first = factory.current()
+        first.value = 42
+
+    for _ in range(10):
+        with tenant_context_scope(_context()):
+            factory.current()
+
+    assert len(factory.instances) == 11
+    with tenant_context_scope(first_context):
+        assert factory.current() is first
+        assert factory.current().value == 42
+    assert not first.closed
+
+
+def test_evictable_remains_the_default():
+    assert TenantPartitionedFactory(Counter, limit=2).evictable is True

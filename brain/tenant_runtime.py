@@ -309,8 +309,15 @@ class TenantPartitionedFactory(Generic[T]):
     mutation written to the orphan.
     """
 
-    def __init__(self, factory: Callable[[], T], *, limit: int | None = None) -> None:
+    def __init__(
+        self,
+        factory: Callable[[], T],
+        *,
+        limit: int | None = None,
+        evictable: bool = True,
+    ) -> None:
         self.factory = factory
+        self.evictable = evictable
         self.limit = limit if limit is not None else _partition_limit()
         # Ordered by least-recently-used first.
         self.instances: "OrderedDict[str, T]" = OrderedDict()
@@ -333,13 +340,27 @@ class TenantPartitionedFactory(Generic[T]):
             self._evict_if_needed()
             return instance
 
+    #: Set on a factory whose instances hold mutable state that is NOT
+    #: reconstructable from the database on rebuild. Such a factory is never
+    #: evicted: dropping it would silently reset the tenant's state.
+    evictable: bool = True
+
     def _evict_if_needed(self) -> None:
         """Drop least-recently-used tenants, never the system partition.
 
-        Caller holds the lock. Evicting only drops the in-memory projection;
-        PostgreSQL remains authoritative, so the next request for that tenant
-        rebuilds from the database.
+        Caller holds the lock. Eviction is only safe when the next request can
+        rebuild an equivalent instance from durable storage. That holds for
+        TenantServiceBundle, whose PostgresBrainStore hydrates from PostgreSQL,
+        and does not hold for CognitiveOrganism, which is constructed empty and
+        is not hydrated from organism_store -- evicting one would reset that
+        tenant's workspace, agency actions and curiosity tasks. Factories in the
+        second category set ``evictable = False`` and grow unbounded instead,
+        which is the safer failure: memory pressure is visible, silently
+        discarded operator state is not.
         """
+
+        if not self.evictable:
+            return
 
         while len(self.instances) > self.limit:
             for key in list(self.instances):

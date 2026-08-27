@@ -86,3 +86,65 @@ def test_learning_shares_the_runner_store(monkeypatch):
 
     assert learning is not None
     assert learning.event_store is durable, "attribution must be written where cognition is"
+
+
+def test_cycle_writes_beliefs_through_to_the_durable_projection():
+    """Appending events is not persistence for `GET /beliefs`.
+
+    CognitiveCycle never called save(), so a cycle running against
+    PostgresBrainStore produced a durable event stream whose `beliefs` table --
+    the one the API reads -- was never updated. Worker beliefs were invisible to
+    the API and vanished from the working set on restart.
+    """
+    from brain.cycle import CognitiveCycle
+    from brain.domain import Belief
+
+    class RecordingStore(InMemoryBrainStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.saved: list[Belief] = []
+
+        def save(self, item):  # type: ignore[override]
+            if isinstance(item, Belief):
+                self.saved.append(item)
+            super().save(item)
+
+    store = RecordingStore()
+    cycle = CognitiveCycle(store)
+    belief = Belief(statement="durable projection", confidence=0.5)
+
+    cycle.register_belief(belief)
+
+    assert store.saved, "registering a belief must write it through to the store"
+    assert store.saved[-1].id == belief.id
+
+
+def test_belief_write_through_is_optional():
+    """A store without save() must not break the cycle."""
+    from brain.cycle import CognitiveCycle
+    from brain.domain import Belief
+
+    class EventOnlyStore:
+        def append(self, event) -> None:
+            pass
+
+        def read_all(self, **_):
+            return []
+
+    cycle = CognitiveCycle(EventOnlyStore())
+    cycle.register_belief(Belief(statement="no saver", confidence=0.5))
+
+
+def test_runner_resumes_beliefs_already_in_the_durable_store(monkeypatch):
+    from brain.domain import Belief
+
+    durable = InMemoryBrainStore()
+    existing = Belief(statement="written by an earlier worker", confidence=0.7)
+    durable.save(existing)
+
+    monkeypatch.setattr(worker, "build_brain_store", lambda: durable)
+    runner = worker.build_runner(enable_endogenous=False)
+
+    assert existing.id in runner.cycle._belief_cache, (
+        "a restarted worker must resume what it previously wrote"
+    )

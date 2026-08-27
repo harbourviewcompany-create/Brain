@@ -17,6 +17,7 @@ from .learning import (
     attribute_capital_or_result_outcome,
     emit_predictions_for_selected_tasks,
 )
+from .logging_config import get_logger
 from .metabolism import CapitalLedger, MetabolismEngine
 from .projections import default_projection_engine, incremental_checkpoint
 from .scheduler import CognitiveScheduler, CognitiveTask
@@ -34,6 +35,8 @@ from .executive import (
 from .hedonic import HedonicSystem, pain_signal_to_event, reward_prediction_error_to_event
 from .perception import Modality, PerceptionService, TextPerceptionEncoder, percept_to_event
 from .theory_of_mind import TheoryOfMindService, attributed_belief_to_event
+
+log = get_logger("cycle")
 
 
 class AppendableEventStore(Protocol):
@@ -162,6 +165,27 @@ class CognitiveCycle:
 
     def register_belief(self, belief: Belief) -> None:
         self._belief_cache[belief.id] = belief
+        self._persist_belief(belief)
+
+    def _persist_belief(self, belief: Belief) -> None:
+        """Write a belief through to the durable projection, when there is one.
+
+        The cycle appends events for everything it does, but the ``beliefs``
+        table that ``GET /beliefs`` reads is only written by ``save()``. Without
+        this, a cycle running against PostgreSQL produced a durable event stream
+        whose belief projection was never updated, so worker-created beliefs
+        were invisible to the API and vanished from the working set on restart.
+
+        In-memory stores get the same call and simply keep their dict in step.
+        """
+
+        saver = getattr(self.event_store, "save", None)
+        if not callable(saver):
+            return
+        try:
+            saver(belief)
+        except Exception:
+            log.exception("belief projection could not be persisted", extra={"belief_id": str(belief.id)})
 
     def hydrate_beliefs(self, *, from_checkpoint: bool = True) -> int:
         return hydrate_belief_cache(
@@ -365,6 +389,7 @@ class CognitiveCycle:
         prior_confidence = belief.confidence
         updated = self.beliefs.apply_evidence(belief, evidence, stimulus.supports)
         self._belief_cache[updated.id] = updated
+        self._persist_belief(updated)
         self._emit(
             BrainEvent(
                 "belief.updated",
@@ -729,6 +754,7 @@ class CognitiveCycle:
                 id=stimulus.belief_id,
             )
             self._belief_cache[belief.id] = belief
+            self._persist_belief(belief)
             self._emit(
                 BrainEvent(
                     "belief.created",

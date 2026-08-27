@@ -26,15 +26,33 @@ jobs:
 
       - name: Verify production BFF reads and Railway auth boundary
         shell: bash
+        env:
+          OBSERVATORY_ACCESS_KEY: ${{ secrets.OBSERVATORY_ACCESS_KEY }}
         run: |
           set -euo pipefail
           app="${{ inputs.app_base_url }}"
           brain="https://brain-api-live-production.up.railway.app"
 
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/health" -o /tmp/health.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/signals" -o /tmp/signals.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/organism/cockpit" -o /tmp/organism.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/edges" -o /tmp/edges.json
+          # The Observatory requires a signed operator session on every route,
+          # so these probes must sign in first. `curl --fail` exits on the first
+          # HTTP error, so without a session every audit stopped at its first
+          # BFF probe instead of verifying production.
+          if [ -z "${OBSERVATORY_ACCESS_KEY:-}" ]; then
+            echo "OBSERVATORY_ACCESS_KEY is required to audit the protected BFF." >&2
+            echo "Add it as a repository secret and re-run this workflow." >&2
+            exit 1
+          fi
+          curl --silent --show-error --fail \
+            -X POST "$app/api/auth/login" \
+            -H 'content-type: application/json' \
+            -d "{\"access_key\":\"${OBSERVATORY_ACCESS_KEY}\"}" \
+            -c /tmp/operator-cookies.txt -o /dev/null
+          auth=(--cookie /tmp/operator-cookies.txt)
+
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/health" -o /tmp/health.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/signals" -o /tmp/signals.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/organism/cockpit" -o /tmp/organism.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/edges" -o /tmp/edges.json
 
           railway_health=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-health.json -w '%{http_code}' "$brain/health")
           railway_edges=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-edges.json -w '%{http_code}' "$brain/edges")

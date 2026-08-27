@@ -43,8 +43,6 @@ def presented_credentials(headers: Mapping[str, str], expected: str) -> bool:
 
     if not expected:
         return False
-    # `any` short-circuits, but each individual comparison is still constant
-    # time, so a caller cannot learn where the match occurred by timing.
     return any(
         hmac.compare_digest(candidate, expected)
         for candidate in credential_candidates(headers)

@@ -968,6 +968,45 @@
         "brain/motor.py's HttpEffector is real and generic but not pointed at a specific production endpoint/vendor -- that wiring (which service, which credentials) is a deployment decision, not made here",
         "brain/perception.py's image/audio encoders are classical-DSP (luminance/edge/frequency statistics), matching early V1/A1-style processing, not deep-learning semantic understanding (object/scene/speech recognition) -- upgrading to a real vision/audio model remains a deliberate product/infra decision requiring an external model/API choice"
       ]
+    },
+    {
+      "record_id": "TRACE-COGNITIVE-EXTENSION-DEVELOPMENTAL-CURRICULUM",
+      "paths": [
+        "brain/developmental/cognitive_extension_curriculum.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": [
+        "SRC-ARCHITECTURE"
+      ],
+      "requirement_ids": [
+        "REQ-BRAIN-RUNTIME-MODULES"
+      ],
+      "owner_object": "DevelopmentalStageRecord (per module, per stage), built on HigherOrderCognitionService",
+      "schema": "present: reuses brain/developmental/higher_order_cognition.py's DevelopmentalStageRecord/DevelopmentalStage; no new schema introduced",
+      "runtime_service": "HigherOrderCognitionService (existing), populated by build_curriculum(); read via assessment_report()",
+      "state_machine": "present: HigherOrderCognitionService's existing DevelopmentalStage enum and enter_developmental_stage() gate, applied here rather than redefined",
+      "fixtures": [
+        "tests"
+      ],
+      "tests": [
+        "python -m pytest tests/test_developmental_cognitive_extension_curriculum.py -v"
+      ],
+      "acceptance_criteria": [
+        "every stage claim cites a real, currently-passing test or class as evidence, verified against the actual repo before being written",
+        "no module claims a stage it does not have real capability for",
+        "advanced stages (METACOGNITIVE, SELF_REPAIRING, CONSOLIDATED) are explicitly not claimed, with a stated reason for each",
+        "HigherOrderCognitionService's own advanced-stage evidence gate is exercised, not bypassed"
+      ],
+      "audit_events": [
+        "none: offline assessment tool that populates DevelopmentalStageRecord objects in-memory; does not participate in the live event-sourced CognitiveCycle loop, so there is nothing to audit-event"
+      ],
+      "source_preservation": "preserved",
+      "unresolved_gaps": [
+        "no per-module self-report of confidence/uncertainty exists yet (prerequisite for METACOGNITIVE)",
+        "no DevelopmentalPlasticityDelta has been generated from any of these seven modules yet (prerequisite for SELF_REPAIRING)",
+        "no sustained real production-cycle history exists yet (prerequisite for CONSOLIDATED)"
+      ]
     }
   ]
 }

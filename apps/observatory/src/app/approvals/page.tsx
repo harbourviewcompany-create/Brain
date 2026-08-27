@@ -14,7 +14,11 @@ import { approveOrganismAgencyAction, listOrganismAgencyActions } from "@/lib/ap
  * implied human control over external action that did not exist.
  */
 
-const PENDING_STATES = new Set(["proposed", "requested", "pending", "awaiting_approval"]);
+// AgencyAction carries `state` (an AgencyState) and `approval_status`; there is
+// no `status` field. Only AgencyState.APPROVAL_REQUIRED is approvable --
+// GovernedAgency.approve() raises PermissionError for anything else -- so this
+// must match that one value exactly rather than guessing at synonyms.
+const APPROVABLE_STATE = "approval_required";
 
 export default function ApprovalsPage() {
   const load = useCallback(() => listOrganismAgencyActions(), []);
@@ -24,8 +28,8 @@ export default function ApprovalsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const pending = (data || []).filter((a) =>
-    PENDING_STATES.has(String(a.status || "").toLowerCase())
+  const pending = (data || []).filter(
+    (a) => String(a.state ?? "").toLowerCase() === APPROVABLE_STATE
   );
 
   async function approve(actionId: string) {
@@ -94,7 +98,7 @@ export default function ApprovalsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs">{id.slice(0, 8)}</span>
-                        <StatusBadge status={String(a.status ?? "proposed")} />
+                        <StatusBadge status={String(a.state ?? APPROVABLE_STATE)} />
                         {a.tier && (
                           <span className="rounded border border-cockpit-border px-1.5 py-0.5 text-[10px] text-cockpit-muted">
                             tier {String(a.tier)}

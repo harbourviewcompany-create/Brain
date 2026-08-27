@@ -1,7 +1,7 @@
 {
   "registry_id": "REGISTRY-BRAIN-RUNTIME-HARDENING",
   "status": "ACTIVE",
-  "purpose": "Traceability for the runtime hardening pass that closed the repository review findings: operator authentication in front of the Observatory BFF, credential precedence in the Brain API, evidence deduplication and recomputed belief state, durable worker cognition, bounded tenant partitions, structured logging, and one canonical cockpit route surface.",
+  "purpose": "Traceability for the runtime hardening pass that closed the repository review findings still owned by this branch: operator authentication in front of the Observatory BFF, evidence deduplication and recomputed belief state, durable worker cognition, bounded tenant partitions, and structured logging. Credential precedence and the canonical cockpit read surface shipped separately in PR #160 and are deliberately absent here.",
   "rules": [
     "Every finding fixed here is covered by an executable regression test, not only by review.",
     "Security-relevant defaults fail closed: absent configuration refuses requests rather than disabling the check.",
@@ -17,13 +17,6 @@
   "requirements": [
     {
       "requirement_id": "REQ-BFF-OPERATOR-AUTHENTICATION",
-      "source_ids": [
-        "SRC-RUNTIME-REVIEW-FINDINGS"
-      ],
-      "label": "APPROVED"
-    },
-    {
-      "requirement_id": "REQ-CREDENTIAL-PRECEDENCE",
       "source_ids": [
         "SRC-RUNTIME-REVIEW-FINDINGS"
       ],
@@ -56,56 +49,9 @@
         "SRC-RUNTIME-REVIEW-FINDINGS"
       ],
       "label": "APPROVED"
-    },
-    {
-      "requirement_id": "REQ-CANONICAL-COCKPIT-ROUTE-SURFACE",
-      "source_ids": [
-        "SRC-RUNTIME-REVIEW-FINDINGS"
-      ],
-      "label": "APPROVED"
     }
   ],
   "code_module_records": [
-    {
-      "record_id": "TRACE-COCKPIT-READ-ROUTES",
-      "paths": [
-        "apps/api/cockpit_read_routes.py"
-      ],
-      "classification": "APPROVED",
-      "go_hold_status": "REVIEW",
-      "source_ids": [
-        "SRC-RUNTIME-REVIEW-FINDINGS"
-      ],
-      "requirement_ids": [
-        "REQ-CANONICAL-COCKPIT-ROUTE-SURFACE"
-      ],
-      "owner_object": "Brain cockpit read model",
-      "schema": "list envelope {items, total, source} over signals, edges, contradictions, curiosity tasks and sources projected from durable Brain state",
-      "runtime_service": "apps.api.main, registered on the canonical FastAPI app served by Dockerfile",
-      "state_machine": "durable event stream and belief store -> per-route read projection -> authenticated JSON list envelope",
-      "fixtures": [
-        "tests/test_live_cockpit_signals.py",
-        "tests/test_canonical_image_route_surface.py"
-      ],
-      "tests": [
-        "pytest tests/test_canonical_image_route_surface.py",
-        "pytest tests/test_live_cockpit_signals.py"
-      ],
-      "acceptance_criteria": [
-        "the canonical Dockerfile image serves every collection route the Observatory client calls",
-        "every cockpit read route requires authentication",
-        "a client function added against a route the API never gained fails the suite",
-        "GET /signals reads the durable signal.enqueued event stream, not the evidence projection"
-      ],
-      "audit_events": [
-        "COCKPIT_READ_MODEL_SERVED"
-      ],
-      "source_preservation": "route bodies moved verbatim from tools/live_cockpit_routes.py; the Vercel OIDC bridge remains in that module",
-      "unresolved_gaps": [
-        "approvals, opportunities, outcomes, formula-runs and acceptance-reports answer with empty collections until the runtime populates them",
-        "the Dockerfile.railway entrypoint remains the only image carrying VercelOidcAuthBridge"
-      ]
-    },
     {
       "record_id": "TRACE-RUNTIME-LOGGING",
       "paths": [

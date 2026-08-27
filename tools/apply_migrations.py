@@ -56,11 +56,18 @@ def _migration_version(path: Path) -> int:
         raise RuntimeError(f"invalid migration filename: {path.name}") from exc
 
 
-#: Versions that already shipped with a colliding prefix. Apply order between
-#: them is fixed by filename sort and both are long applied in production, so
-#: renaming either would orphan its `brain_schema_migrations` row. New
-#: collisions are refused instead.
-GRANDFATHERED_DUPLICATE_VERSIONS = frozenset({6})
+#: The exact colliding filenames that already shipped. Apply order between them
+#: is fixed by filename sort and both are long applied in production, so renaming
+#: either would orphan its `brain_schema_migrations` row.
+#:
+#: Keyed by the exact filename set rather than the version number: exempting
+#: version 6 wholesale would also accept a *third* `006_*.sql` added later, which
+#: `--max-version` still could not isolate -- silently recreating the collision
+#: this validator exists to prevent. Mirrors ALLOWED_MIGRATION_COLLISIONS in
+#: scripts/validate_build_ready_traceability.py.
+GRANDFATHERED_DUPLICATE_FILENAMES = {
+    6: frozenset({"006_money_spine.sql", "006_working_memory_predictions_learning.sql"}),
+}
 
 
 def _assert_unique_versions(files: Sequence[Path]) -> None:
@@ -77,7 +84,7 @@ def _assert_unique_versions(files: Sequence[Path]) -> None:
     collisions = {
         version: names
         for version, names in seen.items()
-        if len(names) > 1 and version not in GRANDFATHERED_DUPLICATE_VERSIONS
+        if len(names) > 1 and set(names) != GRANDFATHERED_DUPLICATE_FILENAMES.get(version)
     }
     if collisions:
         detail = "; ".join(
