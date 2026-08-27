@@ -32,6 +32,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 API_ENTRYPOINT = "tools.live_cockpit_routes:app"
 WORKER_ENTRYPOINT = "apps.worker.main"
 
+#: The one image every API host builds, and the one path they all probe. Pinned
+#: rather than read back from railway.toml: deriving "canonical" from one of the
+#: files under test lets the invariant move silently when both are edited
+#: together, which is the exact drift this module exists to catch.
+API_DOCKERFILE = "Dockerfile"
+API_HEALTHCHECK_PATH = "/ready"
+
 
 def _dockerfile_copies(dockerfile: Path) -> set[str]:
     """Top-level source trees the image copies in, e.g. {"brain", "apps", "tools"}."""
@@ -79,11 +86,10 @@ def test_every_railway_config_names_a_dockerfile_that_exists():
 @pytest.mark.parametrize("config", API_CONFIGS, ids=lambda p: p.name)
 def test_api_configs_all_build_one_image_and_probe_one_path(config: Path):
     """Two API configs that disagree deploy two different systems."""
-    canonical = _load(REPO_ROOT / "railway.toml")["build"]["dockerfilePath"]
     settings = _load(config)
 
-    assert settings["build"]["dockerfilePath"] == canonical
-    assert settings["deploy"]["healthcheckPath"] == "/ready", (
+    assert settings["build"]["dockerfilePath"] == API_DOCKERFILE
+    assert settings["deploy"]["healthcheckPath"] == API_HEALTHCHECK_PATH, (
         "/health answers before the database is reachable, so a Railway deploy "
         "probing it can go live over a broken runtime"
     )
@@ -160,9 +166,19 @@ def test_fly_runs_the_same_entrypoint_as_railway():
     apps.api.tenant_app and no Vercel OIDC bridge.
     """
     fly = tomllib.loads((REPO_ROOT / "fly.toml").read_text(encoding="utf-8"))
-    assert fly["build"]["dockerfile"] == _load(REPO_ROOT / "railway.toml")["build"]["dockerfilePath"]
+    assert fly["build"]["dockerfile"] == API_DOCKERFILE
     assert API_ENTRYPOINT in fly["processes"]["app"]
     assert WORKER_ENTRYPOINT in fly["processes"]["worker"]
+
+    # Fly declares its own health check too. Left unasserted, Fly could probe
+    # /health while every Railway path probes /ready -- the same split this
+    # module closed between the two Railway configs.
+    checks = fly["http_service"]["checks"]
+    assert [check["path"] for check in checks] == [API_HEALTHCHECK_PATH] * len(checks)
+    assert fly["http_service"]["processes"] == ["app"], (
+        "the worker exposes no HTTP port; attaching it to the service would "
+        "route traffic at a process that cannot answer"
+    )
 
 
 def test_worker_config_targets_the_worker_image():
