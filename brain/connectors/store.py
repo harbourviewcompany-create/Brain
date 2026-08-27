@@ -81,9 +81,19 @@ class InMemoryConnectorRegistry:
         ingestion_run_id: UUID | None = None,
     ) -> ConnectorObservationReceipt:
         del retrieved_at, ingestion_run_id
-        return ConnectorObservationReceipt(
-            is_new=self.remember_hash(item.content_hash, source_key=source.source_key)
-        )
+        is_new = self.remember_hash(item.content_hash, source_key=source.source_key)
+        return ConnectorObservationReceipt(is_new=is_new, should_enqueue=is_new)
+
+    def mark_observation_enqueue_failed(
+        self,
+        source: ConnectorSource,
+        item: RawObservationItem,
+        observation_id: UUID | None = None,
+    ) -> None:
+        """Release local dedupe state so a transient inbox failure can retry."""
+        del observation_id
+        with self._lock:
+            self._seen_hashes.discard((source.source_key, item.content_hash))
 
     def seen_count(self) -> int:
         with self._lock:
@@ -322,6 +332,8 @@ class PostgresConnectorRegistry:
         source.schedule_next(success=success)
         scope, params = self._scope_sql()
         with self.pool.connection() as conn:
+            # Lease ownership matters after expiry: an old worker finishing late
+            # must not clear/reschedule a newer worker's active lease.
             conn.execute(
                 f"""
                 update public.source_connector_runtime_state
@@ -332,7 +344,9 @@ class PostgresConnectorRegistry:
                     lease_owner=null,
                     lease_expires_at=null,
                     updated_at=now()
-                where {scope} and source_key=%s
+                where {scope}
+                  and source_key=%s
+                  and (lease_owner is null or lease_owner=%s)
                 """,
                 (
                     source.last_fetched_at,
@@ -341,6 +355,7 @@ class PostgresConnectorRegistry:
                     source.next_due_at,
                     *params,
                     source_key,
+                    self.lease_owner,
                 ),
             )
             conn.commit()
@@ -415,7 +430,8 @@ class PostgresConnectorRegistry:
             str(key): value
             for key, value in item.metadata.items()
             if isinstance(value, (str, int, float, bool))
-            and key.lower() not in {
+            and key.lower()
+            not in {
                 "authorization",
                 "api_key",
                 "apikey",
@@ -431,12 +447,13 @@ class PostgresConnectorRegistry:
                 insert into public.source_connector_observations (
                     tenant_id, source_id, ingestion_run_id, item_id, content_hash,
                     source_url, title, raw_content, claim, observed_at, retrieved_at,
-                    confidence, signal_hints, entities, metadata
-                ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    last_retrieved_at, confidence, signal_hints, entities, metadata
+                ) values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 on conflict (source_id, content_hash) do update set
                     last_seen_at=now(),
+                    last_retrieved_at=excluded.last_retrieved_at,
                     seen_count=public.source_connector_observations.seen_count + 1
-                returning observation_id, seen_count
+                returning observation_id, seen_count, status
                 """,
                 (
                     self.tenant_id,
@@ -450,6 +467,7 @@ class PostgresConnectorRegistry:
                     item.claim,
                     item.observed_at,
                     retrieved_at,
+                    retrieved_at,
                     float(item.confidence),
                     _json(list(item.signal_hints)),
                     _json(list(item.entities)),
@@ -462,6 +480,7 @@ class PostgresConnectorRegistry:
             raise RuntimeError(f"connector_observation_write_failed:{source.source_key}")
         return ConnectorObservationReceipt(
             is_new=int(row["seen_count"]) == 1,
+            should_enqueue=str(row["status"]) == "captured",
             observation_id=row["observation_id"],
         )
 
@@ -480,6 +499,16 @@ class PostgresConnectorRegistry:
                 (parsed_inbox_id, observation_id),
             )
             conn.commit()
+
+    def mark_observation_enqueue_failed(
+        self,
+        source: ConnectorSource,
+        item: RawObservationItem,
+        observation_id: UUID | None = None,
+    ) -> None:
+        # The durable row intentionally stays `captured`; a later sighting of the
+        # same source/hash receives should_enqueue=True and retries the inbox write.
+        del source, item, observation_id
 
     def remember_hash(self, content_hash: str, *, source_key: str = "") -> bool:
         """Compatibility read only; record_fetched_item() is the authoritative path."""
