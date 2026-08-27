@@ -240,7 +240,7 @@ class MoneySpineService:
             - signal.time_delay * 10
         )
         rejection_reasons = self.no_fantasy.evaluate(signal)
-        return ScoredOpportunity(
+        scored = ScoredOpportunity(
             signal_id=signal.id,
             lane_id=lane.lane_id,
             score=round(score, 4),
@@ -248,6 +248,10 @@ class MoneySpineService:
             rejection_reasons=rejection_reasons,
             next_action=lane.first_48_hour_action if not rejection_reasons else None,
         )
+        if self.store is not None:
+            self.store.save_signal(signal)
+            self.store.save_scored_opportunity(scored)
+        return scored
 
     def package_offer(self, signal: RevenueSignal, scored: ScoredOpportunity) -> PackagedOffer:
         if not scored.actionable:
@@ -263,7 +267,7 @@ class MoneySpineService:
             f"Following up on the {lane.packaged_offer}. The useful part is not the research; "
             "it is the named targets, evidence, and next actions that can be tested quickly."
         )
-        return PackagedOffer(
+        offer = PackagedOffer(
             opportunity_id=scored.id,
             title=f"{lane.title}: {signal.raw_signal[:90]}",
             offer_name=lane.packaged_offer,
@@ -276,6 +280,9 @@ class MoneySpineService:
             follow_up_script=follow_up,
             approval_required=True,
         )
+        if self.store is not None:
+            self.store.save_offer(offer)
+        return offer
 
     def create_experiment(self, lane_id: str, *, price: float | None = None) -> RevenueExperiment:
         lane = self.lanes[lane_id]

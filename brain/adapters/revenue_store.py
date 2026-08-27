@@ -7,23 +7,31 @@ That's a correctness bug for a system whose central claim is that it
 gets better with time: nothing can compound across restarts if nothing
 survives a restart.
 
-This adapter persists the state that actually needs to compound:
+This adapter persists:
   - money_lanes.priority_score      (the lane-learning signal)
   - revenue_source_scores           (per-source reliability learning)
   - revenue_execution_actions / revenue_followups / revenue_outcome_ledger
     (the approval-gated action audit trail — the evidence that the loop
     actually ran, not just that it could)
+  - revenue_signals / scored_revenue_opportunities / packaged_offers
+    (the scoring audit trail — every signal that was ever classified
+    and scored, whether or not it became an action)
 
-Deliberately NOT persisted here: revenue_signals, scored_revenue_opportunities,
-and packaged_offers. The `revenue_signals.source_id` column in
-db/migrations/006_money_spine.sql is declared `uuid references sources(id)`,
-but the domain code (MoneySpineService, the connector layer) addresses
-sources by their string `source_key` throughout — never by
-`sources.id`. Persisting those three tables as-is would either violate
-that foreign key or require silently resolving source_key -> sources.id
-at every write, which is a real schema decision, not a plumbing detail.
-Left for a follow-up migration once that's decided; see the PR/ticket
-that introduced this file for the flagged discrepancy.
+The last group was originally deferred: db/migrations/006_money_spine.sql
+declared `revenue_signals.source_id`/`money_lane_id` as uuid foreign
+keys, but the domain code has always addressed both by their string
+keys. db/migrations/024_revenue_signal_source_lane_text_keys.sql fixes
+that (matching how migration 017 already modeled the same fields on
+revenue_execution_actions), and save_signal/save_scored_opportunity/
+save_offer below are the write side of that fix. Like
+revenue_source_scores in migration 023, migration 024 may be above a
+given deploy target's migration ceiling — see the _UndefinedTable
+guard applied to all three methods.
+
+These three tables are append-only audit logs, not state that needs
+hydration: MoneySpineService doesn't hold an in-memory collection of
+past signals/scores/offers, so there's nothing to load() on init —
+only save() on every score_signal/package_offer call.
 """
 from __future__ import annotations
 
@@ -48,11 +56,14 @@ from ..money_spine import (
     AutomationReadiness,
     MoneyLane,
     OpportunityClass,
+    PackagedOffer,
     RevenueActionState,
     RevenueExecutionAction,
     RevenueFollowUp,
     RevenueOutcomeLedgerEntry,
     RevenueOutcomeType,
+    RevenueSignal,
+    ScoredOpportunity,
 )
 
 # Used to catch "relation does not exist" specifically (not swallowing
@@ -62,6 +73,7 @@ from ..money_spine import (
 _UndefinedTable: tuple[type[BaseException], ...] = (
     (psycopg_errors.UndefinedTable,) if psycopg_errors is not None else ()
 )
+
 
 
 class PostgresRevenueStore:
@@ -333,3 +345,82 @@ class PostgresRevenueStore:
                 ),
             )
             conn.commit()
+
+    # --- signal scoring audit trail -----------------------------------------
+    #
+    # revenue_signals/scored_revenue_opportunities/packaged_offers ship in
+    # db/migrations/024_revenue_signal_source_lane_text_keys.sql (the
+    # source_id/money_lane_id text-key fix) which, like migration 023, can
+    # be above a deploy target's migration ceiling. Same graceful
+    # degradation as save_source_score: a missing table degrades to a
+    # no-op rather than crashing the scoring path that calls it.
+
+    def save_signal(self, signal: RevenueSignal) -> None:
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    """
+                    insert into public.revenue_signals (
+                        id, money_lane_id, source_id, raw_signal, named_buyer, named_seller,
+                        decision_maker, visible_pain, urgency_reason, payment_path, contact_channel,
+                        evidence_refs, commercial_value, confidence, urgency, contactability,
+                        execution_difficulty, legal_access_risk, time_delay, metadata
+                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do nothing
+                    """,
+                    (
+                        signal.id, signal.money_lane_id, signal.source_id, signal.raw_signal,
+                        signal.named_buyer, signal.named_seller, signal.decision_maker,
+                        signal.visible_pain, signal.urgency_reason, signal.payment_path,
+                        signal.contact_channel, Jsonb(list(signal.evidence_refs)),
+                        signal.commercial_value, signal.confidence, signal.urgency,
+                        signal.contactability, signal.execution_difficulty, signal.legal_access_risk,
+                        signal.time_delay, Jsonb(dict(signal.metadata)),
+                    ),
+                )
+                conn.commit()
+        except _UndefinedTable:
+            pass
+
+    def save_scored_opportunity(self, scored: ScoredOpportunity) -> None:
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    """
+                    insert into public.scored_revenue_opportunities (
+                        id, revenue_signal_id, money_lane_id, score, actionable,
+                        rejection_reasons, next_action
+                    ) values (%s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do nothing
+                    """,
+                    (
+                        scored.id, scored.signal_id, scored.lane_id, scored.score, scored.actionable,
+                        Jsonb(list(scored.rejection_reasons)), scored.next_action,
+                    ),
+                )
+                conn.commit()
+        except _UndefinedTable:
+            pass
+
+    def save_offer(self, offer: PackagedOffer) -> None:
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    """
+                    insert into public.packaged_offers (
+                        id, scored_opportunity_id, title, offer_name, buyer_type, target_contact,
+                        price_low, price_high, evidence_refs, outreach_script, follow_up_script,
+                        approval_required
+                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do nothing
+                    """,
+                    (
+                        offer.id, offer.opportunity_id, offer.title, offer.offer_name, offer.buyer_type,
+                        offer.target_contact, offer.price_low, offer.price_high,
+                        Jsonb(list(offer.evidence_refs)), offer.outreach_script, offer.follow_up_script,
+                        offer.approval_required,
+                    ),
+                )
+                conn.commit()
+        except _UndefinedTable:
+            pass
