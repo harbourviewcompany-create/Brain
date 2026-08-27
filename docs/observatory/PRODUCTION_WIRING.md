@@ -76,6 +76,8 @@ Railway therefore carries these non-secret identity-scope variables:
 
 The browser must never receive, embed, log, or persist the upstream credential.
 
+Credential matching on the Brain API accepts any presented recognized header that matches `BRAIN_API_KEY` (merged via #160). An unrelated Vercel OIDC bearer must not mask a valid `X-Brain-Api-Key`.
+
 ## Environment ownership
 
 ### Railway: `brain-api-live`
@@ -91,7 +93,9 @@ Production runtime variables include:
 - `BRAIN_VERCEL_OIDC_PROJECT`
 - `BRAIN_VERCEL_OIDC_ENVIRONMENT`
 
-Railway is configured to build `Dockerfile.railway` and run `python tools/apply_migrations.py` as the pre-deploy migration/verification step.
+Railway should run the canonical API image (`Dockerfile` → `apps.api.main` / tenant app). Observatory cockpit read routes (`/signals`, `/edges`, `/contradictions`, `/curiosity`, `/sources`, and empty-state collection routes) are registered on that canonical surface as of #160. A Railway redeploy of `main` after #160 is required before live OBS 18/18 can be claimed.
+
+`Dockerfile.railway` remains a compatibility path (OIDC bridge); it is not the sole home of the cockpit read model.
 
 ### Vercel: `brain`
 
@@ -124,6 +128,7 @@ This section records the last runtime-affecting production baseline verified at 
 - Railway deployment ID: `99fefce8-c4a0-4096-b498-ab88c23206d5` (last documented)
 - deployment status: `SUCCESS` (last documented)
 - production URL: `https://brain-api-live-production.up.railway.app`
+- **Pending:** redeploy `main` including #160 (`7a4bc83`) so the canonical image serves Observatory read routes in production.
 
 ### Vercel — canonical production project
 
@@ -161,13 +166,14 @@ For a production wiring change, verify at minimum:
 
 - `GET https://brain-api-live-production.up.railway.app/health` succeeds.
 - `GET https://brain-seven-puce.vercel.app/api/brain/health` (or the active production domain) succeeds through the BFF.
+- Protected Observatory read paths (e.g. signals/edges/beliefs proxies) succeed with real or empty-state envelopes, not auth collision or missing-route failures.
 - A protected BFF route succeeds through Vercel deployment identity.
 - Protected Railway routes remain unauthorized without an accepted credential.
 - The browser/client bundle contains no upstream API credential.
 - Railway logs show no authentication regression, migration drift, `UndefinedTable`, or startup failure.
 - Railway `BRAIN_VERCEL_OIDC_PROJECT` matches Vercel project name `brain`.
 - `BRAIN_CORS_ORIGINS` includes the live Vercel production origin(s).
-- The deployed Railway commit belongs to `harbourviewcompany-create/Brain`.
+- The deployed Railway commit belongs to `harbourviewcompany-create/Brain` and includes the #160 canonical read surface when claiming OBS 18/18.
 - The deployed Vercel commit belongs to `harbourviewcompany-create/Brain`.
 
 ## Source of truth
