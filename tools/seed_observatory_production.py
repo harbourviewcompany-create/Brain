@@ -300,6 +300,67 @@ def _required_tables_present(conn: psycopg.Connection) -> bool:
     return bool(row and int(row[0]) == len(names))
 
 
+def _column_exists(conn: psycopg.Connection, table: str, column: str) -> bool:
+    row = conn.execute(
+        """
+        select exists (
+          select 1
+          from information_schema.columns
+          where table_schema = 'public' and table_name = %s and column_name = %s
+        )
+        """,
+        (table, column),
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _upsert_system_source(
+    conn: psycopg.Connection,
+    *,
+    key: str,
+    name: str,
+    trust: float,
+) -> int:
+    """Upsert a global seed source across both pre-020 and tenant-aware schemas."""
+
+    metadata = Jsonb(
+        {"seed_pack": SEED_PACK, "source_class": "internal_system_evidence"}
+    )
+    values = (sid(f"source:{key}"), f"seed:{key}", name, trust, trust, metadata)
+    if _column_exists(conn, "sources", "tenant_id"):
+        # Migration 020 replaces sources_key_key with a partial unique index for
+        # system rows. The matching predicate is part of PostgreSQL's conflict
+        # target contract and prevents collisions with a tenant-owned source using
+        # the same natural key.
+        result = conn.execute(
+            """
+            insert into public.sources (
+              id, key, name, authority_score, historical_utility, metadata, tenant_id
+            ) values (%s,%s,%s,%s,%s,%s,null)
+            on conflict (key) where tenant_id is null do update set
+              name=excluded.name,
+              authority_score=excluded.authority_score,
+              historical_utility=excluded.historical_utility,
+              metadata=public.sources.metadata || excluded.metadata
+            """,
+            values,
+        )
+    else:
+        result = conn.execute(
+            """
+            insert into public.sources (id, key, name, authority_score, historical_utility, metadata)
+            values (%s,%s,%s,%s,%s,%s)
+            on conflict (key) do update set
+              name=excluded.name,
+              authority_score=excluded.authority_score,
+              historical_utility=excluded.historical_utility,
+              metadata=public.sources.metadata || excluded.metadata
+            """,
+            values,
+        )
+    return int(result.rowcount)
+
+
 def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
     if not _required_tables_present(conn):
         raise RuntimeError("observatory_seed_requires_migrations_001_through_018")
@@ -316,26 +377,12 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
     }
 
     for key, name, trust in SOURCES:
-        result = conn.execute(
-            """
-            insert into public.sources (id, key, name, authority_score, historical_utility, metadata)
-            values (%s,%s,%s,%s,%s,%s)
-            on conflict (key) do update set
-              name=excluded.name,
-              authority_score=excluded.authority_score,
-              historical_utility=excluded.historical_utility,
-              metadata=public.sources.metadata || excluded.metadata
-            """,
-            (
-                sid(f"source:{key}"),
-                f"seed:{key}",
-                name,
-                trust,
-                trust,
-                Jsonb({"seed_pack": SEED_PACK, "source_class": "internal_system_evidence"}),
-            ),
+        counts["sources"] += _upsert_system_source(
+            conn,
+            key=key,
+            name=name,
+            trust=trust,
         )
-        counts["sources"] += result.rowcount
 
     for belief in BELIEFS:
         result = conn.execute(
@@ -348,6 +395,7 @@ def apply_seed(conn: psycopg.Connection) -> dict[str, int]:
               state=excluded.state,
               unknowns=excluded.unknowns,
               updated_at=excluded.updated_at
+            where public.beliefs.version = 1
             """,
             (
                 sid(f"belief:{belief.key}"),
@@ -579,9 +627,19 @@ def main() -> int:
     if requested != SEED_PACK:
         print("Observatory production seed disabled; no changes applied.")
         return 0
-    dsn = (os.environ.get("DATABASE_URL") or "").strip()
+    # Post-tenant releases run with FORCE RLS. Use the same separately-audited
+    # migration identity when it is available so this explicitly operator-enabled
+    # system seed can write tenant_id IS NULL control rows. Pre-tenant production
+    # remains compatible by falling back to DATABASE_URL.
+    dsn = (
+        os.environ.get("BRAIN_MIGRATION_DATABASE_URL")
+        or os.environ.get("DATABASE_URL")
+        or ""
+    ).strip()
     if not dsn:
-        raise RuntimeError("DATABASE_URL is required when Observatory production seed is enabled")
+        raise RuntimeError(
+            "DATABASE_URL or BRAIN_MIGRATION_DATABASE_URL is required when Observatory production seed is enabled"
+        )
     with psycopg.connect(dsn) as conn:
         counts = apply_seed(conn)
     print(f"Observatory production seed ensured: {SEED_PACK}; writes={counts}")
