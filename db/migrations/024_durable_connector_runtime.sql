@@ -82,6 +82,7 @@ create table if not exists public.source_connector_observations (
   claim text not null,
   observed_at timestamptz not null,
   retrieved_at timestamptz not null,
+  last_retrieved_at timestamptz not null,
   confidence double precision not null default 0.5 check (confidence >= 0 and confidence <= 1),
   signal_hints jsonb not null default '[]'::jsonb,
   entities jsonb not null default '[]'::jsonb,
@@ -100,6 +101,59 @@ create index if not exists source_connector_observations_tenant_seen_idx
   on public.source_connector_observations(tenant_id, last_seen_at desc);
 create index if not exists source_connector_observations_status_idx
   on public.source_connector_observations(status, last_seen_at desc);
+
+-- Enforce tenant lineage across child rows, not merely tenant_id on the row being
+-- inserted. RLS alone would otherwise permit a tenant-owned child carrying its own
+-- tenant_id to reference another tenant's source UUID through a foreign key.
+create or replace function public.enforce_connector_runtime_tenant_integrity()
+returns trigger
+language plpgsql
+as $$
+declare
+  parent_tenant uuid;
+  run_tenant uuid;
+  run_source uuid;
+begin
+  select tenant_id into parent_tenant
+  from public.source_connector_runtime_state
+  where id = new.source_id;
+
+  if not found then
+    raise exception 'connector source is not visible in the current tenant/service context';
+  end if;
+
+  if new.tenant_id is distinct from parent_tenant then
+    raise exception 'connector child tenant_id must match source tenant_id';
+  end if;
+
+  if tg_table_name = 'source_connector_observations' and new.ingestion_run_id is not null then
+    select tenant_id, source_id into run_tenant, run_source
+    from public.source_connector_ingestion_runs
+    where run_id = new.ingestion_run_id;
+
+    if not found then
+      raise exception 'connector ingestion run is not visible in the current tenant/service context';
+    end if;
+    if new.tenant_id is distinct from run_tenant or new.source_id is distinct from run_source then
+      raise exception 'connector observation tenant/source must match its ingestion run';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists source_connector_runs_tenant_integrity on public.source_connector_ingestion_runs;
+create trigger source_connector_runs_tenant_integrity
+before insert or update of tenant_id, source_id
+on public.source_connector_ingestion_runs
+for each row execute function public.enforce_connector_runtime_tenant_integrity();
+
+drop trigger if exists source_connector_observations_tenant_integrity on public.source_connector_observations;
+create trigger source_connector_observations_tenant_integrity
+before insert or update of tenant_id, source_id, ingestion_run_id
+on public.source_connector_observations
+for each row execute function public.enforce_connector_runtime_tenant_integrity();
 
 -- Runtime config is deliberately public/non-secret connector configuration only.
 -- Authorization headers, bearer tokens, API keys and cookies belong in credential
