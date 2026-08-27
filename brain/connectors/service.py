@@ -81,9 +81,6 @@ class IngestService:
         self.max_enqueue_per_source = max(1, max_enqueue_per_source)
         self.default_source_reliability = default_source_reliability
         self.revenue = revenue
-        # Optional Reasoner. Off by default. The limit is scoped to one public
-        # ingest operation: a scheduled batch shares one budget across its due
-        # sources, while every forced ingest_source() call gets a fresh budget.
         self.entity_extractor = entity_extractor
         self.max_extractions_per_batch = max(0, max_extractions_per_batch)
         self._extractions_this_batch = 0
@@ -139,8 +136,6 @@ class IngestService:
         return batch
 
     def ingest_source(self, source_key: str) -> IngestSourceResult:
-        # Forced/manual ingests are distinct operations and therefore receive
-        # their own extraction budget instead of inheriting service lifetime state.
         self._extractions_this_batch = 0
         source = self.registry.get(source_key)
         if source is None:
@@ -225,8 +220,11 @@ class IngestService:
                 self._emit_scored_signal_event(source, item, scored, signal=signal)
                 return None
             offer = self.revenue.money.package_offer(signal, scored)
+            # Attach provenance before queue_action_from_scored performs its first
+            # store insert. This makes the approval evidence durable immediately,
+            # including with PostgresRevenueStore's conflict-update semantics.
+            self._attach_extraction_review_evidence(offer, signal)
             action = self.revenue.queue_action_from_scored(signal, scored, offer)
-            self._attach_extraction_review_evidence(action, signal)
             return str(action.id)
         except Exception:
             return None
@@ -248,9 +246,6 @@ class IngestService:
 
         confidences = extraction.pop("extraction_confidence", {})
         provenance = extraction.pop("extraction_provenance", {})
-
-        # Connector/source metadata is authoritative. Model extraction may fill
-        # missing fields, never replace a non-empty source-provided value.
         enrichment = {
             field: value
             for field, value in extraction.items()
@@ -291,19 +286,17 @@ class IngestService:
         re_scored = self.revenue.money.score_signal(re_signal)
         return re_signal, re_scored
 
-    def _attach_extraction_review_evidence(self, action: Any, signal: Any) -> None:
-        """Persist extraction provenance on the approval action without schema changes."""
+    @staticmethod
+    def _attach_extraction_review_evidence(evidence_holder: Any, signal: Any) -> None:
+        """Serialize extraction provenance into persisted approval evidence refs."""
         provenance = signal.metadata.get("extraction_provenance") if hasattr(signal, "metadata") else None
         if not isinstance(provenance, dict) or not provenance:
             return
         review_ref = "extraction_provenance:" + json.dumps(
             provenance, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
         )
-        if review_ref not in action.evidence_refs:
-            action.evidence_refs.append(review_ref)
-        store = getattr(self.revenue, "store", None)
-        if store is not None:
-            store.save_action(action)
+        if review_ref not in evidence_holder.evidence_refs:
+            evidence_holder.evidence_refs.append(review_ref)
 
     def _emit_scored_signal_event(
         self, source: ConnectorSource, item: RawObservationItem, scored: Any, *, signal: Any | None = None,
