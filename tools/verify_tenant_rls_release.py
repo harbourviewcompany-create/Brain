@@ -7,8 +7,10 @@ It never creates credentials and is designed for ephemeral CI after migrations
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -41,23 +43,43 @@ def _dsn(name: str) -> str:
     return value
 
 
-def _migration_hashes() -> dict[str, str]:
+def _migration_version(name: str) -> int:
+    match = re.match(r"(\d+)_", name)
+    if match is None:
+        raise RuntimeError(f"invalid migration filename: {name}")
+    return int(match.group(1))
+
+
+def _migration_hashes(max_version: int | None = None) -> dict[str, str]:
+    """Hash the migrations this run expects to find applied.
+
+    Bounded by max_version because the caller decides how far to migrate.
+    The PR126 workflow deliberately stops at 22 to prove the tenant
+    migrations apply in order over a pre-tenant baseline, so globbing every
+    file on disk made this gate fail the moment any migration numbered above
+    the cap existed -- a failure about the verifier's own scope, not about
+    the release contract it is meant to check.
+    """
     return {
         path.name: hashlib.sha256(path.read_bytes()).hexdigest()
         for path in sorted(MIGRATIONS.glob("*.sql"))
+        if max_version is None or _migration_version(path.name) <= max_version
     }
 
 
-def verify_migration_ledger(migration_dsn: str) -> None:
-    expected = _migration_hashes()
+def verify_migration_ledger(migration_dsn: str, max_version: int | None = None) -> None:
+    expected = _migration_hashes(max_version)
     with psycopg.connect(migration_dsn, autocommit=True) as conn:
         rows = conn.execute(
             "select filename, sha256 from public.brain_schema_migrations"
         ).fetchall()
     actual = {str(filename): str(digest) for filename, digest in rows}
     missing = sorted(set(expected) - set(actual))
+    # Drift is checked against every migration on disk, not just the ones below
+    # the cap: a file applied out of band still must not have changed.
+    on_disk = _migration_hashes()
     drift = sorted(
-        name for name, digest in expected.items() if actual.get(name) not in {None, digest}
+        name for name, digest in on_disk.items() if actual.get(name) not in {None, digest}
     )
     if missing:
         raise RuntimeError("migration ledger missing: " + ", ".join(missing))
@@ -228,11 +250,24 @@ def verify_trusted_worker(worker_dsn: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--max-version",
+        type=int,
+        default=None,
+        help=(
+            "highest migration version this database was migrated to; must match "
+            "the --max-version passed to tools/apply_migrations.py. Omit to require "
+            "every migration on disk."
+        ),
+    )
+    args = parser.parse_args()
+
     migration_dsn = _dsn("BRAIN_MIGRATION_DATABASE_URL")
     runtime_dsn = _dsn("DATABASE_URL")
     worker_dsn = _dsn("BRAIN_WORKER_DATABASE_URL")
 
-    verify_migration_ledger(migration_dsn)
+    verify_migration_ledger(migration_dsn, args.max_version)
     seed_tenant_fixtures(migration_dsn)
     verify_runtime_role_and_isolation(runtime_dsn)
     verify_trusted_worker(worker_dsn)
