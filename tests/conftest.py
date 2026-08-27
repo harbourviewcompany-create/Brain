@@ -10,3 +10,8 @@ import os
 TEST_API_KEY = "test-brain-api-key-not-a-secret"
 
 os.environ.setdefault("BRAIN_API_KEY", TEST_API_KEY)
+
+# Forward Brain log records to the root logger so pytest's caplog can assert on
+# them. Production leaves this off so an application that already configured
+# root does not receive every record twice.
+os.environ.setdefault("BRAIN_LOG_PROPAGATE", "true")

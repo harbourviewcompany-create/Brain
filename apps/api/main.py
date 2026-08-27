@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hmac
 import os
+import sys
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
@@ -12,16 +12,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from apps.api.cockpit_read_routes import register_cockpit_read_routes
 from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
 from brain.heartbeat import HeartbeatService
 from brain.learning import LearningService
 from brain.memory import InMemoryBrainStore
-from brain.money_spine import DailyRevenueReport, MoneySpineService, RevenueSignal
+from brain.money_spine import (
+    DailyRevenueReport,
+    MoneySpineService,
+    RevenueExecutionSpine,
+    RevenueOutcomeType,
+    RevenueSignal,
+)
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
-from brain.security import SecurityConfig
+from brain.security import SecurityConfig, presented_credentials
 
 _security = SecurityConfig.from_env()
 
@@ -63,16 +70,7 @@ async def brain_authentication(request: Request, call_next):
             },
         )
 
-    authorization = request.headers.get("authorization")
-    candidate = (
-        request.headers.get("x-brain-api-key")
-        or request.headers.get("x-api-key")
-        or ""
-    )
-    if authorization and authorization.lower().startswith("bearer "):
-        candidate = authorization[7:].strip()
-
-    if not candidate or not hmac.compare_digest(candidate, configured_key):
+    if not presented_credentials(request.headers, configured_key):
         return JSONResponse(
             status_code=401,
             content={"detail": "invalid_or_missing_api_key"},
@@ -91,11 +89,15 @@ learning = LearningService(
     sources=_learning_store,
 )
 money_spine = MoneySpineService()
+# The approval-gated action loop on top of money_spine. Queues, approves,
+# logs, and records outcomes for revenue actions. It never sends or
+# spends anything itself — see RevenueExecutionSpine docstring.
+revenue_spine = RevenueExecutionSpine(money=money_spine)
 heartbeat = HeartbeatService(event_store=_brain_store, learning=learning)
 
 
 def _configure_from_env() -> None:
-    global _brain_store, runtime, learning, heartbeat
+    global _brain_store, runtime, learning, heartbeat, money_spine, revenue_spine
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         return
@@ -107,6 +109,7 @@ def _configure_from_env() -> None:
         PostgresPredictionStore,
         PostgresSourceStore,
     )
+    from brain.adapters.revenue_store import PostgresRevenueStore
 
     store = PostgresBrainStore(dsn)
     _brain_store = store
@@ -119,6 +122,10 @@ def _configure_from_env() -> None:
         sources=PostgresSourceStore(store.pool),
     )
     heartbeat = HeartbeatService(event_store=store.event_store, learning=learning)
+
+    revenue_store = PostgresRevenueStore(pool=store.pool)
+    money_spine = MoneySpineService(store=revenue_store)
+    revenue_spine = RevenueExecutionSpine(money=money_spine, store=revenue_store)
 
 
 _configure_from_env()
@@ -211,6 +218,35 @@ class DailyRevenueReportRequest(BaseModel):
     direct_revenue_actions: int = Field(ge=0)
     sellable_assets_created: int = Field(ge=0)
     lessons_recorded: int = Field(ge=0)
+
+
+class QueueRevenueActionRequest(BaseModel):
+    signal: RevenueSignalRequest
+    action_type: str = "outreach_draft"
+
+
+class ApproveRevenueActionRequest(BaseModel):
+    approved_by: str
+
+
+class LogManualRevenueActionRequest(BaseModel):
+    manual_proof_ref: str
+
+
+class ScheduleFollowUpRequest(BaseModel):
+    script: str
+    delay_hours: int = Field(default=48, ge=0)
+
+
+class RecordRevenueOutcomeRequest(BaseModel):
+    outcome_type: RevenueOutcomeType
+    revenue: float = Field(default=0.0, ge=0)
+    reply: bool = False
+    meeting_booked: bool = False
+    paid_conversion: bool = False
+    legal_risk: float = Field(default=0.0, ge=0, le=1)
+    operator_hours: float = Field(default=0.0, ge=0)
+    lesson: str = ""
 
 
 class PerceiveRequest(BaseModel):
@@ -575,4 +611,99 @@ def daily_revenue_report(body: DailyRevenueReportRequest):
     return {"passed": report.passed, "gaps": report.gaps, "report": asdict(report)}
 
 
+# --- Revenue execution spine: the approval-gated action loop -------------
+# score/package (above) tell you whether a signal is worth acting on.
+# These routes are what actually closes the loop: queue a candidate
+# action, require a named human to approve it, log manual proof of
+# execution (this system never sends or spends on its own), and record
+# the real-world outcome, which feeds straight back into
+# MoneySpineService.apply_outcome_learning.
+
+@app.post("/revenue-actions/queue")
+def queue_revenue_action(body: QueueRevenueActionRequest):
+    signal = RevenueSignal(**body.signal.model_dump())
+    try:
+        scored, offer, action = revenue_spine.queue_action_from_signal(
+            signal, action_type=body.action_type
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="money_lane_not_found") from exc
+    return {"score": asdict(scored), "offer": asdict(offer), "action": asdict(action)}
+
+
+@app.get("/revenue-actions")
+def list_revenue_actions():
+    return revenue_spine.snapshot()
+
+
+@app.get("/revenue-actions/{action_id}")
+def get_revenue_action(action_id: UUID):
+    try:
+        return asdict(revenue_spine.actions[action_id])
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="revenue_action_not_found") from exc
+
+
+@app.post("/revenue-actions/{action_id}/approve")
+def approve_revenue_action(action_id: UUID, body: ApproveRevenueActionRequest):
+    try:
+        action = revenue_spine.approve_action(action_id, approved_by=body.approved_by)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="revenue_action_not_found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return asdict(action)
+
+
+@app.post("/revenue-actions/{action_id}/log-manual")
+def log_manual_revenue_action(action_id: UUID, body: LogManualRevenueActionRequest):
+    try:
+        action = revenue_spine.log_manual_action(
+            action_id, manual_proof_ref=body.manual_proof_ref
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="revenue_action_not_found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return asdict(action)
+
+
+@app.post("/revenue-actions/{action_id}/follow-up")
+def schedule_revenue_follow_up(action_id: UUID, body: ScheduleFollowUpRequest):
+    try:
+        followup = revenue_spine.schedule_follow_up(
+            action_id, script=body.script, delay_hours=body.delay_hours
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="revenue_action_not_found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return asdict(followup)
+
+
+@app.post("/revenue-actions/{action_id}/outcome")
+def record_revenue_outcome(action_id: UUID, body: RecordRevenueOutcomeRequest):
+    try:
+        entry = revenue_spine.record_outcome(
+            action_id,
+            outcome_type=body.outcome_type,
+            revenue=body.revenue,
+            reply=body.reply,
+            meeting_booked=body.meeting_booked,
+            paid_conversion=body.paid_conversion,
+            legal_risk=body.legal_risk,
+            operator_hours=body.operator_hours,
+            lesson=body.lesson,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="revenue_action_not_found") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return asdict(entry)
+
+
 register_cognitive_organism_routes(app)
+
+# The cockpit read model lives on the canonical image, not only on the
+# deprecated Dockerfile.railway compatibility entrypoint.
+register_cockpit_read_routes(app, api_module=sys.modules[__name__])

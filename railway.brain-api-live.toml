@@ -1,10 +1,20 @@
+# Production config for the Railway service literally named brain-api-live.
+# The service is intentionally still pre-tenant: migrations 019-022 require an
+# explicit tenant/RLS production release with split database identities and a
+# legacy-data strategy. Keep normal production deploys on the already-approved
+# 001-018 baseline until that release is executed; this prevents unrelated code
+# deploys from being blocked by the tenant release gate.
+#
+# The image, runtime entrypoint, readiness path and restart policy remain aligned
+# with railway.toml. After the tenant release is complete, remove --max-version
+# 18 so this service resumes the canonical all-migrations deployment contract.
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.railway"
+dockerfilePath = "Dockerfile"
 
 [deploy]
-preDeployCommand = ["python tools/apply_migrations.py"]
-healthcheckPath = "/health"
+preDeployCommand = ["python tools/apply_migrations.py --max-version 18"]
+healthcheckPath = "/ready"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5

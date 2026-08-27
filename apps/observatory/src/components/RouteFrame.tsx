@@ -13,8 +13,14 @@ const sections = [
   ["/sources", "Sources"],
 ];
 
+async function signOut() {
+  await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+  window.location.href = "/login";
+}
+
 export function RouteFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  if (pathname === "/login") return <>{children}</>;
   if (pathname === "/") return <>{children}</>;
 
   return (
@@ -28,6 +34,9 @@ export function RouteFrame({ children }: { children: React.ReactNode }) {
         <nav aria-label="Brain detail surfaces">
           {sections.map(([href, label]) => <Link key={href} href={href} className={pathname.startsWith(href) ? "is-active" : ""}>{label}</Link>)}
         </nav>
+        <button type="button" onClick={signOut} className="detail-shell__signout">
+          Sign out
+        </button>
       </header>
       <main className="detail-shell__main">{children}</main>
     </div>

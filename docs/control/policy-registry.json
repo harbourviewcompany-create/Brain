@@ -117,14 +117,16 @@
     "canonical_registry_extensions": [
       "docs/control/source-requirement-registry.convergence.json",
       "docs/control/source-requirement-registry.infra.json",
-      "docs/control/source-requirement-registry.observatory.json"
+      "docs/control/source-requirement-registry.observatory.json",
+      "docs/control/source-requirement-registry.hardening.json"
     ],
     "module_build_ready_schema_path": "docs/control/module-build-ready-traceability.schema.json",
     "module_build_ready_matrix_path": "docs/control/module-build-ready-traceability.md",
     "canonical_module_matrix_extensions": [
       "docs/control/module-build-ready-traceability.pr126.md",
       "docs/control/module-build-ready-traceability.infra.md",
-      "docs/control/module-build-ready-traceability.observatory.md"
+      "docs/control/module-build-ready-traceability.observatory.md",
+      "docs/control/module-build-ready-traceability.hardening.md"
     ],
     "enforced_code_roots": [
       "apps",

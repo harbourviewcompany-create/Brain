@@ -2,6 +2,14 @@ name: Postdeploy Observatory Audit
 
 on:
   workflow_dispatch:
+    inputs:
+      app_base_url:
+        description: >-
+          Base URL of the deployed Observatory. The former default,
+          thebrain-sandy.vercel.app, is not a domain of the repository's Vercel
+          project (prj_Fr14GlGBNeae7coqrnhgXteHC0jA) and no longer resolves.
+        required: false
+        default: https://brain-harbourview.vercel.app
 
 permissions:
   contents: read
@@ -17,15 +25,33 @@ jobs:
           node-version: 22
       - name: Verify production BFF and Railway auth boundary
         shell: bash
+        env:
+          OBSERVATORY_ACCESS_KEY: ${{ secrets.OBSERVATORY_ACCESS_KEY }}
         run: |
           set -euo pipefail
-          app="https://thebrain-sandy.vercel.app"
+          app="${{ inputs.app_base_url }}"
           brain="https://brain-api-live-production.up.railway.app"
 
+          # The Observatory requires a signed operator session on every route,
+          # so these probes must sign in first. `curl --fail` exits on the first
+          # HTTP error, so without a session every audit stopped at its first
+          # BFF probe instead of verifying production.
+          if [ -z "${OBSERVATORY_ACCESS_KEY:-}" ]; then
+            echo "OBSERVATORY_ACCESS_KEY is required to audit the protected BFF." >&2
+            echo "Add it as a repository secret and re-run this workflow." >&2
+            exit 1
+          fi
+          curl --silent --show-error --fail \
+            -X POST "$app/api/auth/login" \
+            -H 'content-type: application/json' \
+            -d "{\"access_key\":\"${OBSERVATORY_ACCESS_KEY}\"}" \
+            -c /tmp/operator-cookies.txt -o /dev/null
+          auth=(--cookie /tmp/operator-cookies.txt)
+
           curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/" -o /tmp/root.html
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/health" -o /tmp/health.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/signals" -o /tmp/signals.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/api/brain/organism/cockpit" -o /tmp/organism.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/health" -o /tmp/health.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/signals" -o /tmp/signals.json
+          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/organism/cockpit" -o /tmp/organism.json
 
           railway_health=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-health.json -w '%{http_code}' "$brain/health")
           railway_protected=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-signals.json -w '%{http_code}' "$brain/signals")
@@ -65,6 +91,8 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Inspect live desktop and mobile UI
+        env:
+          APP_BASE_URL: ${{ inputs.app_base_url }}
         shell: bash
         working-directory: apps/observatory
         run: |
@@ -91,7 +119,7 @@ jobs:
               page.on('response', response => {
                 if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
               });
-              const response = await page.goto('https://thebrain-sandy.vercel.app/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+              const response = await page.goto(process.env.APP_BASE_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
               if (!response || response.status() !== 200) failures.push(`${spec.name}: root status ${response?.status()}`);
               await page.waitForTimeout(12000);
               const bodyText = await page.locator('body').innerText();

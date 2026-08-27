@@ -1,8 +1,15 @@
+# The single Railway API deployment contract. railway.brain-api-live.toml is
+# kept only because an existing service may still name it, and it now builds
+# this same image.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
+# The canonical image had no preDeployCommand, so a deploy driven by this file
+# applied no migrations at all -- and could not have, because the image did not
+# carry tools/. Both halves are fixed together.
+preDeployCommand = ["python tools/apply_migrations.py"]
 healthcheckPath = "/ready"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

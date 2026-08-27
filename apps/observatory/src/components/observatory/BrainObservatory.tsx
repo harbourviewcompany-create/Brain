@@ -1,14 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CognitiveField } from "@/components/observatory/CognitiveField";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CognitionTimeline } from "@/components/observatory/CognitionTimeline";
 import { ObservatoryDock } from "@/components/observatory/ObservatoryDock";
 import { SystemPulse } from "@/components/observatory/SystemPulse";
 import { ThoughtInspector } from "@/components/observatory/ThoughtInspector";
+import { applyDiffToBirths, createBirthMap, type BirthMap } from "@/field/births";
+import { diffScene, type FieldDiff } from "@/field/diffScene";
+import { flaresFromErrors } from "@/field/flares";
 import { useBrainObservatory } from "@/hooks/useBrainObservatory";
 import { buildCognitiveScene } from "@/lib/observatory";
 import type { CognitiveScene } from "@/types/observatory";
+
+const CognitiveField = dynamic(
+  () => import("@/components/observatory/CognitiveField").then((mod) => mod.CognitiveField),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="cognitive-field cognitive-field--loading" role="status" aria-label="Loading cognitive field">
+        <div className="cognitive-field__quiet-state">
+          <span>FIELD INITIALIZING</span>
+          <strong>Loading cognitive field canvas…</strong>
+        </div>
+      </div>
+    ),
+  },
+);
 
 const EMPTY_SCENE: CognitiveScene = {
   nodes: [],
@@ -62,13 +80,56 @@ const EMPTY_SCENE: CognitiveScene = {
   },
 };
 
+const EMPTY_DIFF: FieldDiff = {
+  added: [],
+  removed: [],
+  updated: [],
+  cameraHintId: null,
+};
+
 export function BrainObservatory() {
   const { snapshot, history, loading } = useBrainObservatory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  const [births, setBirths] = useState<BirthMap>(() => createBirthMap());
+  const [diff, setDiff] = useState<FieldDiff>(EMPTY_DIFF);
+  const previousSceneRef = useRef<CognitiveScene | null>(null);
+  const scrubBoundaryRef = useRef<number | null>(null);
+
   const displayedSnapshot = scrubIndex === null ? snapshot : history[scrubIndex] ?? snapshot;
-  const scene = useMemo(() => (displayedSnapshot ? buildCognitiveScene(displayedSnapshot) : EMPTY_SCENE), [displayedSnapshot]);
-  const selectedNode = scene.nodes.find((node) => node.id === selectedId) ?? null;
+  const scene = useMemo(
+    () => (displayedSnapshot ? buildCognitiveScene(displayedSnapshot) : EMPTY_SCENE),
+    [displayedSnapshot],
+  );
+
+  useEffect(() => {
+    const scrubBoundary = scrubIndex !== scrubBoundaryRef.current;
+    if (scrubBoundary) {
+      scrubBoundaryRef.current = scrubIndex;
+      if (scrubIndex !== null) {
+        const replayDiff = diffScene(null, scene);
+        setDiff(replayDiff);
+        setBirths(applyDiffToBirths(createBirthMap(), replayDiff));
+        previousSceneRef.current = scene;
+        return;
+      }
+    }
+
+    const nextDiff = diffScene(previousSceneRef.current, scene);
+    setDiff(nextDiff);
+    setBirths((current) => applyDiffToBirths(current, nextDiff));
+    previousSceneRef.current = scene;
+  }, [scene, scrubIndex]);
+
+  const flares = useMemo(
+    () => flaresFromErrors(displayedSnapshot?.errors ?? []),
+    [displayedSnapshot?.errors],
+  );
+
+  const selectedNode = useMemo(
+    () => scene.nodes.find((node) => node.id === selectedId) ?? null,
+    [scene.nodes, selectedId],
+  );
 
   useEffect(() => {
     if (selectedId && !scene.nodes.some((node) => node.id === selectedId)) setSelectedId(null);
@@ -81,11 +142,20 @@ export function BrainObservatory() {
 
       <main className="observatory-stage">
         <section className="observatory-field-shell" aria-label="Live cognitive field">
-          <CognitiveField scene={scene} selectedId={selectedId} onSelect={setSelectedId} />
+          <CognitiveField
+            scene={scene}
+            diff={diff}
+            births={births}
+            flares={flares}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
 
           <div className="field-readout field-readout--left" aria-label="Cognitive field object counts">
-            <span>COGNITIVE</span><strong>{scene.cognitiveCount}</strong>
-            <span className="field-readout__diagnostic">DIAGNOSTIC</span><strong>{scene.diagnosticCount}</strong>
+            <span>COGNITIVE</span>
+            <strong>{scene.cognitiveCount}</strong>
+            <span className="field-readout__diagnostic">DIAGNOSTIC</span>
+            <strong>{scene.diagnosticCount}</strong>
           </div>
           <div className="field-readout field-readout--right" aria-label="Mapped relation count">
             <span>MAPPED RELATIONS</span>

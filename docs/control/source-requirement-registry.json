@@ -1010,6 +1010,59 @@
         "no sustained real production-cycle history exists yet (prerequisite for CONSOLIDATED)",
         "theory_of_mind.py's METACOGNITIVE claim is bounded to synthetic/simulated calibration data; a production-data re-check is required before that limitation can be lifted"
       ]
+    },
+    {
+      "record_id": "TRACE-REVENUE-EXECUTION-PERSISTENCE",
+      "paths": [
+        "brain/adapters/revenue_store.py",
+        "brain/connectors/revenue_adapter.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": [
+        "SRC-README",
+        "SRC-BUILD-PLAN",
+        "SRC-V1-MONEY-SPINE"
+      ],
+      "requirement_ids": [
+        "REQ-V1-MONEY-SPINE"
+      ],
+      "owner_object": "Money spine durable persistence adapter and ingest-to-revenue signal adapter",
+      "schema": "money_lanes.priority_score, revenue_source_scores (db/migrations/023_revenue_source_scores.sql), revenue_execution_actions, revenue_followups, revenue_outcome_ledger (db/migrations/017_revenue_execution_spine.sql); RevenueSignal construction from RawObservationItem",
+      "runtime_service": "PostgresRevenueStore and revenue_signal_from_observation/classify_money_lane",
+      "state_machine": "ingested observation -> money lane classification -> RevenueSignal candidate -> no-fantasy scoring -> queued/approved revenue action -> follow-up -> outcome ledger -> lane priority and source score write-back",
+      "fixtures": [
+        "tests/test_revenue_store.py",
+        "tests/test_revenue_adapter.py",
+        "tests/test_revenue_execution_api.py"
+      ],
+      "tests": [
+        "tests/test_revenue_store.py",
+        "tests/test_revenue_adapter.py",
+        "tests/test_revenue_execution_api.py",
+        "python -m pytest -q",
+        "ruff check ."
+      ],
+      "acceptance_criteria": [
+        "lane priority and source scores survive a restart",
+        "re-seeding lanes never overwrites a learned priority_score",
+        "auto-classified signals never invent buyer, seller, payment path or contact channel",
+        "observations with no lane trigger produce no revenue signal"
+      ],
+      "audit_events": [
+        "MONEY_SPINE_SIGNAL_SCORED",
+        "revenue.signal_scored",
+        "REVENUE_ACTION_QUEUED",
+        "REVENUE_ACTION_APPROVED",
+        "REVENUE_OUTCOME_RECORDED"
+      ],
+      "source_preservation": "preserved",
+      "unresolved_gaps": [
+        "revenue_source_scores, money_lanes and the 017 revenue tables carry no tenant_id, so migration 022's grant loop never covered them and no policy grants brain_runtime_role access; persistence is therefore only reachable while the API runs as an unconstrained role, and remains HOLD under the tenant-enforced topology",
+        "revenue_signals, scored_revenue_opportunities and packaged_offers are deliberately not persisted: revenue_signals.source_id is uuid references sources(id) while the domain addresses sources by string source_key",
+        "auto-classified signals require human or extraction enrichment before they can queue as actions",
+        "live external revenue action remains approval-gated and HOLD"
+      ]
     }
   ]
 }

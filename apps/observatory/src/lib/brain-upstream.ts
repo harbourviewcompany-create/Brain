@@ -32,8 +32,29 @@ export function upstreamKeyConfigured(): boolean {
   return Boolean(upstreamApiKey());
 }
 
+/**
+ * Whether to forward Vercel deployment identity upstream.
+ *
+ * Every deployment entrypoint verifies it. tools/live_cockpit_routes wraps
+ * apps.api.tenant_app in VercelOidcAuthBridge, which checks the token's issuer,
+ * audience and subject against tools/vercel_oidc.py before exchanging it for
+ * the local API key -- and that bridged app is now what the canonical
+ * Dockerfile, both railway*.toml configs and fly.toml all serve. It used to be
+ * reachable only through Dockerfile.railway, so against the canonical image the
+ * bearer token was simply ignored; see tests/test_railway_deploy_contract.py.
+ *
+ * Forwarding it is safe either way now that apps/api/main.py accepts any
+ * presented credential that matches, rather than letting the bearer header mask
+ * a valid X-Brain-Api-Key. Set BRAIN_UPSTREAM_ACCEPTS_OIDC=false to suppress it
+ * when pointing at an upstream that should never see a deployment token.
+ */
+function upstreamAcceptsOidc(): boolean {
+  const configured = (process.env.BRAIN_UPSTREAM_ACCEPTS_OIDC || "").trim().toLowerCase();
+  return configured !== "false";
+}
+
 async function upstreamVercelOidcToken(): Promise<string> {
-  if (!process.env.VERCEL) return "";
+  if (!process.env.VERCEL || !upstreamAcceptsOidc()) return "";
   try {
     return (await getVercelOidcToken()) || "";
   } catch {
@@ -97,7 +118,7 @@ export async function proxyToBrain(
     return Response.json(
       {
         detail: "brain_bff_upstream_identity_unavailable",
-        hint: "The BFF has neither Vercel deployment identity nor the legacy server API-key fallback.",
+        hint: "Set BRAIN_API_KEY on this deployment to the Brain runtime's BRAIN_API_KEY, then redeploy.",
       },
       { status: 503, headers: { "cache-control": "no-store" } }
     );
@@ -129,19 +150,23 @@ export async function proxyToBrain(
   outHeaders.set("cache-control", "no-store");
 
   if (upstream.status === 401) {
-    if (oidcToken) {
+    // Report the API key first: it is the credential the upstream actually
+    // checks, so naming the deployment identity here would point debugging at
+    // the wrong half of the configuration.
+    if (key) {
       return Response.json(
         {
-          detail: "upstream_rejected_vercel_identity",
+          detail: "upstream_rejected_api_key",
+          hint: "BRAIN_API_KEY here does not match the Brain runtime's BRAIN_API_KEY.",
           upstream: text.slice(0, 200),
         },
         { status: 401, headers: outHeaders }
       );
     }
-    if (key) {
+    if (oidcToken) {
       return Response.json(
         {
-          detail: "upstream_rejected_api_key",
+          detail: "upstream_rejected_vercel_identity",
           upstream: text.slice(0, 200),
         },
         { status: 401, headers: outHeaders }

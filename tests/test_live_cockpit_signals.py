@@ -3,8 +3,18 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from fastapi.testclient import TestClient
+
+import apps.api.main as api
+from apps.api.cockpit_read_routes import _signal_item_from_event
 from brain.events import BrainEvent
-from tools import live_cockpit_routes as routes
+from tests.conftest import TEST_API_KEY
+
+# The cockpit read model moved from tools/live_cockpit_routes.py, which only the
+# deprecated Dockerfile.railway image serves, onto the canonical app in
+# apps/api/main.py. Exercise it there, through the real HTTP surface, so the
+# test proves the route the production image actually exposes.
+client = TestClient(api.app, headers={"x-api-key": TEST_API_KEY})
 
 
 def _signal_event(*, token: str = "durable-probe") -> BrainEvent:
@@ -35,7 +45,7 @@ def _signal_event(*, token: str = "durable-probe") -> BrainEvent:
 def test_signal_item_preserves_durable_signal_identity_and_payload() -> None:
     event = _signal_event()
 
-    item = routes._signal_item_from_event(event)
+    item = _signal_item_from_event(event)
 
     assert item["id"] == str(event.aggregate_id)
     assert item["source_id"] == "production_smoke"
@@ -60,9 +70,9 @@ def test_list_signals_reads_event_stream_not_evidence_projection(monkeypatch) ->
                 event,
             ]
 
-    monkeypatch.setattr(routes.runtime, "store", EventStreamOnlyStore())
+    monkeypatch.setattr(api.runtime, "store", EventStreamOnlyStore())
 
-    response = routes.list_signals()
+    response = client.get("/signals").json()
 
     assert response["total"] == 1
     assert response["source"] == "api"
