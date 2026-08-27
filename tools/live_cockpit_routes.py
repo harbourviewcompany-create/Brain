@@ -30,6 +30,7 @@ _logger = logging.getLogger(__name__)
 # deliberately leave pre-tenant NULL ownership quarantined.
 _DEFAULT_OBSERVATORY_TENANT_ID = UUID("7d4427c4-8b8d-4f4a-9f75-b46cedc2f126")
 _OBSERVATORY_ACTOR_ID = "brain-observatory-bff"
+_LEGACY_OIDC_BRIDGE_ENV = "BRAIN_OBSERVATORY_LEGACY_OIDC_BRIDGE"
 
 
 def _observatory_identity_context():
@@ -43,6 +44,24 @@ def _observatory_identity_context():
         actor_id=_OBSERVATORY_ACTOR_ID,
         roles=(),
     )
+
+
+def _legacy_oidc_bridge_enabled() -> bool:
+    """Allow verified deployment identity to bridge legacy single-tenant reads.
+
+    This is an explicit compatibility switch for deployments that have not yet
+    released tenant migrations/membership. It is deliberately ineffective once
+    tenant mode is enabled, so the durable membership boundary remains the only
+    OIDC path in tenant-aware production.
+    """
+
+    enabled = (os.environ.get(_LEGACY_OIDC_BRIDGE_ENV) or "").strip().lower()
+    return tenant_api.tenant_security.mode == "disabled" and enabled in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _iso(value: Any | None) -> str:
@@ -66,19 +85,42 @@ def _stable_uuid(namespace: str, key: str) -> str:
 
 
 class VercelOidcAuthBridge:
-    """Railway deployment-identity bridge with durable tenant membership.
+    """Railway deployment-identity bridge with tenant-aware escalation.
 
-    A verified Vercel deployment token is exchanged for the local API key and
-    bound to a server-owned tenant/actor identity. The actor's role is resolved
-    from tenant_memberships before the request runs. Neither API key, tenant, role,
-    nor service context is accepted from untrusted request headers through this
-    bridge. Canonical legacy ownership remains quarantined until the separate
-    Observatory compatibility release action has been explicitly applied.
+    A verified Vercel deployment token is exchanged for the local API key. By
+    default it is additionally bound to the durable Observatory tenant
+    membership. Legacy single-tenant production may explicitly opt into a
+    verified-deployment compatibility bridge while tenant mode remains disabled;
+    that switch is ignored as soon as tenant mode is enabled.
+
+    Neither API key, tenant, role, nor service context is accepted from
+    untrusted request headers through this bridge. Canonical legacy ownership
+    remains quarantined until the separate Observatory compatibility release
+    action has been explicitly applied.
     """
 
     def __init__(self, inner_app) -> None:
         self.inner_app = inner_app
         self.verifier = VercelOidcVerifier.from_env()
+
+    @staticmethod
+    def _translated_scope(scope, headers, local_key: str):
+        blocked = {
+            b"authorization",
+            b"x-api-key",
+            b"x-brain-api-key",
+            b"x-brain-tenant-id",
+            b"x-brain-actor-id",
+            b"x-brain-tenant-timestamp",
+            b"x-brain-tenant-signature",
+            b"x-brain-roles",
+            b"x-brain-service-context",
+        }
+        translated = dict(scope)
+        translated["headers"] = [
+            (name, value) for name, value in headers if name.lower() not in blocked
+        ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
+        return translated
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") != "http":
@@ -106,6 +148,17 @@ class VercelOidcAuthBridge:
                         content={"detail": "brain_local_api_key_not_configured"},
                     )
                     await response(scope, receive, send)
+                    return
+
+                translated_scope = self._translated_scope(scope, headers, local_key)
+
+                # Explicit compatibility path for the pre-tenant production
+                # deployment. Verification of Vercel issuer/audience/subject has
+                # already succeeded. The switch cannot weaken tenant-aware mode:
+                # _legacy_oidc_bridge_enabled() returns false unless tenant mode
+                # is disabled.
+                if _legacy_oidc_bridge_enabled():
+                    await self.inner_app(translated_scope, receive, send)
                     return
 
                 identity_context = _observatory_identity_context()
@@ -151,24 +204,8 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
-                blocked = {
-                    b"authorization",
-                    b"x-api-key",
-                    b"x-brain-api-key",
-                    b"x-brain-tenant-id",
-                    b"x-brain-actor-id",
-                    b"x-brain-tenant-timestamp",
-                    b"x-brain-tenant-signature",
-                    b"x-brain-roles",
-                    b"x-brain-service-context",
-                }
-                scope = dict(scope)
-                scope["headers"] = [
-                    (name, value) for name, value in headers if name.lower() not in blocked
-                ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
-
                 with tenant_context_scope(context):
-                    await self.inner_app(scope, receive, send)
+                    await self.inner_app(translated_scope, receive, send)
                 return
             if reason != "vercel_oidc_not_configured":
                 _logger.info("vercel_oidc_auth_rejected reason=%s", reason)
