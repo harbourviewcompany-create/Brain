@@ -2,8 +2,8 @@
 
 The extractor is deliberately conservative. Model output is never trusted merely
 because the model assigns itself a high confidence. Every accepted field must carry
-an exact supporting quote that is present in the source observation, and confidence
-must be finite and inside the documented 0.0-1.0 range.
+an exact supporting quote found in the source, the extracted value itself must be
+verbatim inside that quote, and confidence must be finite and inside 0.0-1.0.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ DEFAULT_CONFIDENCE_THRESHOLD = 0.55
 
 
 def _normalized_text(value: str) -> str:
-    """Normalize case and whitespace for deterministic quote containment."""
+    """Normalize case and whitespace for deterministic containment checks."""
     return " ".join(value.split()).casefold()
 
 
@@ -42,21 +42,12 @@ def extract_revenue_entities(
     reasoner: Reasoner,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
 ) -> dict[str, Any]:
-    """Extract commercial facts only when source evidence proves each value.
+    """Extract commercial facts only when the source proves the exact value.
 
-    Expected model shape for each field::
-
-        {
-          "named_buyer": {
-            "value": "City Procurement Office",
-            "confidence": 0.91,
-            "evidence_quote": "City Procurement Office is seeking bids"
-          }
-        }
-
-    ``evidence_quote`` must occur in the source text after case/whitespace
-    normalization. This makes prompt wording and model self-confidence advisory;
-    unsupported output cannot satisfy ``NoFantasyFilter``.
+    Every accepted field must have a verbatim ``evidence_quote`` from the source,
+    and the normalized extracted ``value`` must itself occur inside that quote.
+    This prevents a model from pairing an invented value with an unrelated real
+    quote to satisfy the grounding gate.
     """
     text = f"{item.title}\n{item.claim}\n{item.content}".strip()
     bounded_text = text[:4000]
@@ -100,15 +91,19 @@ def extract_revenue_entities(
         if not math.isfinite(confidence_value) or not 0.0 <= confidence_value <= 1.0:
             continue
 
+        clean_value = value.strip()
         quote = evidence_quote.strip()
-        if _normalized_text(quote) not in source_normalized:
+        quote_normalized = _normalized_text(quote)
+        if quote_normalized not in source_normalized:
+            continue
+        if _normalized_text(clean_value) not in quote_normalized:
             continue
 
         confidences[field_name] = confidence_value
         if confidence_value < confidence_threshold:
             continue
 
-        accepted[field_name] = value.strip()
+        accepted[field_name] = clean_value
         provenance[field_name] = {
             "confidence": confidence_value,
             "evidence_quote": quote,
