@@ -35,12 +35,13 @@ export function upstreamKeyConfigured(): boolean {
 /**
  * Whether to forward Vercel deployment identity upstream.
  *
- * Only the Dockerfile.railway entrypoint verifies it: tools/live_cockpit_routes
- * wraps the app in VercelOidcAuthBridge, which checks the token's issuer,
+ * Every deployment entrypoint verifies it. tools/live_cockpit_routes wraps
+ * apps.api.tenant_app in VercelOidcAuthBridge, which checks the token's issuer,
  * audience and subject against tools/vercel_oidc.py before exchanging it for
- * the local API key. The canonical Dockerfile entrypoint
- * (apps.api.tenant_app) has no such bridge and authenticates on BRAIN_API_KEY
- * alone, so against that image the bearer token is simply ignored.
+ * the local API key -- and that bridged app is now what the canonical
+ * Dockerfile, both railway*.toml configs and fly.toml all serve. It used to be
+ * reachable only through Dockerfile.railway, so against the canonical image the
+ * bearer token was simply ignored; see tests/test_railway_deploy_contract.py.
  *
  * Forwarding it is safe either way now that apps/api/main.py accepts any
  * presented credential that matches, rather than letting the bearer header mask
