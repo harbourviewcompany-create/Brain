@@ -84,8 +84,18 @@ def test_explicitly_disabled(monkeypatch, value):
     assert inline_cognition_requested() is False
 
 
-def test_the_worker_dsn_wins_over_the_shared_one(monkeypatch):
+def test_the_lease_is_taken_in_the_database_this_process_writes_to(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgres:///shared")
+    monkeypatch.setenv("BRAIN_WORKER_DATABASE_URL", "postgres:///worker")
+
+    # apps/api/main.py binds its store from DATABASE_URL alone, and advisory
+    # locks are scoped to a database. Taking the lock anywhere else would let
+    # this process and a worker each hold a lease nobody shares.
+    assert cognition_dsn() == "postgres:///shared"
+
+
+def test_the_worker_dsn_is_used_only_when_there_is_nothing_else(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("BRAIN_WORKER_DATABASE_URL", "postgres:///worker")
 
     assert cognition_dsn() == "postgres:///worker"

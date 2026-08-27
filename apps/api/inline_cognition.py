@@ -43,9 +43,28 @@ def _float_env(name: str, default: float) -> float:
 
 
 def cognition_dsn() -> str:
+    """The database this process's own store writes to.
+
+    DATABASE_URL first, deliberately, and not the worker DSN the shared worker
+    helper prefers. Two reasons, and they point the same way:
+
+    Advisory locks are scoped to a database, not to a role, so the lease must
+    be taken in the database the lease-holder actually writes cognition into.
+    apps/api/main.py binds its store from DATABASE_URL alone; taking the lock
+    somewhere else would let this process and a worker both believe they hold
+    a lease nobody shares.
+
+    And BRAIN_WORKER_DATABASE_URL names a trusted-service login that only
+    exists once tenant migrations 019+ have been applied. On a deployment held
+    at the pre-tenant baseline -- which production is -- that login is not
+    there, so preferring it would fail to connect on every attempt and the API
+    would never take a lease it is entitled to. The lock grants no access, so
+    reaching for the more privileged identity buys nothing here.
+    """
+
     return (
-        os.environ.get("BRAIN_WORKER_DATABASE_URL")
-        or os.environ.get("DATABASE_URL")
+        os.environ.get("DATABASE_URL")
+        or os.environ.get("BRAIN_WORKER_DATABASE_URL")
         or ""
     ).strip()
 
