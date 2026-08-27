@@ -103,6 +103,7 @@ class VercelOidcAuthBridge:
     def __init__(self, inner_app) -> None:
         self.inner_app = inner_app
         self.verifier = VercelOidcVerifier.from_env()
+        self._verified_identity_logged = False
 
     @staticmethod
     def _translated_scope(scope, headers, local_key: str):
@@ -124,7 +125,9 @@ class VercelOidcAuthBridge:
         return translated
 
     def _log_verified_identity(self) -> None:
-        """Audit only the non-secret identity contract that the token matched."""
+        """Audit once per process the non-secret identity contract the token matched."""
+        if self._verified_identity_logged:
+            return
         config = self.verifier.config
         _logger.info(
             "%s",
@@ -141,6 +144,7 @@ class VercelOidcAuthBridge:
                 separators=(",", ":"),
             ),
         )
+        self._verified_identity_logged = True
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") != "http":
