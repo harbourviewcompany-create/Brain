@@ -172,6 +172,27 @@ def build_entity_extractor() -> Any:
         return None
 
 
+def revenue_extraction_batch_limit(default: int = 20) -> int:
+    """Parse the optional extraction budget without blocking worker startup.
+
+    Extraction is auxiliary to cognition. Empty, malformed, or negative values
+    therefore fall back to the bounded default rather than raising during worker
+    initialization. A valid zero remains meaningful and disables extraction calls.
+    """
+    raw = os.environ.get("BRAIN_REVENUE_EXTRACTION_BATCH_LIMIT")
+    if raw is None or not raw.strip():
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        log.warning("invalid BRAIN_REVENUE_EXTRACTION_BATCH_LIMIT; using default")
+        return default
+    if value < 0:
+        log.warning("negative BRAIN_REVENUE_EXTRACTION_BATCH_LIMIT; using default")
+        return default
+    return value
+
+
 def build_ingest_service(
     *, inbox: Any | None = None, event_store: Any | None = None, revenue: Any | None = None
 ) -> Any:
@@ -187,7 +208,7 @@ def build_ingest_service(
         connectors=[RssConnector(), HttpJsonConnector()],
         revenue=revenue if revenue is not None else build_revenue_spine(),
         entity_extractor=build_entity_extractor(),
-        max_extractions_per_batch=int(os.environ.get("BRAIN_REVENUE_EXTRACTION_BATCH_LIMIT", "20")),
+        max_extractions_per_batch=revenue_extraction_batch_limit(),
     )
     raw = os.environ.get("BRAIN_RSS_SOURCES") or ""
     for part in raw.split(","):
