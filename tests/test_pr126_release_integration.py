@@ -76,6 +76,16 @@ def _bridge_with_probe(monkeypatch, resolver):
     return bridge
 
 
+def _capture_logger_info(monkeypatch):
+    calls: list[tuple[str, dict]] = []
+
+    def capture_info(message, *args, **kwargs):
+        calls.append((str(message), kwargs))
+
+    monkeypatch.setattr(live_cockpit_routes._logger, "info", capture_info)
+    return calls
+
+
 def test_verified_oidc_uses_durable_membership_and_strips_spoofed_headers(monkeypatch):
     bridge = _bridge_with_probe(monkeypatch, _OperatorResolver())
 
@@ -105,12 +115,7 @@ def test_verified_oidc_uses_durable_membership_and_strips_spoofed_headers(monkey
 def test_verified_oidc_logs_only_non_secret_verified_identity_once(monkeypatch):
     bridge = _bridge_with_probe(monkeypatch, _OperatorResolver())
     client = TestClient(bridge)
-    calls: list[tuple[str, dict]] = []
-
-    def capture_info(message, *args, **kwargs):
-        calls.append((str(message), kwargs))
-
-    monkeypatch.setattr(live_cockpit_routes._logger, "info", capture_info)
+    calls = _capture_logger_info(monkeypatch)
 
     first = client.get(
         "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
@@ -144,8 +149,28 @@ def test_verified_oidc_logs_only_non_secret_verified_identity_once(monkeypatch):
     assert "local-server-key" not in serialized
 
 
+def test_verified_oidc_logs_legacy_acceptance_once_after_bridge_selection(monkeypatch):
+    bridge = _bridge_with_probe(monkeypatch, _OperatorResolver())
+    client = TestClient(bridge)
+    calls = _capture_logger_info(monkeypatch)
+    monkeypatch.setattr(live_cockpit_routes, "_legacy_oidc_bridge_enabled", lambda: True)
+
+    first = client.get(
+        "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+    )
+    second = client.get(
+        "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert [message for message, _ in calls] == ["vercel_oidc_auth_accepted"]
+    assert bridge._verified_identity_logged is True
+
+
 def test_verified_oidc_requires_durable_observatory_membership(monkeypatch):
     bridge = _bridge_with_probe(monkeypatch, _RejectResolver())
+    calls = _capture_logger_info(monkeypatch)
     response = TestClient(bridge).get(
         "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
     )
@@ -153,10 +178,13 @@ def test_verified_oidc_requires_durable_observatory_membership(monkeypatch):
     assert response.json() == {
         "detail": "brain_observatory_membership_or_role_required"
     }
+    assert calls == []
+    assert bridge._verified_identity_logged is False
 
 
 def test_verified_oidc_rejects_viewer_write(monkeypatch):
     bridge = _bridge_with_probe(monkeypatch, _ViewerResolver())
+    calls = _capture_logger_info(monkeypatch)
     response = TestClient(bridge).post(
         "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
     )
@@ -164,6 +192,8 @@ def test_verified_oidc_rejects_viewer_write(monkeypatch):
     assert response.json() == {
         "detail": "brain_observatory_membership_or_role_required"
     }
+    assert calls == []
+    assert bridge._verified_identity_logged is False
 
 
 def test_verified_oidc_fails_closed_for_invalid_server_tenant(monkeypatch):
@@ -174,9 +204,41 @@ def test_verified_oidc_fails_closed_for_invalid_server_tenant(monkeypatch):
     inner = FastAPI()
     bridge = VercelOidcAuthBridge(inner)
     bridge.verifier = _AllowVerifier()
+    calls = _capture_logger_info(monkeypatch)
 
     response = TestClient(bridge).get(
         "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
     )
     assert response.status_code == 503
     assert response.json() == {"detail": "brain_observatory_tenant_invalid"}
+    assert calls == []
+    assert bridge._verified_identity_logged is False
+
+
+def test_verified_oidc_does_not_log_when_membership_store_unavailable(monkeypatch):
+    bridge = _bridge_with_probe(monkeypatch, None)
+    calls = _capture_logger_info(monkeypatch)
+
+    response = TestClient(bridge).get(
+        "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "tenant_membership_store_unavailable"}
+    assert calls == []
+    assert bridge._verified_identity_logged is False
+
+
+def test_verified_oidc_does_not_log_when_local_api_key_missing(monkeypatch):
+    bridge = _bridge_with_probe(monkeypatch, _OperatorResolver())
+    monkeypatch.delenv("BRAIN_API_KEY", raising=False)
+    calls = _capture_logger_info(monkeypatch)
+
+    response = TestClient(bridge).get(
+        "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "brain_local_api_key_not_configured"}
+    assert calls == []
+    assert bridge._verified_identity_logged is False
