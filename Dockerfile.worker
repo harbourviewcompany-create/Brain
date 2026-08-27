@@ -4,9 +4,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     BRAIN_ENV=production \
-    BRAIN_EXTERNAL_ACTIONS_ENABLED=false \
-    BRAIN_WORKER_MODE=temporal
+    BRAIN_EXTERNAL_ACTIONS_ENABLED=false
 
+# BRAIN_WORKER_MODE is deliberately unset: apps.worker.main defaults to
+# "cognition", the durable in-process loop. The image previously pinned
+# "temporal", which routes to run_temporal_worker() and dials
+# TEMPORAL_ADDRESS or localhost:7233 -- nothing listens on localhost inside
+# this container, so a deployment without a Temporal server crash-looped
+# without ever running a single cognitive tick.
 WORKDIR /app
 
 # Dependency layer: shared lock and cache behavior with the API image.

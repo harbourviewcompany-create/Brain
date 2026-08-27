@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
@@ -13,6 +14,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from apps.api.cockpit_read_routes import register_cockpit_read_routes
+from apps.api.inline_cognition import InlineCognition, start_inline_cognition
+from brain.logging_config import get_logger
 from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
 from brain.domain import Edge, Evidence, Node, Outcome
@@ -32,7 +35,32 @@ from brain.security import SecurityConfig, presented_credentials
 
 _security = SecurityConfig.from_env()
 
-app = FastAPI(title="Brain Runtime API", version="0.8.1")
+_inline_cognition: InlineCognition | None = None
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Drive cognition from this process when nothing else is driving it.
+
+    Deliberately a lifespan handler and not import-time work: no test in this
+    suite enters TestClient as a context manager, so none of them start a
+    cognition thread, while every deployed entrypoint runs the app as ASGI and
+    so does. The Vercel OIDC bridge in tools/live_cockpit_routes passes
+    non-HTTP scopes straight through to the inner app, so the lifespan reaches
+    this handler through that wrapper too.
+    """
+
+    global _inline_cognition
+    _inline_cognition = start_inline_cognition(lambda: heartbeat.tick(max_items=1))
+    try:
+        yield
+    finally:
+        engine, _inline_cognition = _inline_cognition, None
+        if engine is not None:
+            engine.stop()
+
+
+app = FastAPI(title="Brain Runtime API", version="0.8.1", lifespan=_lifespan)
 
 _origins = _security.allowed_origins()
 app.add_middleware(
@@ -50,6 +78,8 @@ app.add_middleware(
 )
 
 _API_KEY_ENV_VAR = "BRAIN_API_KEY"
+log = get_logger("api")
+
 _PUBLIC_PATHS = frozenset({"/health", "/ready"})
 
 
@@ -315,6 +345,68 @@ def _serialize_learning(result) -> dict[str, Any]:
     }
 
 
+#: How long a cached belief/graph projection may serve reads before the API
+#: re-reads it. The Observatory polls every 5s; matching that keeps the cockpit
+#: live at roughly one hydrate per poll interval. 0 refreshes every read; a
+#: negative value disables refreshing and restores the boot-snapshot behavior.
+def _read_refresh_seconds() -> float:
+    raw = (os.environ.get("BRAIN_READ_REFRESH_SECONDS") or "").strip()
+    if not raw:
+        return 5.0
+    try:
+        return float(raw)
+    except ValueError:
+        return 5.0
+
+
+def _refresh_reads() -> None:
+    """Let read routes see what the worker wrote.
+
+    PostgresBrainStore.hydrate() runs once in the constructor, so a long-lived
+    API process answered every read from the snapshot it booted with. The
+    worker writes beliefs and evidence to the same database from another
+    process, and none of it appeared until the API restarted.
+    """
+    refresh = getattr(_brain_store, "refresh_if_stale", None)
+    if refresh is None:
+        return
+    try:
+        refresh(_read_refresh_seconds())
+    except Exception:
+        log.exception("belief projection refresh failed; serving cached projection")
+
+
+def _cognition_status() -> dict[str, Any]:
+    """Heartbeat status describing the system, not this process.
+
+    apps/api runs no cognition loop: `heartbeat` here is an untouched
+    HeartbeatService whose counters are structurally always zero, while every
+    tick happens in apps/worker against a different instance. The cockpit read
+    those zeros and rendered CYCLE 0 no matter how much work the worker had
+    done. Durable counts from the shared event stream replace them; the local
+    values remain as the fallback when no database is configured.
+    """
+    status = dict(heartbeat.status())
+    counters = getattr(_brain_store, "cognition_counters", None)
+    if counters is None:
+        return status
+    try:
+        counts = counters()
+    except Exception:
+        log.exception("durable cognition counters unavailable; reporting process-local heartbeat")
+        return status
+
+    status["ticks"] = counts.get("cycle.completed", status.get("ticks", 0))
+    status["total_processed"] = counts.get(
+        "observation.received", counts.get("signal.enqueued", status.get("total_processed", 0))
+    )
+    status["signals_enqueued"] = counts.get("signal.enqueued", 0)
+    status["beliefs_created"] = counts.get("belief.created", 0)
+    status["beliefs_updated"] = counts.get("belief.updated", 0)
+    status["source"] = "durable"
+    return status
+
+
 def _database_ready() -> tuple[bool, str]:
     if not os.environ.get("DATABASE_URL"):
         return True, "not_configured"
@@ -327,7 +419,8 @@ def _database_ready() -> tuple[bool, str]:
 @app.get("/health")
 def health():
     database_ok, database_status = _database_ready()
-    hb = heartbeat.status()
+    _refresh_reads()
+    hb = _cognition_status()
     payload = {
         "status": "ok" if database_ok else "degraded",
         "version": "0.8.1",
@@ -399,11 +492,13 @@ def run_heartbeat_tick(body: TickRequest | None = None):
 
 @app.get("/runner/status")
 def runner_status():
-    return heartbeat.status()
+    _refresh_reads()
+    return _cognition_status()
 
 
 @app.get("/beliefs")
 def list_beliefs():
+    _refresh_reads()
     items = [
         {
             "id": str(belief.id),

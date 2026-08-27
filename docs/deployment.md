@@ -9,7 +9,8 @@ The Brain runtime is split into independently deployable processes:
 3. **Supabase/PostgreSQL** — canonical event ledger, Brain projections, developmental evidence and generic cognitive objects.
 4. **Temporal** — preferred durable orchestration for long-lived cognition; workflow intent is separate from process lifetime.
 5. **Neo4j** — optional graph projection; PostgreSQL remains canonical unless a later approved architecture changes that contract.
-6. **Legacy Railway cockpit compatibility** — `Dockerfile.railway` builds the same runtime as `Dockerfile`. It is retained only because a Railway service may still name it directly; nothing in the repository selects it.
+6. **API host** — Railway *or* Fly.io run the same canonical image; neither owns the database or the Observatory UI.
+7. **Legacy Railway cockpit compatibility** — `Dockerfile.railway` builds the same runtime as `Dockerfile`. It is retained only because a Railway service may still name it directly; nothing in the repository selects it.
 
 ## Deployment authority
 
@@ -21,15 +22,17 @@ There is exactly one API runtime entrypoint. Every host reaches it.
 |---|---|---|---|
 | Brain API | `Dockerfile` | `tools.live_cockpit_routes:app` | canonical API image |
 | Cognition worker | `Dockerfile.worker` | `python -m apps.worker.main` | canonical worker image |
-| Railway API | `railway.toml` -> `Dockerfile` | inherited from image | canonical Railway API path |
-| Railway API (alias) | `railway.brain-api-live.toml` -> `Dockerfile` | inherited from image | same image and deploy settings as `railway.toml` |
-| Railway worker | `railway.worker.toml` -> `Dockerfile.worker` | inherited from image | canonical Railway worker path |
-| Fly.io | `fly.toml` -> `Dockerfile` | explicit `app` / `worker` processes, same entrypoints | supported host definition |
+| Railway API | `railway.toml` -> `Dockerfile` | inherited from image | Railway API path |
+| Railway API (alias) | `railway.brain-api-live.toml` -> `Dockerfile` | inherited from image | same image; pre-tenant migration ceiling 018 |
+| Railway worker | `railway.worker.toml` -> `Dockerfile.worker` | inherited from image | Railway worker path |
+| Fly.io | `fly.toml` -> `Dockerfile` | explicit `app` / `worker` processes, same API entrypoint; worker module on same image | **first-class Railway alternative** |
 | Legacy cockpit | `Dockerfile.railway` | `tools.live_cockpit_routes:app` | compatibility-only; same runtime as `Dockerfile` |
+
+Fly cutover steps, secrets, and verification: [`docs/deployment-fly.md`](deployment-fly.md).
 
 `tests/test_railway_deploy_contract.py` enforces this table. It fails if a host
 config names a different image, a different entrypoint, a health path the others
-do not use, or a `preDeployCommand` script the named Dockerfile never copies in.
+do not use, or a migration/release command the named Dockerfile cannot run.
 
 The repository intentionally has no `Procfile`. Railway and Fly already declare their Docker/process authority explicitly; retaining an unused Procfile would create a second, ambiguous deployment contract.
 
@@ -136,32 +139,17 @@ services.
 
 `railway.brain-api-live.toml` exists only because the live Railway service is
 named `brain-api-live` and its config-as-code path may still point at that file.
-It now declares the same image, entrypoint, health path and pre-deploy command
-as `railway.toml`, so the deployed system no longer depends on which of the two
-the service happens to select.
+It declares the same image and readiness path as `railway.toml`, with
+`preDeployCommand` capped at migration 018 until the explicit tenant release.
 
 `Dockerfile.railway` is retained only because a Railway service may name a
 Dockerfile path directly. It builds the same runtime as `Dockerfile`.
 
-Two of these three files can be deleted, but only after reading the live Railway
-service's build settings: the repository cannot observe which config path or
-Dockerfile path the service is pinned to, and deleting the pinned one breaks the
-next deploy. Converging them first makes that deletion safe to do later without
-a behavior change.
-
-### Why the pre-deploy command and the `tools` copy landed together
-
-`tools/apply_migrations.py` lives under `tools/`, which the canonical
-`Dockerfile` did not copy. So `railway.toml` could not have carried a
-`preDeployCommand` naming it, and did not: a deploy driven by the file the
-repository called canonical applied no migrations. The same missing copy left
-that image without `tools/vercel_oidc.py`, so it could not verify the
-`Authorization: Bearer <Vercel OIDC token>` the Observatory BFF sends -- the
-production auth path described in `docs/observatory/PRODUCTION_WIRING.md`.
-
 ## Fly.io
 
-`fly.toml` defines an `app` process for HTTP and a `worker` process for cognition. Only `app` is attached to the HTTP service; `/ready` is the health check.
+`fly.toml` defines an `app` process for HTTP and a `worker` process for cognition on the **same** `Dockerfile` image (worker code is under `apps/`). Only `app` is attached to the HTTP service; `/ready` is the health check. `release_command` applies migrations through version 018, matching production pre-tenant policy.
+
+Step-by-step cutover (secrets, scale, Vercel `BRAIN_API_URL`, verification): [`docs/deployment-fly.md`](deployment-fly.md).
 
 ## Protected CI deployment acceptance
 
@@ -169,7 +157,7 @@ The protected `test` workflow installs Python dependencies under `constraints.tx
 
 A production deployment is not GO merely because CI or a container build succeeds. Exact deployed-commit evidence must additionally show:
 
-- migration integrity validation passes and migrations through 016 apply successfully;
+- migration integrity validation passes and migrations through the approved ceiling apply successfully;
 - production authentication is active and unauthenticated protected requests return 401;
 - authenticated belief create/read survives API restart;
 - `/ready` returns 503 during an induced database outage and recovers after restoration;
