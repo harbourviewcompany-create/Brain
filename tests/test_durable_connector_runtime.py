@@ -21,7 +21,7 @@ def test_migration_024_defines_restart_safe_acquisition_state() -> None:
         "source_connector_observations",
     ):
         assert f"create table if not exists public.{table}" in sql
-        assert f"alter table public.%i force row level security" in sql or "force row level security" in sql
+        assert "alter table public.%i force row level security" in sql or "force row level security" in sql
 
     assert "lease_owner" in sql
     assert "lease_expires_at" in sql
