@@ -85,7 +85,10 @@ class IngestService:
         self._runs: list[IngestBatchResult] = []
 
     def register_source(self, source: ConnectorSource) -> ConnectorSource:
-        if source.access == AccessDisposition.PROHIBITED:
+        if source.access in {
+            AccessDisposition.PROHIBITED,
+            AccessDisposition.UNKNOWN,
+        }:
             source.enabled = False
         return self.registry.upsert(source)
 
@@ -139,7 +142,11 @@ class IngestService:
         return self._ingest_one(source)
 
     def _ingest_one(self, source: ConnectorSource) -> IngestSourceResult:
-        if source.access in {AccessDisposition.PROHIBITED, AccessDisposition.MANUAL_ONLY}:
+        if source.access in {
+            AccessDisposition.PROHIBITED,
+            AccessDisposition.MANUAL_ONLY,
+            AccessDisposition.UNKNOWN,
+        }:
             self.registry.mark_fetch(source.source_key, success=True)
             return IngestSourceResult(source_key=source.source_key, status=FetchStatus.SKIPPED.value,
                 error=f"access_{source.access.value}")
