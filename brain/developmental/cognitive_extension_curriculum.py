@@ -39,6 +39,7 @@ from .higher_order_cognition import (
     DevelopmentalStageRecord,
     HigherOrderCognitionService,
 )
+from .self_model import SelfModelService
 
 # Module path -> (stage evidence, keyed by stage). A module only appears
 # under a stage where a specific, real, test-verified capability supports
@@ -94,16 +95,37 @@ STRATEGIC_EVIDENCE: dict[str, list[str]] = {
     ],
 }
 
+METACOGNITIVE_EVIDENCE: dict[str, list[str]] = {
+    # metacognitive = "the system can explain its limits and uncertainty"
+    # (stage 6). Earned, not assumed: theory_of_mind.py's predict_action()
+    # confidence was measured (Expected Calibration Error) against actual
+    # accuracy across simulated agents of known predictability, across
+    # five random seeds. The prior formula measured ECE ~0.16-0.22
+    # (confidence moved the right direction but the number didn't mean
+    # what it said). The current formula, redesigned specifically in
+    # response to that measurement, measures ~0.03-0.07. This is the one
+    # module, of the seven, with both a genuine self-reported confidence
+    # signal AND a resolvable ground truth (predict/resolve) to check it
+    # against -- which is why it is the only one claimed here.
+    "brain/theory_of_mind.py": [
+        "tests/test_theory_of_mind_calibration.py::test_predict_action_confidence_is_calibrated_across_five_seeds",
+        "tests/test_theory_of_mind_calibration.py::test_confidence_and_accuracy_are_positively_correlated",
+    ],
+}
+
 # Explicit "not yet" -- what's missing for the three most advanced stages,
 # and for the modules/stage combinations skipped above. This list IS the
 # self-model output: what the system does not yet do, stated plainly.
 NOT_YET_CLAIMED: list[str] = [
-    "METACOGNITIVE for any module: none of the seven can currently report "
-    "its own confidence/limits about ITS OWN behavior as a first-class "
-    "output -- brain/developmental/self_model.py exists but is not wired "
-    "to affect/executive/circadian/theory_of_mind/hedonic/perception/motor. "
-    "Needed: a self-report method per module surfaced through self_model.py, "
-    "with evidence that the reported uncertainty tracks actual error.",
+    "METACOGNITIVE for affect/executive/circadian/hedonic/perception/motor: "
+    "none of these six currently pairs a first-class self-reported "
+    "confidence/uncertainty value with a resolvable ground truth the way "
+    "theory_of_mind.py's predict_action/resolve_prediction does. "
+    "brain/developmental/self_model.py is wired for theory_of_mind.py's "
+    "predict_action calibration specifically (see build_self_model below); "
+    "it is not yet wired for the other six. Needed per module: a "
+    "self-reported confidence output PLUS a real outcome to check it "
+    "against -- not just adding a confidence number.",
     "SELF_REPAIRING for any module: no module currently proposes a governed "
     "change to itself. Needed: a DevelopmentalPlasticityDelta "
     "(docs/spec/DEVELOPMENTAL_PLASTICITY_MODEL.md) generated FROM one of "
@@ -112,7 +134,7 @@ NOT_YET_CLAIMED: list[str] = [
     "CONSOLIDATED for any module: this requires sustained real production "
     "evidence over time (repeated validated outcomes), not test-suite "
     "evidence alone -- these modules have been live in CognitiveCycle for "
-    "one PR's worth of history, not a consolidation window.",
+    "a few PRs' worth of history, not a consolidation window.",
     "PERCEPTUAL for affect/executive/circadian/theory_of_mind/hedonic/motor: "
     "none of these detect or normalize raw external signals themselves -- "
     "they operate on already-perceived/appraised inputs, so this stage is "
@@ -129,6 +151,11 @@ NOT_YET_CLAIMED: list[str] = [
     "STRATEGIC for affect/circadian/theory_of_mind/hedonic/perception/motor: "
     "none of these compare multiple candidate plans against a depletable "
     "resource under risk -- that is specifically executive control's job.",
+    "The METACOGNITIVE claim for theory_of_mind.py itself is bounded: "
+    "calibration was measured under synthetic/simulated agent behavior "
+    "with designed-in predictability, not real production agent behavior. "
+    "This is recorded as an explicit limitation in build_self_model()'s "
+    "SelfModelService, not silently generalized to production data.",
 ]
 
 
@@ -165,20 +192,90 @@ def build_curriculum() -> HigherOrderCognitionService:
         _enter(DevelopmentalStage.PREDICTIVE, module, evidence, "forecast_and_recorded_error")
     for module, evidence in STRATEGIC_EVIDENCE.items():
         _enter(DevelopmentalStage.STRATEGIC, module, evidence, "plan_comparison_under_resource_risk")
+    for module, evidence in METACOGNITIVE_EVIDENCE.items():
+        service.enter_developmental_stage(
+            DevelopmentalStageRecord(
+                stage=DevelopmentalStage.METACOGNITIVE,
+                entered_because=f"{module}: predict_action confidence measured calibrated (ECE) against actual accuracy across 5 seeds",
+                evidence_refs=evidence,
+                capabilities_unlocked=["calibrated_self_reported_confidence"],
+                blocked_claims=[
+                    "consciousness_claim",
+                    "subjective_feeling_claim",
+                    "neuroscience_equivalence_claim",
+                    "production_data_calibration_claim",  # measured on synthetic agents only
+                ],
+            )
+        )
 
     return service
 
 
-def assessment_report(service: HigherOrderCognitionService) -> dict[str, object]:
+def build_self_model() -> SelfModelService:
+    """The concrete self-model surface for the one capability that has
+    earned it: theory_of_mind.py's predict_action confidence. Claims the
+    capability with real evidence, records the one limitation that
+    matters (synthetic, not production, data), and produces an assessment
+    -- this is what 'the system can explain its limits and uncertainty'
+    (METACOGNITIVE) actually means here: a specific, evidenced claim next
+    to a specific, stated limitation, not a vague assertion of
+    self-awareness."""
+    service = SelfModelService()
+    service.claim_capability(
+        name="theory_of_mind.predict_action_confidence_is_calibrated",
+        confidence=0.8,  # high but not 1.0: five seeds, not exhaustive validation
+        evidence_refs=[
+            "brain/theory_of_mind.py:TheoryOfMindService.predict_action",
+            "tests/test_theory_of_mind_calibration.py",
+        ],
+        test_refs=[
+            "tests/test_theory_of_mind_calibration.py::test_predict_action_confidence_is_calibrated_across_five_seeds",
+            "tests/test_theory_of_mind_calibration.py::test_confidence_and_accuracy_are_positively_correlated",
+        ],
+        acceptance_refs=["reports/go-hold/COGNITIVE-EXTENSION-DEVELOPMENTAL-CURRICULUM-GO-HOLD.json"],
+    )
+    service.record_limitation(
+        limitation="predict_action calibration was measured only on simulated agents with "
+        "designed-in, known predictability (90%/chance/55%), not on real production agent "
+        "behavior",
+        effect="the calibration claim does not generalize to production until measured there; "
+        "a production calibration re-check is required before this limitation can be lifted",
+    )
+    service.record_limitation(
+        limitation="calibration was measured for theory_of_mind.py's predict_action only -- "
+        "no other module (affect, executive, circadian, hedonic, perception, motor) has a "
+        "calibrated, ground-truth-checked confidence signal",
+        effect="METACOGNITIVE cannot be claimed for the other six modules until each has both "
+        "a self-reported confidence output and a resolvable outcome to check it against",
+    )
+    service.assess()
+    return service
+
+
+def assessment_report(
+    service: HigherOrderCognitionService, self_model: SelfModelService | None = None
+) -> dict[str, object]:
     """Summarize current stage attainment per module, plus the explicit
     not-yet list. This is the self-model surface: what the system can
-    currently support a claim for, and what it plainly cannot yet."""
+    currently support a claim for, and what it plainly cannot yet.
+
+    ``self_model``, if provided (from ``build_self_model()``), adds the
+    claimed capabilities and recorded limitations to the report -- the
+    same information ``SelfModelService.assess()`` produces, surfaced
+    alongside the stage records rather than requiring a separate lookup.
+    """
     by_module: dict[str, list[str]] = {}
     for record in service.stage_records.values():
         module = record.entered_because.split(":", 1)[0]
         by_module.setdefault(module, []).append(str(record.stage))
-    return {
+    report: dict[str, object] = {
         "stages_by_module": by_module,
         "not_yet_claimed": NOT_YET_CLAIMED,
         "blocked_claims": service.claim_boundary_report()["blocked"],
     }
+    if self_model is not None:
+        report["self_model_capabilities"] = [c.name for c in self_model.capabilities]
+        report["self_model_limitations"] = [
+            {"limitation": lim.limitation, "effect": lim.effect} for lim in self_model.limitations
+        ]
+    return report

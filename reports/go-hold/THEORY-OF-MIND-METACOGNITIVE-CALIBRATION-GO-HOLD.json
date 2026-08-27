@@ -1,0 +1,33 @@
+{
+  "report_id": "THEORY-OF-MIND-METACOGNITIVE-CALIBRATION-GO-HOLD",
+  "verdict": "GO_FOR_METACOGNITIVE_CLAIM_ON_THEORY_OF_MIND_ONLY_BOUNDED_TO_SYNTHETIC_DATA",
+  "context": "Follow-on to COGNITIVE-EXTENSION-DEVELOPMENTAL-CURRICULUM-GO-HOLD.json, which named 'wire self_model.py for a first METACOGNITIVE candidate' as next required work. This report covers that specific candidate: theory_of_mind.py's predict_action() confidence, the only one of the seven cognitive-extension modules with both a first-class self-reported confidence signal and a resolvable ground truth (predict/resolve) to check it against.",
+  "measurement": {
+    "method": "Expected Calibration Error (mean |stated confidence - actual accuracy| across confidence buckets, weighted by bucket size), measured across simulated agents of designed-in predictability (90%, chance/~33%, 55%), across 5 fixed random seeds (42, 1, 7, 99, 2024) to rule out a single favorable run.",
+    "prior_formula": "confidence = match_strength * (0.4 + 0.6 * trust) -- ECE ranged approximately 0.16-0.22 across the 5 seeds",
+    "current_formula": "confidence = 0.9 * Beta(2,2)-smoothed empirical accuracy from resolved predictions + 0.1 * per-prediction match_strength -- ECE ranges approximately 0.03-0.07 across the same 5 seeds",
+    "formula_selection": "four variants were empirically compared (raw/prior, pure smoothed-empirical, 70/30 blend, 90/10 blend) before selecting 90/10 -- selection was based on measured ECE across all 5 seeds, not a single run, and not chosen to hit a pre-selected threshold after seeing one result"
+  },
+  "go": [
+    "theory_of_mind.py reaches DevelopmentalStage.METACOGNITIVE with real evidence_refs pointing to a reproducible, seed-swept calibration test (tests/test_theory_of_mind_calibration.py)",
+    "SelfModelService.claim_capability() requires non-empty evidence_refs, test_refs, and acceptance_refs -- all three are real, verified paths, not placeholders",
+    "the calibration regression test (test_predict_action_confidence_is_calibrated_across_five_seeds) sets a threshold (ECE < 0.12) with real margin above the worst observed run of the new formula (~0.068) and well below the best observed run of the old formula (~0.16) -- a future regression toward the old behavior would fail this test",
+    "a secondary, threshold-independent sanity check (test_confidence_and_accuracy_are_positively_correlated) confirms the ordinal relationship holds on pooled data across all 5 seeds",
+    "the existing test that asserted low-trust-implies-low-confidence by directly mutating model.trust (bypassing the real evidence path) was identified as testing an incorrect assumption and rewritten to build reliability difference through actual resolve_prediction() calls instead"
+  ],
+  "hold": [
+    "METACOGNITIVE not claimed for affect, executive, circadian, hedonic, perception, or motor -- none currently pairs a self-reported confidence value with a resolvable ground truth",
+    "the METACOGNITIVE claim for theory_of_mind.py is explicitly bounded: calibration was measured on simulated agents with designed-in, known predictability, not on real production agent behavior. SelfModelService.record_limitation() records this; DevelopmentalStageRecord.blocked_claims includes 'production_data_calibration_claim'",
+    "SELF_REPAIRING and CONSOLIDATED remain HOLD for all seven modules, unchanged from the prior report"
+  ],
+  "permanent_gates": [
+    "advanced_stage_capability_evidence_gate",
+    "self_model_claim_gate",
+    "calibration_measurement_gate",
+    "synthetic_vs_production_data_boundary_gate"
+  ],
+  "next_required_work": [
+    "measure predict_action calibration against real production agent behavior once sufficient production history exists, to lift the synthetic-data limitation",
+    "identify or build a genuine self-reported-confidence-plus-resolvable-outcome pair for at least one of the remaining six modules, as the next METACOGNITIVE candidate"
+  ]
+}
