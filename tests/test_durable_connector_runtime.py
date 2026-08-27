@@ -9,10 +9,10 @@ from brain.connectors.service import IngestService
 from brain.connectors.store import InMemoryConnectorRegistry, PostgresConnectorRegistry
 
 
-MIGRATION = Path("db/migrations/024_durable_connector_runtime.sql")
+MIGRATION = Path("db/migrations/025_durable_connector_runtime.sql")
 
 
-def test_migration_024_defines_restart_safe_acquisition_state() -> None:
+def test_migration_025_defines_restart_safe_acquisition_state() -> None:
     sql = MIGRATION.read_text(encoding="utf-8").lower()
 
     for table in (
@@ -31,6 +31,11 @@ def test_migration_024_defines_restart_safe_acquisition_state() -> None:
     assert "seen_count integer not null default 1" in sql
     assert "current_brain_service_context()" in sql
     assert "current_brain_tenant_id()" in sql
+
+
+def test_durable_connector_runtime_does_not_reuse_migration_024() -> None:
+    assert MIGRATION.exists()
+    assert not Path("db/migrations/024_durable_connector_runtime.sql").exists()
 
 
 def test_durable_public_config_never_persists_credentials() -> None:
@@ -75,7 +80,7 @@ def test_ingest_service_uses_durable_registry_when_schema_is_available(monkeypat
     assert service.registry.pool is EventStore.pool
 
 
-def test_ingest_service_falls_back_before_migration_024(monkeypatch) -> None:
+def test_ingest_service_falls_back_before_migration_025(monkeypatch) -> None:
     class FakeUnavailableRegistry:
         def __init__(self, pool) -> None:
             self.pool = pool
