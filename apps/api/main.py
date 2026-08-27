@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import timedelta
 from typing import Any
@@ -13,6 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from apps.api.cockpit_read_routes import register_cockpit_read_routes
+from apps.api.inline_cognition import InlineCognition, start_inline_cognition
 from brain.logging_config import get_logger
 from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
@@ -33,7 +35,32 @@ from brain.security import SecurityConfig, presented_credentials
 
 _security = SecurityConfig.from_env()
 
-app = FastAPI(title="Brain Runtime API", version="0.8.1")
+_inline_cognition: InlineCognition | None = None
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Drive cognition from this process when nothing else is driving it.
+
+    Deliberately a lifespan handler and not import-time work: no test in this
+    suite enters TestClient as a context manager, so none of them start a
+    cognition thread, while every deployed entrypoint runs the app as ASGI and
+    so does. The Vercel OIDC bridge in tools/live_cockpit_routes passes
+    non-HTTP scopes straight through to the inner app, so the lifespan reaches
+    this handler through that wrapper too.
+    """
+
+    global _inline_cognition
+    _inline_cognition = start_inline_cognition(lambda: heartbeat.tick(max_items=1))
+    try:
+        yield
+    finally:
+        engine, _inline_cognition = _inline_cognition, None
+        if engine is not None:
+            engine.stop()
+
+
+app = FastAPI(title="Brain Runtime API", version="0.8.1", lifespan=_lifespan)
 
 _origins = _security.allowed_origins()
 app.add_middleware(

@@ -25,6 +25,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | Module path | Owner object | Schema | Runtime service | State machine | Fixtures / tests | Acceptance evidence | Audit events | GO/HOLD |
 |---|---|---|---|---|---|---|---|---|
 | apps/api/cognitive_organism_routes.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| apps/api/inline_cognition.py | partial | partial | present | present | present | missing | partial | HOLD |
 | apps/api/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | apps/operator/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | apps/worker/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
@@ -43,6 +44,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/beliefs.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/benchmarks.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/circadian.py | partial | present | partial | present | present | missing | present | HOLD |
+| brain/cognition_lease.py | present | present | present | present | present | missing | partial | HOLD |
 | brain/cognitive_immune.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_organism.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_state.py | partial | partial | partial | missing | partial | missing | partial | HOLD |

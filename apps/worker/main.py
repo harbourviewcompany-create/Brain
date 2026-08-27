@@ -33,6 +33,7 @@ except ImportError:
 
 
 _verified_worker_dsn: str | None = None
+_cognition_lease: Any | None = None
 
 
 def worker_database_url() -> str:
@@ -393,8 +394,40 @@ def temporal_address() -> str:
     ).strip()
 
 
+def acquire_cognition_lease() -> Any | None:
+    """Wait until this process is the only one running cognition.
+
+    The API drives cognition itself when no worker holds the lease, so a worker
+    that started thinking without taking it would double every cycle for as
+    long as both were up. Waiting is the correct behaviour rather than exiting:
+    the API yields the lease periodically, so a worker deployed alongside a
+    running API takes over on its own, without either being restarted.
+    """
+
+    dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    if not dsn:
+        # In-memory cognition is nobody else's business: there is no shared
+        # store to double-write, and no database to hold a lock in.
+        return None
+
+    from brain.cognition_lease import CognitionLease
+
+    global _cognition_lease
+    lease = CognitionLease(dsn)
+    log.info("waiting for the cognition lease")
+    if not lease.acquire(blocking=True):
+        log.error("cognition lease unavailable; thinking anyway to avoid a silent Brain")
+        return None
+    log.info("cognition lease acquired; this worker is the single writer")
+    # Module-level, not a local: the lease lives in its connection, and a
+    # garbage-collected lease is a released lock and a second writer.
+    _cognition_lease = lease
+    return lease
+
+
 def run_cognition_loop() -> None:
     """The durable in-process cognition loop, with env-tunable cadence."""
+    acquire_cognition_lease()
     run_forever_with_maintenance(
         tick_sleep=float(os.environ.get("BRAIN_TICK_SLEEP", "1")),
         ingest_every=int(os.environ.get("BRAIN_INGEST_EVERY", "30")),

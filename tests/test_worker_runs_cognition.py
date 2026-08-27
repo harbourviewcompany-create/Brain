@@ -137,3 +137,68 @@ def test_maintenance_mode_still_runs_cognition(monkeypatch):
     calls = _capture(monkeypatch)
     worker.main()
     assert calls == ["cognition"]
+
+
+def test_no_lease_is_taken_without_a_database(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("BRAIN_WORKER_DATABASE_URL", raising=False)
+
+    # There is no shared store to double-write and no database to hold a lock
+    # in; requiring one would stop an in-memory worker from starting at all.
+    assert worker.acquire_cognition_lease() is None
+
+
+def test_the_worker_waits_for_the_lease_instead_of_polling(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    calls = []
+
+    class FakeLease:
+        def __init__(self, dsn):
+            calls.append(dsn)
+
+        def acquire(self, *, blocking=False):
+            calls.append(blocking)
+            return True
+
+    monkeypatch.setattr("brain.cognition_lease.CognitionLease", FakeLease)
+    monkeypatch.setattr(worker, "_cognition_lease", None, raising=False)
+
+    lease = worker.acquire_cognition_lease()
+
+    assert calls == ["postgres:///brain", True]
+    # Held module-level: a garbage-collected lease closes its connection,
+    # which releases the lock and re-permits a second writer.
+    assert worker._cognition_lease is lease
+
+
+def test_the_worker_takes_the_lease_before_it_starts_thinking(monkeypatch):
+    order = []
+    monkeypatch.setattr(
+        worker, "acquire_cognition_lease", lambda: order.append("lease")
+    )
+    monkeypatch.setattr(
+        worker,
+        "run_forever_with_maintenance",
+        lambda **kwargs: order.append("loop"),
+    )
+
+    worker.run_cognition_loop()
+
+    assert order == ["lease", "loop"]
+
+
+def test_the_worker_thinks_anyway_when_the_lease_cannot_be_taken(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+
+    class RefusingLease:
+        def __init__(self, dsn):
+            pass
+
+        def acquire(self, *, blocking=False):
+            return False
+
+    monkeypatch.setattr("brain.cognition_lease.CognitionLease", RefusingLease)
+
+    # A worker that exits here is a Brain that stops thinking because of a
+    # lock, which is strictly worse than the duplicate cycles it prevents.
+    assert worker.acquire_cognition_lease() is None
