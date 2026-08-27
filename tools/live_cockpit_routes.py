@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-import json
 import logging
 import os
 from typing import Any
@@ -10,6 +9,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from fastapi.responses import JSONResponse
 
 import apps.api.tenant_app as tenant_api
+from brain.logging_config import get_logger
 from brain.tenant_auth import TenantRole
 from brain.tenant_context import TenantScopeViolation, trusted_tenant_context
 from brain.tenant_runtime import tenant_context_scope
@@ -24,7 +24,7 @@ app = tenant_api.app
 runtime = brain_api.runtime
 _learning_store = brain_api._learning_store
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger("brain.vercel_oidc_auth")
 
 # This identifier is inert unless the explicit Observatory compatibility release
 # SQL has created the tenant + durable membership. Canonical migrations 019-022
@@ -130,19 +130,15 @@ class VercelOidcAuthBridge:
             return
         config = self.verifier.config
         _logger.info(
-            "%s",
-            json.dumps(
-                {
-                    "event": "vercel_oidc_auth_accepted",
-                    "team_slug": config.team_slug,
-                    "project": config.project,
-                    "environment": config.environment,
-                    "subject": config.subject,
-                    "audience": config.audience,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ),
+            "vercel_oidc_auth_accepted",
+            extra={
+                "event": "vercel_oidc_auth_accepted",
+                "team_slug": config.team_slug,
+                "project": config.project,
+                "environment": config.environment,
+                "subject": config.subject,
+                "audience": config.audience,
+            },
         )
         self._verified_identity_logged = True
 
