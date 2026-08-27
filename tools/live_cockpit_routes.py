@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 import logging
 import os
 from typing import Any
@@ -122,6 +123,25 @@ class VercelOidcAuthBridge:
         ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
         return translated
 
+    def _log_verified_identity(self) -> None:
+        """Audit only the non-secret identity contract that the token matched."""
+        config = self.verifier.config
+        _logger.info(
+            "%s",
+            json.dumps(
+                {
+                    "event": "vercel_oidc_auth_accepted",
+                    "team_slug": config.team_slug,
+                    "project": config.project,
+                    "environment": config.environment,
+                    "subject": config.subject,
+                    "audience": config.audience,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        )
+
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") != "http":
             await self.inner_app(scope, receive, send)
@@ -150,6 +170,7 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
+                self._log_verified_identity()
                 translated_scope = self._translated_scope(scope, headers, local_key)
 
                 # Explicit compatibility path for the pre-tenant production
