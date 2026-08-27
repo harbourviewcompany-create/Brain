@@ -38,21 +38,22 @@ if (!upstream.includes("getVercelOidcToken") || !upstream.includes("Authorizatio
 const page = fs.readFileSync("src/app/page.tsx", "utf8");
 if (!page.includes("BrainObservatory")) throw new Error("root route is not the Brain Observatory");
 
-// The BFF attaches the server-side Brain API key to everything it forwards, so
-// an unauthenticated caller reaching it is an unauthenticated caller against the
-// Brain. Middleware guarding it is a release requirement, not a nicety.
+// Optional operator gate: when secrets are set, sessions are required; when unset, open.
 if (!fs.existsSync("src/middleware.ts")) {
-  throw new Error("src/middleware.ts is missing; the Brain BFF would be an open relay");
+  throw new Error("src/middleware.ts is missing");
 }
 const middleware = fs.readFileSync("src/middleware.ts", "utf8");
 if (!middleware.includes("verifySession")) {
-  throw new Error("middleware must verify an operator session before proxying to the Brain");
+  throw new Error("middleware must be able to verify an operator session when configured");
 }
 if (!/matcher/.test(middleware) || !middleware.includes("_next/static")) {
-  throw new Error("middleware matcher must guard every route except static build output");
+  throw new Error("middleware matcher must cover app routes except static build output");
 }
-if (!middleware.includes("operator_auth_not_configured")) {
-  throw new Error("middleware must fail closed when operator auth is unconfigured");
+if (!middleware.includes("operatorSessionConfig")) {
+  throw new Error("middleware must read operatorSessionConfig to decide open vs gated");
+}
+if (middleware.includes("operator_auth_not_configured") && middleware.includes("return unauthorized(request, \"operator_auth_not_configured\"")) {
+  throw new Error("middleware must not fail closed when operator auth is unconfigured");
 }
 
 // Live views must never seed themselves with fabricated records: an operator

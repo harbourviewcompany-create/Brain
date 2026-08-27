@@ -1,11 +1,11 @@
 /**
  * Operator session signing for the Observatory.
  *
- * The BFF at /api/brain/[...path] attaches the server-side Brain API key to
- * everything it forwards. Without a caller check in front of it, that route is
- * an open relay for the whole Brain — including writes. This module issues and
- * verifies the short-lived signed cookie that middleware.ts requires before any
- * request reaches the proxy.
+ * Optional gate: when OBSERVATORY_ACCESS_KEY and OBSERVATORY_SESSION_SECRET are
+ * both set, middleware requires a short-lived signed cookie before UI/BFF use.
+ * When either is missing, middleware leaves the app open; the server-side Brain
+ * API key still never reaches the browser, and Railway remains the upstream auth
+ * boundary.
  *
  * Uses Web Crypto only, so the same code runs in the Edge middleware runtime and
  * in Node route handlers.
@@ -26,8 +26,8 @@ export type SessionConfig = {
 
 /**
  * Read the operator-auth configuration. Returns null when either half is
- * missing, which callers must treat as "refuse every request" — never as
- * "no authentication required".
+ * missing. Callers must treat null as "operator gate disabled / open access",
+ * not as "refuse every request".
  */
 export function operatorSessionConfig(): SessionConfig | null {
   const accessKey = (process.env.OBSERVATORY_ACCESS_KEY || "").trim();
