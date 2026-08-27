@@ -1,4 +1,4 @@
-"""Every Railway path must build an image that can actually serve production.
+"""Every API host path must build an image that can actually serve production.
 
 `railway.toml` named `Dockerfile` as the canonical API deployment, but that
 image copied only `brain`, `apps` and `db`. Two things followed from the missing
@@ -13,6 +13,9 @@ image copied only `brain`, `apps` and `db`. Two things followed from the missing
 
 The two configs therefore deployed materially different systems, and the one the
 repository called canonical was the one that could not serve.
+
+Fly is held to the same invariants: same Dockerfile, bridged entrypoint, `/ready`,
+and a release/migrate step capped at the pre-tenant ceiling.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-#: The ASGI target every Railway API entrypoint must run. It is
+#: The ASGI target every API entrypoint must run. It is
 #: apps.api.tenant_app's own app object wrapped in the OIDC bridge -- not a
 #: second application -- which is what test_railway_api_entrypoint_is_the_bridged_tenant_app proves.
 API_ENTRYPOINT = "tools.live_cockpit_routes:app"
@@ -38,6 +41,10 @@ WORKER_ENTRYPOINT = "apps.worker.main"
 #: together, which is the exact drift this module exists to catch.
 API_DOCKERFILE = "Dockerfile"
 API_HEALTHCHECK_PATH = "/ready"
+
+#: Production pre-tenant migration ceiling (#170). Railway brain-api-live and Fly
+#: release_command must not attempt gated tenant migrations 019+ on ordinary deploys.
+PRETENANT_MAX_VERSION = "18"
 
 
 def _dockerfile_copies(dockerfile: Path) -> set[str]:
@@ -74,6 +81,10 @@ def _load(config: Path) -> dict:
     return tomllib.loads(config.read_text(encoding="utf-8"))
 
 
+def _load_fly() -> dict:
+    return tomllib.loads((REPO_ROOT / "fly.toml").read_text(encoding="utf-8"))
+
+
 API_CONFIGS = [p for p in _railway_configs() if "worker" not in p.name]
 
 
@@ -101,6 +112,11 @@ def test_api_configs_apply_migrations_on_deploy(config: Path):
     assert any("apply_migrations.py" in part for part in command), (
         f"{config.name} deploys without applying migrations"
     )
+
+
+def test_brain_api_live_caps_migrations_at_pretenant_ceiling():
+    command = " ".join(_load(REPO_ROOT / "railway.brain-api-live.toml")["deploy"]["preDeployCommand"])
+    assert f"--max-version {PRETENANT_MAX_VERSION}" in command
 
 
 @pytest.mark.parametrize("config", _railway_configs(), ids=lambda p: p.name)
@@ -165,7 +181,7 @@ def test_fly_runs_the_same_entrypoint_as_railway():
     which is the bare FastAPI object -- no tenant membership/RLS wrapper from
     apps.api.tenant_app and no Vercel OIDC bridge.
     """
-    fly = tomllib.loads((REPO_ROOT / "fly.toml").read_text(encoding="utf-8"))
+    fly = _load_fly()
     assert fly["build"]["dockerfile"] == API_DOCKERFILE
     assert API_ENTRYPOINT in fly["processes"]["app"]
     assert WORKER_ENTRYPOINT in fly["processes"]["worker"]
@@ -179,6 +195,22 @@ def test_fly_runs_the_same_entrypoint_as_railway():
         "the worker exposes no HTTP port; attaching it to the service would "
         "route traffic at a process that cannot answer"
     )
+
+
+def test_fly_applies_pretenant_migrations_on_release():
+    """Ordinary Fly deploys must not run gated tenant migrations 019+."""
+    fly = _load_fly()
+    release = fly["deploy"]["release_command"]
+    assert "apply_migrations.py" in release
+    assert f"--max-version {PRETENANT_MAX_VERSION}" in release
+    # release_command runs inside the built image; tools/ must be present.
+    assert "tools" in _dockerfile_copies(REPO_ROOT / API_DOCKERFILE)
+
+
+def test_fly_worker_is_not_on_the_http_service():
+    fly = _load_fly()
+    assert "worker" in fly["processes"]
+    assert "worker" not in fly["http_service"]["processes"]
 
 
 def test_worker_config_targets_the_worker_image():

@@ -1,18 +1,31 @@
 app = 'brain-api'
 primary_region = 'yyz'
 
+# Canonical API+worker host alternative to Railway.
+# Same image and entrypoint as railway.toml / railway.brain-api-live.toml:
+# Dockerfile → tools.live_cockpit_routes:app (tenant_app + Vercel OIDC bridge).
+# Postgres remains external (Supabase). Observatory remains on Vercel.
+
 [build]
   dockerfile = 'Dockerfile'
+
+[deploy]
+  # Match brain-api-live pre-tenant ceiling (#170). After the explicit tenant/RLS
+  # release applies 019+, remove --max-version 18 so Fly applies the full ledger.
+  release_command = 'python tools/apply_migrations.py --max-version 18'
 
 [env]
   BRAIN_ENV = 'production'
   BRAIN_EXTERNAL_ACTIONS_ENABLED = 'false'
+  # Inline cognition remains available if worker count is 0; prefer scaling the
+  # worker process so ingest/maintenance run on the intended host (#168).
+  BRAIN_INLINE_COGNITION = 'true'
+  BRAIN_TENANT_MODE = 'disabled'
 
 [processes]
-  # Same entrypoint as every Railway path: apps.api.tenant_app wrapped in the
-  # Vercel OIDC bridge. Naming apps.api.main here bypassed the tenant
-  # membership/RLS boundary and the deployment-identity bridge alike.
+  # HTTP surface: bridged tenant app (not bare apps.api.main).
   app = 'sh -c "python -m uvicorn tools.live_cockpit_routes:app --host 0.0.0.0 --port ${PORT:-8000}"'
+  # Cognition host: same image carries apps.worker; scale independently.
   worker = 'python -m apps.worker.main'
 
 [http_service]
@@ -26,7 +39,7 @@ primary_region = 'yyz'
   [[http_service.checks]]
     interval = '30s'
     timeout = '5s'
-    grace_period = '20s'
+    grace_period = '25s'
     method = 'GET'
     path = '/ready'
 
@@ -34,3 +47,10 @@ primary_region = 'yyz'
   memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
+  processes = ['app']
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  processes = ['worker']
