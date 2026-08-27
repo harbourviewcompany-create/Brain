@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import logging
+
 import apps.api.tenant_app as tenant_api
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -11,9 +14,16 @@ from tools.live_cockpit_routes import (
     VercelOidcAuthBridge,
     _DEFAULT_OBSERVATORY_TENANT_ID,
 )
+from tools.vercel_oidc import VercelOidcConfig
 
 
 class _AllowVerifier:
+    config = VercelOidcConfig(
+        team_slug="harbourviewcompany-create",
+        project="brain",
+        environment="production",
+    )
+
     def verify(self, token: str):
         return token == "valid-vercel-token", "ok"
 
@@ -92,6 +102,38 @@ def test_verified_oidc_uses_durable_membership_and_strips_spoofed_headers(monkey
     assert body["spoofed_roles"] is None
     assert body["spoofed_service"] is None
     assert active_tenant_context() is None
+
+
+def test_verified_oidc_logs_only_non_secret_verified_identity(monkeypatch, caplog):
+    bridge = _bridge_with_probe(monkeypatch, _OperatorResolver())
+
+    with caplog.at_level(logging.INFO, logger="tools.live_cockpit_routes"):
+        response = TestClient(bridge).get(
+            "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+        )
+
+    assert response.status_code == 200
+    accepted = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "tools.live_cockpit_routes"
+        and record.getMessage().startswith("{")
+        and json.loads(record.getMessage()).get("event") == "vercel_oidc_auth_accepted"
+    ]
+    assert accepted == [
+        {
+            "audience": "https://vercel.com/harbourviewcompany-create",
+            "environment": "production",
+            "event": "vercel_oidc_auth_accepted",
+            "project": "brain",
+            "subject": (
+                "owner:harbourviewcompany-create:project:brain:environment:production"
+            ),
+            "team_slug": "harbourviewcompany-create",
+        }
+    ]
+    assert "valid-vercel-token" not in caplog.text
+    assert "local-server-key" not in caplog.text
 
 
 def test_verified_oidc_requires_durable_observatory_membership(monkeypatch):
