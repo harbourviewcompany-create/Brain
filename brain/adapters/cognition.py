@@ -73,6 +73,33 @@ class PostgresSensoryInbox:
             """, ("pending" if retry else "failed", error[:4000], retry, inbox_id))
             conn.commit()
 
+    def pending_count(self) -> int:
+        return self.stats()["pending"]
+
+    def stats(self) -> dict[str, int]:
+        """Return the same queue-health contract as InMemorySensoryInbox."""
+        counts = {
+            "pending": 0,
+            "processing": 0,
+            "completed": 0,
+            "failed": 0,
+            "total": 0,
+        }
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""
+                select status, count(*)::bigint as count
+                from public.sensory_inbox
+                group by status
+            """)
+            rows = cur.fetchall()
+        for row in rows:
+            status = str(row["status"])
+            count = int(row["count"])
+            if status in counts:
+                counts[status] = count
+            counts["total"] += count
+        return counts
+
 
 class CognitiveCycleRunStore:
     def __init__(self, pool: ConnectionPool) -> None:
