@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify production BFF reads and Railway auth boundary
+      - name: Verify all production BFF reads and Railway auth boundary
         shell: bash
         env:
           OBSERVATORY_ACCESS_KEY: ${{ secrets.OBSERVATORY_ACCESS_KEY }}
@@ -32,6 +32,7 @@ jobs:
           set -euo pipefail
           app="${{ inputs.app_base_url }}"
           brain="https://brain-api-live-production.up.railway.app"
+          mkdir -p /tmp/brain-bff-envelopes evidence
 
           # The Observatory requires a signed operator session on every route,
           # so these probes must sign in first. `curl --fail` exits on the first
@@ -49,10 +50,38 @@ jobs:
             -c /tmp/operator-cookies.txt -o /dev/null
           auth=(--cookie /tmp/operator-cookies.txt)
 
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/health" -o /tmp/health.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/signals" -o /tmp/signals.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/organism/cockpit" -o /tmp/organism.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/edges" -o /tmp/edges.json
+          routes=(
+            health
+            signals
+            edges
+            beliefs
+            predictions
+            contradictions
+            opportunities
+            curiosity
+            sources
+            outcomes
+            approvals
+            runner/status
+            organism/cockpit
+            organism/self-state
+            organism/curiosity
+            organism/agency-actions
+            organism/quarantine
+            organism/persistence/status
+          )
+          for route in "${routes[@]}"; do
+            slug="${route//\//__}"
+            code=$(curl --retry 4 --retry-all-errors --retry-delay 2 \
+              --silent --show-error -o "/tmp/brain-bff-envelopes/${slug}.json" \
+              -w '%{http_code}' "${auth[@]}" "$app/api/brain/$route")
+            test "$code" = "200" || {
+              echo "BFF $route returned $code" >&2
+              cat "/tmp/brain-bff-envelopes/${slug}.json" >&2 || true
+              exit 1
+            }
+            printf '%s 200\n' "$route"
+          done
 
           railway_health=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-health.json -w '%{http_code}' "$brain/health")
           railway_edges=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-edges.json -w '%{http_code}' "$brain/edges")
@@ -63,10 +92,64 @@ jobs:
 
           node - <<'NODE'
           const fs = require('fs');
-          const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
-          const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
-          const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
-          const edges = JSON.parse(fs.readFileSync('/tmp/edges.json','utf8'));
+          const routes = [
+            'health',
+            'signals',
+            'edges',
+            'beliefs',
+            'predictions',
+            'contradictions',
+            'opportunities',
+            'curiosity',
+            'sources',
+            'outcomes',
+            'approvals',
+            'runner/status',
+            'organism/cockpit',
+            'organism/self-state',
+            'organism/curiosity',
+            'organism/agency-actions',
+            'organism/quarantine',
+            'organism/persistence/status',
+          ];
+          const read = route => JSON.parse(fs.readFileSync(
+            `/tmp/brain-bff-envelopes/${route.replaceAll('/', '__')}.json`,
+            'utf8'
+          ));
+          const envelopes = routes.map(route => {
+            const payload = read(route);
+            if (payload && typeof payload === 'object' && typeof payload.detail === 'string') {
+              throw new Error(`${route} returned error envelope detail=${payload.detail}`);
+            }
+            const descriptor = {
+              route,
+              http_status: 200,
+              type: Array.isArray(payload) ? 'array' : typeof payload,
+            };
+            if (Array.isArray(payload)) {
+              descriptor.length = payload.length;
+            } else if (payload && typeof payload === 'object') {
+              descriptor.keys = Object.keys(payload).sort();
+              descriptor.array_lengths = Object.fromEntries(
+                Object.entries(payload)
+                  .filter(([, value]) => Array.isArray(value))
+                  .map(([key, value]) => [key, value.length])
+              );
+              for (const key of ['status', 'database', 'persistence', 'total', 'version']) {
+                const value = payload[key];
+                if (['string', 'number', 'boolean'].includes(typeof value)) {
+                  descriptor[key] = value;
+                }
+              }
+            }
+            return descriptor;
+          });
+          if (envelopes.length !== 18) throw new Error(`expected 18 envelopes, got ${envelopes.length}`);
+
+          const health = read('health');
+          const signals = read('signals');
+          const organism = read('organism/cockpit');
+          const edges = read('edges');
           const railwayEdges = JSON.parse(fs.readFileSync('/tmp/railway-edges.json','utf8'));
           const railwaySignals = JSON.parse(fs.readFileSync('/tmp/railway-signals.json','utf8'));
           if (health.status !== 'ok') throw new Error(`health=${health.status}`);
@@ -78,13 +161,28 @@ jobs:
           if (edges.total !== edges.items.length) throw new Error(`edge total mismatch ${edges.total} != ${edges.items.length}`);
           if (railwayEdges.detail !== 'invalid_or_missing_api_key') throw new Error(`Railway edges auth=${JSON.stringify(railwayEdges)}`);
           if (railwaySignals.detail !== 'invalid_or_missing_api_key') throw new Error(`Railway signals auth=${JSON.stringify(railwaySignals)}`);
-          console.log(JSON.stringify({
-            health: {status: health.status, version: health.version, database: health.database, persistence: health.persistence},
-            signal_count: signals.items.length,
-            edge_count: edges.items.length,
-            organism_keys: Object.keys(organism).sort(),
-            railway_direct: {health: 200, edges: 401, signals: 401}
-          }, null, 2));
+
+          const evidence = {
+            bff: {
+              authenticated_surface_count: envelopes.length,
+              envelopes,
+              health: {
+                status: health.status,
+                version: health.version,
+                database: health.database,
+                persistence: health.persistence,
+              },
+            },
+            railway_direct: {
+              health: 200,
+              edges: 401,
+              signals: 401,
+              edges_detail: railwayEdges.detail,
+              signals_detail: railwaySignals.detail,
+            },
+          };
+          fs.writeFileSync('evidence/bff-envelope-summary.json', JSON.stringify(evidence, null, 2));
+          console.log(JSON.stringify(evidence, null, 2));
           NODE
 
       - name: Install browser
@@ -181,9 +279,12 @@ jobs:
           NODE
 
       - name: Upload verification evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: observatory-edges-production-evidence
-          path: apps/observatory/evidence/*
+          path: |
+            evidence/*
+            apps/observatory/evidence/*
           if-no-files-found: error
           retention-days: 7

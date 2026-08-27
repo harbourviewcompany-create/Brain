@@ -39,11 +39,12 @@ jobs:
       - name: Install
         run: pip install -c constraints.txt -e '.[dev]'
 
-      - name: Focused OIDC and Observatory bridge tests
+      - name: Focused OIDC, Observatory and Railway deployment-contract tests
         run: |
           pytest -q \
             tests/test_pr126_release_integration.py \
             tests/test_live_cockpit_signals.py \
+            tests/test_railway_deploy_contract.py \
             | tee evidence/focused-tests.txt
 
       - name: Start clean PostgreSQL with split roles

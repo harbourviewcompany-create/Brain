@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-import logging
 import os
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -9,6 +8,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from fastapi.responses import JSONResponse
 
 import apps.api.tenant_app as tenant_api
+from brain.logging_config import get_logger
 from brain.tenant_auth import TenantRole
 from brain.tenant_context import TenantScopeViolation, trusted_tenant_context
 from brain.tenant_runtime import tenant_context_scope
@@ -23,7 +23,7 @@ app = tenant_api.app
 runtime = brain_api.runtime
 _learning_store = brain_api._learning_store
 
-_logger = logging.getLogger(__name__)
+_logger = get_logger("brain.vercel_oidc_auth")
 
 # This identifier is inert unless the explicit Observatory compatibility release
 # SQL has created the tenant + durable membership. Canonical migrations 019-022
@@ -102,6 +102,7 @@ class VercelOidcAuthBridge:
     def __init__(self, inner_app) -> None:
         self.inner_app = inner_app
         self.verifier = VercelOidcVerifier.from_env()
+        self._verified_identity_logged = False
 
     @staticmethod
     def _translated_scope(scope, headers, local_key: str):
@@ -121,6 +122,24 @@ class VercelOidcAuthBridge:
             (name, value) for name, value in headers if name.lower() not in blocked
         ] + [(b"x-brain-api-key", local_key.encode("utf-8"))]
         return translated
+
+    def _log_verified_identity(self) -> None:
+        """Audit once per process the non-secret identity contract the token matched."""
+        if self._verified_identity_logged:
+            return
+        config = self.verifier.config
+        _logger.info(
+            "vercel_oidc_auth_accepted",
+            extra={
+                "event": "vercel_oidc_auth_accepted",
+                "team_slug": config.team_slug,
+                "project": config.project,
+                "environment": config.environment,
+                "subject": config.subject,
+                "audience": config.audience,
+            },
+        )
+        self._verified_identity_logged = True
 
     async def __call__(self, scope, receive, send) -> None:
         if scope.get("type") != "http":
@@ -150,6 +169,7 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
+                self._log_verified_identity()
                 translated_scope = self._translated_scope(scope, headers, local_key)
 
                 # Explicit compatibility path for the pre-tenant production

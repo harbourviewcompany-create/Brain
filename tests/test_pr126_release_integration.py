@@ -7,13 +7,21 @@ from fastapi.testclient import TestClient
 from brain.tenant_auth import TenantRole
 from brain.tenant_context import TenantScopeViolation, trusted_tenant_context
 from brain.tenant_runtime import active_tenant_context
+import tools.live_cockpit_routes as live_cockpit_routes
 from tools.live_cockpit_routes import (
     VercelOidcAuthBridge,
     _DEFAULT_OBSERVATORY_TENANT_ID,
 )
+from tools.vercel_oidc import VercelOidcConfig
 
 
 class _AllowVerifier:
+    config = VercelOidcConfig(
+        team_slug="harbourviewcompany-create",
+        project="brain",
+        environment="production",
+    )
+
     def verify(self, token: str):
         return token == "valid-vercel-token", "ok"
 
@@ -92,6 +100,48 @@ def test_verified_oidc_uses_durable_membership_and_strips_spoofed_headers(monkey
     assert body["spoofed_roles"] is None
     assert body["spoofed_service"] is None
     assert active_tenant_context() is None
+
+
+def test_verified_oidc_logs_only_non_secret_verified_identity_once(monkeypatch):
+    bridge = _bridge_with_probe(monkeypatch, _OperatorResolver())
+    client = TestClient(bridge)
+    calls: list[tuple[str, dict]] = []
+
+    def capture_info(message, *args, **kwargs):
+        calls.append((str(message), kwargs))
+
+    monkeypatch.setattr(live_cockpit_routes._logger, "info", capture_info)
+
+    first = client.get(
+        "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+    )
+    second = client.get(
+        "/probe", headers={"Authorization": "Bearer valid-vercel-token"}
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert live_cockpit_routes._logger.name == "brain.vercel_oidc_auth"
+    assert calls == [
+        (
+            "vercel_oidc_auth_accepted",
+            {
+                "extra": {
+                    "audience": "https://vercel.com/harbourviewcompany-create",
+                    "environment": "production",
+                    "event": "vercel_oidc_auth_accepted",
+                    "project": "brain",
+                    "subject": (
+                        "owner:harbourviewcompany-create:project:brain:environment:production"
+                    ),
+                    "team_slug": "harbourviewcompany-create",
+                }
+            },
+        )
+    ]
+    serialized = repr(calls)
+    assert "valid-vercel-token" not in serialized
+    assert "local-server-key" not in serialized
 
 
 def test_verified_oidc_requires_durable_observatory_membership(monkeypatch):
