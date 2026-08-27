@@ -30,6 +30,7 @@ _logger = logging.getLogger(__name__)
 # deliberately leave pre-tenant NULL ownership quarantined.
 _DEFAULT_OBSERVATORY_TENANT_ID = UUID("7d4427c4-8b8d-4f4a-9f75-b46cedc2f126")
 _OBSERVATORY_ACTOR_ID = "brain-observatory-bff"
+_LEGACY_OIDC_BRIDGE_ENV = "BRAIN_OBSERVATORY_LEGACY_OIDC_BRIDGE"
 
 
 def _observatory_identity_context():
@@ -43,6 +44,24 @@ def _observatory_identity_context():
         actor_id=_OBSERVATORY_ACTOR_ID,
         roles=(),
     )
+
+
+def _legacy_oidc_bridge_enabled() -> bool:
+    """Allow verified deployment identity to bridge legacy single-tenant reads.
+
+    This is an explicit compatibility switch for deployments that have not yet
+    released tenant migrations/membership. It is deliberately ineffective once
+    tenant mode is enabled, so the durable membership boundary remains the only
+    OIDC path in tenant-aware production.
+    """
+
+    enabled = (os.environ.get(_LEGACY_OIDC_BRIDGE_ENV) or "").strip().lower()
+    return tenant_api.tenant_security.mode == "disabled" and enabled in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _iso(value: Any | None) -> str:
@@ -68,12 +87,11 @@ def _stable_uuid(namespace: str, key: str) -> str:
 class VercelOidcAuthBridge:
     """Railway deployment-identity bridge with tenant-aware escalation.
 
-    A verified Vercel deployment token is exchanged for the local API key. When
-    tenant mode is disabled, that is the complete authentication boundary: the
-    canonical app intentionally has no tenant membership requirement in this
-    mode, so the bridge must not invent one. When tenant mode is enabled, the
-    verified deployment identity is additionally bound to the durable
-    Observatory tenant membership before the request runs.
+    A verified Vercel deployment token is exchanged for the local API key. By
+    default it is additionally bound to the durable Observatory tenant
+    membership. Legacy single-tenant production may explicitly opt into a
+    verified-deployment compatibility bridge while tenant mode remains disabled;
+    that switch is ignored as soon as tenant mode is enabled.
 
     Neither API key, tenant, role, nor service context is accepted from
     untrusted request headers through this bridge. Canonical legacy ownership
@@ -134,12 +152,12 @@ class VercelOidcAuthBridge:
 
                 translated_scope = self._translated_scope(scope, headers, local_key)
 
-                # Legacy/single-tenant production explicitly disables the tenant
-                # membership boundary in apps.api.tenant_app. A verified Vercel
-                # deployment identity is therefore sufficient here as well. This
-                # also removes the fragile requirement that Vercel and Railway
-                # share a second static API-key value for Observatory reads.
-                if tenant_api.tenant_security.mode == "disabled":
+                # Explicit compatibility path for the pre-tenant production
+                # deployment. Verification of Vercel issuer/audience/subject has
+                # already succeeded. The switch cannot weaken tenant-aware mode:
+                # _legacy_oidc_bridge_enabled() returns false unless tenant mode
+                # is disabled.
+                if _legacy_oidc_bridge_enabled():
                     await self.inner_app(translated_scope, receive, send)
                     return
 
