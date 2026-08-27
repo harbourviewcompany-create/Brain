@@ -418,6 +418,23 @@ class RevenueExecutionSpine:
     ) -> tuple[ScoredOpportunity, PackagedOffer, RevenueExecutionAction]:
         scored = self.money.score_signal(signal)
         offer = self.money.package_offer(signal, scored)
+        action = self.queue_action_from_scored(signal, scored, offer, action_type=action_type)
+        return scored, offer, action
+
+    def queue_action_from_scored(
+        self,
+        signal: RevenueSignal,
+        scored: ScoredOpportunity,
+        offer: PackagedOffer,
+        *,
+        action_type: str = "outreach_draft",
+    ) -> RevenueExecutionAction:
+        """Queue an action from an already-scored, already-packaged offer.
+
+        Lets callers (e.g. the ingest pipeline) check ``scored.actionable``
+        themselves before packaging/queueing, instead of relying on
+        ``package_offer`` raising for non-actionable signals.
+        """
         action = RevenueExecutionAction(
             opportunity_id=scored.id,
             offer_id=offer.id,
@@ -429,7 +446,7 @@ class RevenueExecutionSpine:
             evidence_refs=list(offer.evidence_refs),
         )
         self.actions[action.id] = action
-        return scored, offer, action
+        return action
 
     def approve_action(self, action_id: UUID, *, approved_by: str) -> RevenueExecutionAction:
         action = self.actions[action_id]

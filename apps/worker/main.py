@@ -80,17 +80,21 @@ def build_runner(*, enable_endogenous: bool = True) -> Any:
     return runner
 
 
-def build_ingest_service(*, inbox: Any | None = None, event_store: Any | None = None) -> Any:
+def build_ingest_service(
+    *, inbox: Any | None = None, event_store: Any | None = None, revenue: Any | None = None
+) -> Any:
     from brain.connectors.http_json import HttpJsonConnector
     from brain.connectors.rss import RssConnector
     from brain.connectors.service import IngestService
     from brain.memory import InMemoryBrainStore
+    from brain.money_spine import RevenueExecutionSpine
     from brain.sensory_inbox import InMemorySensoryInbox
 
     svc = IngestService(
         inbox=inbox or InMemorySensoryInbox(),
         event_store=event_store or InMemoryBrainStore(),
         connectors=[RssConnector(), HttpJsonConnector()],
+        revenue=revenue if revenue is not None else RevenueExecutionSpine(),
     )
     raw = os.environ.get("BRAIN_RSS_SOURCES") or ""
     for part in raw.split(","):

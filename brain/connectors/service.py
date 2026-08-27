@@ -10,6 +10,7 @@ from .protocol import (
     AccessDisposition, ConnectorKind, ConnectorSource, FetchResult, FetchStatus,
     InboxEnqueuer, RawObservationItem, SourceConnector, utcnow,
 )
+from .revenue_adapter import revenue_signal_from_observation
 from .rss import RssConnector
 from .store import InMemoryConnectorRegistry
 
@@ -21,6 +22,7 @@ class IngestItemResult:
     enqueued: bool
     deduped: bool
     inbox_id: str | None = None
+    revenue_action_id: str | None = None
 
 @dataclass(slots=True)
 class IngestSourceResult:
@@ -66,7 +68,8 @@ class IngestService:
                  inbox: InboxEnqueuer | None = None, event_store: Any | None = None,
                  connectors: list[SourceConnector] | None = None, *,
                  max_sources_per_tick: int = 10, max_enqueue_per_source: int = 25,
-                 default_source_reliability: float = 0.65) -> None:
+                 default_source_reliability: float = 0.65,
+                 revenue: Any | None = None) -> None:
         self.registry = registry or InMemoryConnectorRegistry()
         self.inbox = inbox
         self.event_store = event_store
@@ -74,6 +77,11 @@ class IngestService:
         self.max_sources_per_tick = max(1, max_sources_per_tick)
         self.max_enqueue_per_source = max(1, max_enqueue_per_source)
         self.default_source_reliability = default_source_reliability
+        # Optional RevenueExecutionSpine. When set, every ingested item is
+        # also run through the revenue adapter; a queued action is always
+        # created in APPROVAL_REQUIRED state — ingestion can propose a
+        # candidate revenue action, it can never approve or execute one.
+        self.revenue = revenue
         self._runs: list[IngestBatchResult] = []
 
     def register_source(self, source: ConnectorSource) -> ConnectorSource:
@@ -185,11 +193,55 @@ class IngestService:
         }
         try:
             enqueued = self.inbox.enqueue(source_key=source.source_key, content=item.content, claim=item.claim, payload=payload)
+            revenue_action_id = self._maybe_queue_revenue_action(source, item)
             return IngestItemResult(source_key=source.source_key, item_id=item.item_id,
-                content_hash=item.content_hash, enqueued=True, deduped=False, inbox_id=str(getattr(enqueued, "id", enqueued)))
+                content_hash=item.content_hash, enqueued=True, deduped=False,
+                inbox_id=str(getattr(enqueued, "id", enqueued)), revenue_action_id=revenue_action_id)
         except Exception:
             return IngestItemResult(source_key=source.source_key, item_id=item.item_id,
                 content_hash=item.content_hash, enqueued=False, deduped=False)
+
+    def _maybe_queue_revenue_action(self, source: ConnectorSource, item: RawObservationItem) -> str | None:
+        """Best-effort: classify the item and queue a draft revenue action.
+
+        Never raises — a classification/queueing failure must not break
+        ingestion of the underlying observation. Always lands the action
+        in APPROVAL_REQUIRED state; nothing here can approve or execute.
+
+        When a lane is inferred but the signal fails NoFantasyFilter (the
+        common case for unenriched automated feeds — no named buyer,
+        seller, or contact channel), no action is queued, but a
+        `revenue.signal_scored` event is emitted with the rejection
+        reasons so the candidate is visible to an operator for
+        enrichment instead of silently disappearing.
+        """
+        if self.revenue is None:
+            return None
+        try:
+            signal = revenue_signal_from_observation(item, source_id=source.source_key)
+            if signal is None:
+                return None
+            scored = self.revenue.money.score_signal(signal)
+            if not scored.actionable:
+                self._emit_scored_signal_event(source, item, scored)
+                return None
+            offer = self.revenue.money.package_offer(signal, scored)
+            action = self.revenue.queue_action_from_scored(signal, scored, offer)
+            return str(action.id)
+        except Exception:
+            return None
+
+    def _emit_scored_signal_event(self, source: ConnectorSource, item: RawObservationItem, scored: Any) -> None:
+        if self.event_store is None or not hasattr(self.event_store, "append"):
+            return
+        try:
+            self.event_store.append(BrainEvent("revenue.signal_scored", "connector", source.id, {
+                "source_key": source.source_key, "item_id": item.item_id,
+                "money_lane_id": scored.lane_id, "score": scored.score,
+                "actionable": scored.actionable, "rejection_reasons": list(scored.rejection_reasons),
+            }))
+        except Exception:
+            pass
 
     def _emit_fetch_event(self, source: ConnectorSource, fetch: FetchResult, *, enqueued: int) -> None:
         if self.event_store is None or not hasattr(self.event_store, "append"):
