@@ -4,7 +4,7 @@ Design principles:
   - Connectors never write beliefs; they only produce observations.
   - Every item carries provenance (URL, retrieved_at, content hash).
   - Legal/access disposition is checked before fetch.
-  - Dedupe is hash-based so repeated polls are cheap and safe.
+  - Dedupe is source-scoped: independent sources may corroborate identical content.
   - Failures are typed and recorded for backoff / health.
 """
 
@@ -111,6 +111,18 @@ class RawObservationItem:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(slots=True, frozen=True)
+class ConnectorObservationReceipt:
+    """Persistence/dedupe result for one fetched item.
+
+    `is_new` is source-scoped. Two independent sources carrying the same content
+    hash are therefore two observations, preserving corroborating provenance.
+    """
+
+    is_new: bool
+    observation_id: UUID | None = None
+
+
 @dataclass(slots=True)
 class FetchResult:
     source_key: str
@@ -148,6 +160,15 @@ class ConnectorRegistry(Protocol):
     def due_sources(self, now: datetime | None = None) -> list[ConnectorSource]: ...
 
     def mark_fetch(self, source_key: str, *, success: bool) -> None: ...
+
+    def record_fetched_item(
+        self,
+        source: ConnectorSource,
+        item: RawObservationItem,
+        *,
+        retrieved_at: datetime,
+        ingestion_run_id: UUID | None = None,
+    ) -> ConnectorObservationReceipt: ...
 
 
 class InboxEnqueuer(Protocol):
