@@ -4,19 +4,18 @@
 
 Brain Control Plane — operator UI and server-side BFF for the Brain cognitive runtime (Next.js).
 
-Vercel project: `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`) — the only Vercel project for
-this repository. Its domains are `brain-harbourview.vercel.app`,
-`brain-seven-puce.vercel.app` and `brain-git-main-harbourview.vercel.app`.
+Vercel project: `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`) — the canonical Vercel project for this repository.
 
-> The project currently builds from the repository root, where `vercel.json` routes every
-> path to the static `index.html`, so this app is not yet served in production. See
-> [`docs/observatory/PRODUCTION_WIRING.md`](../../docs/observatory/PRODUCTION_WIRING.md).
-> The former `thebrain-sandy.vercel.app` belonged to a separate, pre-consolidation project
-> and no longer resolves.
+Canonical production URL: `https://brain-seven-puce.vercel.app`.
+Additional production aliases are `https://brain-harbourview.vercel.app` and `https://brain-git-main-harbourview.vercel.app`.
+
+Vercel production deploys `harbourviewcompany-create/Brain` from `main` with Root Directory `apps/observatory`. The obsolete repository-root static placeholder is not part of production.
+
+> The former `thebrain-sandy.vercel.app` belonged to a separate, pre-consolidation project and is not production authority.
 
 ## Production wiring authority
 
-The canonical Brain ↔ control-plane production ownership, authentication, environment, deployment and verification record is [`docs/PRODUCTION_WIRING.md`](docs/PRODUCTION_WIRING.md).
+The canonical Brain ↔ control-plane production ownership, authentication, environment, deployment and verification record is [`docs/observatory/PRODUCTION_WIRING.md`](../../docs/observatory/PRODUCTION_WIRING.md).
 
 ## Security model
 
@@ -60,7 +59,8 @@ npm run dev
 
 ## Vercel
 
-1. Set `BRAIN_API_URL` to the production Railway runtime.
-2. Configure `BRAIN_API_KEY` only when the server-only fallback path is intentionally required.
-3. Redeploy.
-4. Confirm the TopBar reports the API live and the browser continues to use `/api/brain`.
+1. Keep the Vercel project linked to `harbourviewcompany-create/Brain` on `main` with Root Directory `apps/observatory`.
+2. Set `BRAIN_API_URL` to the production Railway runtime.
+3. Configure `BRAIN_API_KEY` only when the server-only fallback path is intentionally required.
+4. Redeploy.
+5. Confirm the TopBar reports the API live and the browser continues to use `/api/brain`.

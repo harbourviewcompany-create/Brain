@@ -4,43 +4,39 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+OBSERVATORY = ROOT / "apps" / "observatory"
+PRODUCTION_WIRING = ROOT / "docs" / "observatory" / "PRODUCTION_WIRING.md"
 
 
-def test_root_frontend_exists_and_identifies_brain() -> None:
-    html = (ROOT / "index.html").read_text(encoding="utf-8")
-
-    assert "The Brain" in html
-    assert "Revenue intelligence runtime" in html
-    assert "Frontend route active" in html
-    assert "external actions without approval" in html
+def test_legacy_root_vercel_placeholder_is_not_deployment_authority() -> None:
+    assert not (ROOT / "index.html").exists()
+    assert not (ROOT / "vercel.json").exists()
 
 
-def test_vercel_routes_all_paths_to_root_frontend() -> None:
-    config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
+def test_observatory_is_the_canonical_nextjs_vercel_app() -> None:
+    package = json.loads((OBSERVATORY / "package.json").read_text(encoding="utf-8"))
+    config = json.loads((OBSERVATORY / "vercel.json").read_text(encoding="utf-8"))
 
-    assert config["version"] == 2
-    assert config["builds"] == [{"src": "index.html", "use": "@vercel/static"}]
-    assert {"src": "/(.*)", "dest": "/index.html"} in config["routes"]
-
-
-def test_vercel_headers_cache_at_the_edge_and_harden_the_static_page() -> None:
-    config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
-    headers = {
-        entry["key"]: entry["value"]
-        for entry in config["headers"][0]["headers"]
-    }
-
-    assert "s-maxage=300" in headers["Cache-Control"]
-    assert "stale-while-revalidate" in headers["Cache-Control"]
-    assert headers["X-Content-Type-Options"] == "nosniff"
-    assert headers["X-Frame-Options"] == "DENY"
-    assert "Content-Security-Policy" in headers
-    assert "default-src 'self'" in headers["Content-Security-Policy"]
+    assert package["name"] == "brain-observatory"
+    assert package["scripts"]["build"] == "next build"
+    assert config["framework"] == "nextjs"
+    assert config["buildCommand"] == "npm run build"
+    assert config["outputDirectory"] == ".next"
 
 
-def test_index_html_has_favicon_and_social_preview_tags() -> None:
-    html = (ROOT / "index.html").read_text(encoding="utf-8")
+def test_production_wiring_names_canonical_frontend_and_api() -> None:
+    wiring = PRODUCTION_WIRING.read_text(encoding="utf-8")
 
-    assert 'rel="icon"' in html
-    assert 'property="og:title"' in html
-    assert 'name="twitter:card"' in html
+    assert "https://brain-seven-puce.vercel.app" in wiring
+    assert "https://brain-api-live-production.up.railway.app" in wiring
+    assert "harbourviewcompany-create/Brain" in wiring
+    assert "apps/observatory" in wiring
+
+
+def test_observatory_readme_matches_live_production_wiring() -> None:
+    readme = (OBSERVATORY / "README.md").read_text(encoding="utf-8")
+
+    assert "https://brain-seven-puce.vercel.app" in readme
+    assert "Root Directory `apps/observatory`" in readme
+    assert "https://brain-api-live-production.up.railway.app" in readme
+    assert "project currently builds from the repository root" not in readme
