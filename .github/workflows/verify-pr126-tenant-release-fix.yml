@@ -126,7 +126,7 @@ jobs:
           DATABASE_URL: postgresql://brain_api_ci:api@127.0.0.1:55432/brain
           BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:worker@127.0.0.1:55432/brain
         run: |
-          python tools/verify_tenant_rls_release.py \
+          python tools/verify_tenant_rls_release.py --max-version 22 \
             | tee evidence/strategy-a-quarantine.txt
           grep -q 'non-owner runtime role and two-tenant isolation verification passed' \
             evidence/strategy-a-quarantine.txt
