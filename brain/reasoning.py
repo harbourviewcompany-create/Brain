@@ -114,8 +114,8 @@ class HttpLLMReasoner:
             "You must NOT invent, infer, or guess any name, contact detail, pain, urgency, or payment path that is not explicitly supported by the source text. "
             "Respond with ONLY a JSON object, no prose and no markdown fences. "
             "Allowed keys: named_buyer, named_seller, decision_maker, visible_pain, urgency_reason, payment_path, contact_channel. "
-            "Each present key must be an object with exactly: {\"value\": <concise extracted value>, \"confidence\": <number 0.0-1.0>, \"evidence_quote\": <short verbatim quote copied from the source that directly supports the value>}. "
-            "The evidence_quote is mandatory and must be copied verbatim from the source. Omit any key without a direct supporting quote. "
+            "Each present key must be an object with exactly: {\"value\": <verbatim value copied from the source>, \"confidence\": <number 0.0-1.0>, \"evidence_quote\": <short verbatim quote copied from the source that contains that exact value>}. "
+            "Both value and evidence_quote are mandatory source spans, and the value must appear inside the evidence_quote. Omit any key without that direct support. "
             "An empty JSON object {} is correct when the source contains no supported commercial facts."
         ),
     }
