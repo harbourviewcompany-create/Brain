@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CognitiveField } from "@/components/observatory/CognitiveField";
 import { CognitionTimeline } from "@/components/observatory/CognitionTimeline";
 import { ObservatoryDock } from "@/components/observatory/ObservatoryDock";
 import { SystemPulse } from "@/components/observatory/SystemPulse";
 import { ThoughtInspector } from "@/components/observatory/ThoughtInspector";
+import { applyDiffToBirths, createBirthMap, type BirthMap } from "@/field/births";
+import { diffScene, type FieldDiff } from "@/field/diffScene";
+import { flaresFromErrors } from "@/field/flares";
 import { useBrainObservatory } from "@/hooks/useBrainObservatory";
 import { buildCognitiveScene } from "@/lib/observatory";
 import type { CognitiveScene } from "@/types/observatory";
@@ -66,9 +69,44 @@ export function BrainObservatory() {
   const { snapshot, history, loading } = useBrainObservatory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
+  const [births, setBirths] = useState<BirthMap>(() => createBirthMap());
+  const previousSceneRef = useRef<CognitiveScene | null>(null);
+  const lastDiffRef = useRef<FieldDiff>({
+    added: [],
+    removed: [],
+    updated: [],
+    cameraHintId: null,
+  });
+
   const displayedSnapshot = scrubIndex === null ? snapshot : history[scrubIndex] ?? snapshot;
-  const scene = useMemo(() => (displayedSnapshot ? buildCognitiveScene(displayedSnapshot) : EMPTY_SCENE), [displayedSnapshot]);
+  const scene = useMemo(
+    () => (displayedSnapshot ? buildCognitiveScene(displayedSnapshot) : EMPTY_SCENE),
+    [displayedSnapshot],
+  );
+
+  useEffect(() => {
+    const nextDiff = diffScene(previousSceneRef.current, scene);
+    lastDiffRef.current = nextDiff;
+    setBirths((current) => applyDiffToBirths(current, nextDiff));
+    previousSceneRef.current = scene;
+  }, [scene]);
+
+  // Scrubbing rebuilds structure from history; reset birth ages so replay still morphs in.
+  useEffect(() => {
+    if (scrubIndex === null) return;
+    const replayDiff = diffScene(null, scene);
+    lastDiffRef.current = replayDiff;
+    setBirths(applyDiffToBirths(createBirthMap(), replayDiff));
+    previousSceneRef.current = scene;
+  }, [scrubIndex]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional scrub boundary
+
+  const flares = useMemo(
+    () => flaresFromErrors(displayedSnapshot?.errors ?? []),
+    [displayedSnapshot?.errors],
+  );
+
   const selectedNode = scene.nodes.find((node) => node.id === selectedId) ?? null;
+  const diff = lastDiffRef.current;
 
   useEffect(() => {
     if (selectedId && !scene.nodes.some((node) => node.id === selectedId)) setSelectedId(null);
@@ -81,11 +119,20 @@ export function BrainObservatory() {
 
       <main className="observatory-stage">
         <section className="observatory-field-shell" aria-label="Live cognitive field">
-          <CognitiveField scene={scene} selectedId={selectedId} onSelect={setSelectedId} />
+          <CognitiveField
+            scene={scene}
+            diff={diff}
+            births={births}
+            flares={flares}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
 
           <div className="field-readout field-readout--left" aria-label="Cognitive field object counts">
-            <span>COGNITIVE</span><strong>{scene.cognitiveCount}</strong>
-            <span className="field-readout__diagnostic">DIAGNOSTIC</span><strong>{scene.diagnosticCount}</strong>
+            <span>COGNITIVE</span>
+            <strong>{scene.cognitiveCount}</strong>
+            <span className="field-readout__diagnostic">DIAGNOSTIC</span>
+            <strong>{scene.diagnosticCount}</strong>
           </div>
           <div className="field-readout field-readout--right" aria-label="Mapped relation count">
             <span>MAPPED RELATIONS</span>
