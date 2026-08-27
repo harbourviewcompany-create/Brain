@@ -185,4 +185,16 @@ Focused source-intelligence verification result: 12 tests passing.
 
 The canonical Next.js Observatory and browser-safe BFF live in `apps/observatory`.
 The application was consolidated from the accidental split repository `harbourviewcompany-create/brain-control-plane` at immutable source `03e3c462ff8f8233033457fc703c418d21200b32`.
-Vercel production must deploy this repository's `main` branch with Root Directory `apps/observatory`; production rewiring is intentionally not performed by the consolidation PR.
+
+Current production wiring:
+
+- Observatory: `https://brain-seven-puce.vercel.app`
+- Vercel project: `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`)
+- Git source: `harbourviewcompany-create/Brain`, branch `main`
+- Vercel Root Directory: `apps/observatory`
+- Brain API: `https://brain-api-live-production.up.railway.app`
+- Railway service: `brain-api-live`
+
+The repository root is not a separate Vercel application. Obsolete root-level static deployment artifacts are not part of production.
+
+See the [Brain ↔ Control Plane Production Wiring](docs/observatory/PRODUCTION_WIRING.md) document for the authoritative deployment, authentication, environment and verification record.
