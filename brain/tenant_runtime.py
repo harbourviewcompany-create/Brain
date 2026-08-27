@@ -4,14 +4,19 @@ import hashlib
 import hmac
 import os
 import time
+from collections import OrderedDict
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from threading import RLock
 from typing import Any, Callable, Generic, Iterator, Mapping, TypeVar
 from uuid import UUID
 
+from .logging_config import get_logger
 from .tenant_auth import TenantRole
 from .tenant_context import TenantContext, TenantScopeViolation, trusted_tenant_context
+
+log = get_logger("tenant_runtime")
 
 T = TypeVar("T")
 
@@ -270,22 +275,109 @@ class PostgresTenantMembershipResolver:
         )
 
 
-class TenantPartitionedFactory(Generic[T]):
-    """Create one mutable service instance per tenant, plus a legacy system partition."""
+#: Partition that serves requests arriving without verified tenant context.
+SYSTEM_PARTITION = "__system__"
 
-    def __init__(self, factory: Callable[[], T]) -> None:
+#: Resident per-tenant instances allowed before the least recently used one is
+#: evicted. Each bundle holds a full in-memory projection of its tenant's belief
+#: graph, so an unbounded map grows with the tenant count for the life of the
+#: process.
+DEFAULT_PARTITION_LIMIT = 64
+
+
+def _partition_limit() -> int:
+    raw = os.environ.get("BRAIN_TENANT_BUNDLE_LIMIT")
+    if not raw:
+        return DEFAULT_PARTITION_LIMIT
+    try:
+        limit = int(raw)
+    except ValueError as exc:
+        raise RuntimeError("BRAIN_TENANT_BUNDLE_LIMIT must be an integer") from exc
+    if limit < 1:
+        raise RuntimeError("BRAIN_TENANT_BUNDLE_LIMIT must be at least 1")
+    return limit
+
+
+class TenantPartitionedFactory(Generic[T]):
+    """One mutable service instance per tenant, bounded and built under a lock.
+
+    Two problems motivated the bookkeeping here. The map was unbounded, so a
+    process accumulated one resident belief-graph projection per tenant it had
+    ever served. And the check-then-set was unsynchronized: FastAPI runs sync
+    route handlers in a threadpool, so two concurrent first-requests for one
+    tenant could each build an instance and silently discard one -- losing every
+    mutation written to the orphan.
+    """
+
+    def __init__(
+        self,
+        factory: Callable[[], T],
+        *,
+        limit: int | None = None,
+        evictable: bool = True,
+    ) -> None:
         self.factory = factory
-        self.instances: dict[str, T] = {}
+        self.evictable = evictable
+        self.limit = limit if limit is not None else _partition_limit()
+        # Ordered by least-recently-used first.
+        self.instances: "OrderedDict[str, T]" = OrderedDict()
+        self._lock = RLock()
 
     def _partition_key(self) -> str:
         context = active_tenant_context()
-        return str(context.tenant_id) if context is not None else "__system__"
+        return str(context.tenant_id) if context is not None else SYSTEM_PARTITION
 
     def current(self) -> T:
         key = self._partition_key()
-        if key not in self.instances:
-            self.instances[key] = self.factory()
-        return self.instances[key]
+        with self._lock:
+            existing = self.instances.get(key)
+            if existing is not None:
+                self.instances.move_to_end(key)
+                return existing
+
+            instance = self.factory()
+            self.instances[key] = instance
+            self._evict_if_needed()
+            return instance
+
+    #: Set on a factory whose instances hold mutable state that is NOT
+    #: reconstructable from the database on rebuild. Such a factory is never
+    #: evicted: dropping it would silently reset the tenant's state.
+    evictable: bool = True
+
+    def _evict_if_needed(self) -> None:
+        """Drop least-recently-used tenants, never the system partition.
+
+        Caller holds the lock. Eviction is only safe when the next request can
+        rebuild an equivalent instance from durable storage. That holds for
+        TenantServiceBundle, whose PostgresBrainStore hydrates from PostgreSQL,
+        and does not hold for CognitiveOrganism, which is constructed empty and
+        is not hydrated from organism_store -- evicting one would reset that
+        tenant's workspace, agency actions and curiosity tasks. Factories in the
+        second category set ``evictable = False`` and grow unbounded instead,
+        which is the safer failure: memory pressure is visible, silently
+        discarded operator state is not.
+        """
+
+        if not self.evictable:
+            return
+
+        while len(self.instances) > self.limit:
+            for key in list(self.instances):
+                if key == SYSTEM_PARTITION:
+                    continue
+                evicted = self.instances.pop(key)
+                closer = getattr(evicted, "close", None)
+                if callable(closer):
+                    try:
+                        closer()
+                    except Exception:
+                        log.exception("evicted tenant instance failed to close", extra={"partition": key})
+                log.info("evicted least recently used tenant partition", extra={"partition": key})
+                break
+            else:
+                # Only the system partition remains; nothing further to evict.
+                return
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self.current(), name)

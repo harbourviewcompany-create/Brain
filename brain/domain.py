@@ -60,6 +60,10 @@ class Belief:
     id: UUID = field(default_factory=uuid4)
     supporting_evidence: set[UUID] = field(default_factory=set)
     contradicting_evidence: set[UUID] = field(default_factory=set)
+    #: Derived, not stored: which distinct assertions (source + claim + stance)
+    #: have already moved this belief's confidence. Stores rebuild it on hydrate
+    #: from the evidence rows they already hold. See brain.beliefs.
+    evidence_fingerprints: set[str] = field(default_factory=set)
     unknowns: list[str] = field(default_factory=list)
     updated_at: datetime = field(default_factory=utcnow)
     version: int = 1

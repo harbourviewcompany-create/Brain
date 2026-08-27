@@ -6,3 +6,7 @@ out
 .env*.local
 *.log
 .DS_Store
+
+# Rewritten by `next build`; tracked copies produce noise diffs on every run.
+next-env.d.ts
+*.tsbuildinfo

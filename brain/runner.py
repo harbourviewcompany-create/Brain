@@ -10,8 +10,11 @@ from uuid import uuid4
 from .cycle import CognitiveCycle, CognitiveStimulus
 from .domain import Outcome
 from .endogenous import ENDOGENOUS_SOURCE_KEY, EndogenousStimulus
+from .logging_config import get_logger
 from .mind_runtime import MindRuntime
 from .prediction import Prediction
+
+log = get_logger("runner")
 
 
 @dataclass(slots=True)
@@ -119,12 +122,12 @@ class ContinuousCognitionRunner:
                 try:
                     self.cycle_runs.save(inbox_id, result)
                 except Exception:
-                    pass
+                    log.exception("cycle run record could not be saved", extra={"inbox_id": str(inbox_id)})
             if inbox_id is not None and hasattr(self.inbox, "complete"):
                 try:
                     self.inbox.complete(inbox_id)
                 except Exception:
-                    pass
+                    log.exception("inbox item could not be completed", extra={"inbox_id": str(inbox_id)})
             self._after_cycle(
                 result,
                 claim=thought.claim,
@@ -133,11 +136,12 @@ class ContinuousCognitionRunner:
             )
             return True
         except Exception:
+            log.exception("endogenous cycle failed", extra={"inbox_id": str(inbox_id)})
             if inbox_id is not None and hasattr(self.inbox, "fail"):
                 try:
                     self.inbox.fail(inbox_id, "endogenous_cycle_failed", retry=False)
                 except Exception:
-                    pass
+                    log.exception("inbox item could not be marked failed", extra={"inbox_id": str(inbox_id)})
             return False
 
     def _after_cycle(self, result: Any, *, claim: str, content: str, source_key: str) -> None:
@@ -153,7 +157,7 @@ class ContinuousCognitionRunner:
                 source_refs=[source_key or ENDOGENOUS_SOURCE_KEY],
             )
         except Exception:
-            pass
+            log.exception("focus broadcast failed", extra={"source_key": source_key})
         if self.auto_predict and self.learning is not None:
             self._emit_prediction(claim=claim, result=result, source_key=source_key)
         self._update_self_model(claim=claim, beliefs=beliefs)
@@ -164,7 +168,7 @@ class ContinuousCognitionRunner:
                 overload_hint=float((self.status_provider() or {}).get("resource_pressure") or 0.0),
             )
         except Exception:
-            pass
+            log.exception("policy refresh failed")
 
     def _emit_prediction(self, *, claim: str, result: Any, source_key: str) -> None:
         if self.learning is None:
@@ -189,7 +193,7 @@ class ContinuousCognitionRunner:
             elif hasattr(self.learning, "emit_prediction"):
                 self.learning.emit_prediction(pred)
         except Exception:
-            pass
+            log.exception("auto-prediction emission failed", extra={"source_key": source_key})
 
     def inject_outcome(
         self,
@@ -228,10 +232,11 @@ class ContinuousCognitionRunner:
             self.mind.buffer_outcome(outcome)
             return result
         except Exception:
+            log.exception("outcome attribution failed; buffering for retry")
             try:
                 self.mind.buffer_outcome(outcome)
             except Exception:
-                pass
+                log.exception("outcome could not be buffered and is lost")
             return None
 
     def _maybe_night_phase(self, beliefs: list[Any]) -> None:
@@ -247,7 +252,7 @@ class ContinuousCognitionRunner:
                 learning=self.learning,
             )
         except Exception:
-            pass
+            log.exception("night phase failed")
 
     def _update_self_model(self, *, claim: str, beliefs: list[Any]) -> None:
         try:
@@ -272,7 +277,7 @@ class ContinuousCognitionRunner:
                 ),
             )
         except Exception:
-            pass
+            log.exception("self-model update failed", extra={"claim": claim[:120]})
 
     def _wm_items(self) -> list[Any]:
         wm = getattr(self.cycle, "working_memory", None)
@@ -287,6 +292,7 @@ class ContinuousCognitionRunner:
                     return list(snap.get("items") or [])[:12]
                 return list(snap)[:12] if snap else []
             except Exception:
+                log.exception("working-memory snapshot unavailable")
                 return []
         return []
 
@@ -302,6 +308,7 @@ class ContinuousCognitionRunner:
                 payload=payload,
             )
         except Exception:
+            log.exception("endogenous thought could not be enqueued")
             return None
 
     def run_forever(self) -> None:

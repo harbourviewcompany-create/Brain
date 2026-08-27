@@ -43,6 +43,14 @@ def load_policy() -> dict:
     return json.loads(POLICY.read_text(encoding="utf-8"))
 
 
+#: Directory names whose contents are installed dependencies or local
+#: environments rather than repository source. Kept in step with
+#: scripts/validate_control_layer.py, which discovers the same module set.
+VENDORED_DIRECTORIES = frozenset(
+    {"node_modules", "site-packages", ".venv", "venv", "build", "dist", ".next"}
+)
+
+
 def discover_modules(policy: dict) -> list[str]:
     traceability_policy = policy.get("traceability_policy", {})
     roots = traceability_policy.get("enforced_code_roots", ["apps", "brain", "scripts"])
@@ -57,6 +65,11 @@ def discover_modules(policy: dict) -> list[str]:
             if path.name in excluded:
                 continue
             if "/__pycache__/" in rel or rel.startswith("tests/"):
+                continue
+            # Third-party trees are not ours to trace. Without this, running
+            # `npm install` in apps/observatory makes the validator demand a
+            # matrix row for vendored Python inside node_modules.
+            if any(part in VENDORED_DIRECTORIES for part in path.parts):
                 continue
             modules.add(rel)
     return sorted(modules)

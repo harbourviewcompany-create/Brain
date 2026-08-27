@@ -201,7 +201,8 @@ export default function OrganismPage() {
                       <div className="text-cockpit-text">{a.proposal || a.action_type || "action"}</div>
                       <div className="mt-1 flex gap-2 font-mono text-[10px] text-cockpit-muted">
                         {a.tier && <span>{a.tier}</span>}
-                        {a.status && <span>{a.status}</span>}
+                        {a.state && <span>{a.state}</span>}
+                        {a.approval_status && <span>{a.approval_status}</span>}
                         {a.risk_score != null && <span>risk {Number(a.risk_score).toFixed(2)}</span>}
                       </div>
                     </li>

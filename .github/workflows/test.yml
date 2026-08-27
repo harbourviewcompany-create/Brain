@@ -48,9 +48,18 @@ jobs:
             -e POSTGRES_PASSWORD=brain \
             -e POSTGRES_DB=brain \
             pgvector/pgvector:pg16
-          for i in $(seq 1 30); do
-            if docker exec brain-postgres pg_isready -U brain -d brain; then break; fi
-            if [ "${i}" = "30" ]; then docker logs brain-postgres; exit 1; fi
+          # Probe over TCP, not the default unix socket. While the postgres
+          # entrypoint initialises, it runs a temporary bootstrap server that
+          # listens on the unix socket only, and POSTGRES_DB is created against
+          # that server. A socket pg_isready therefore reports "accepting
+          # connections" before the brain database exists, and the psql below
+          # fails with: FATAL: database "brain" does not exist.
+          for i in $(seq 1 60); do
+            if docker exec -e PGPASSWORD=brain brain-postgres \
+                 psql -h 127.0.0.1 -U brain -d brain -tAc 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            if [ "${i}" = "60" ]; then docker logs brain-postgres; exit 1; fi
             sleep 1
           done
           docker exec -i brain-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
@@ -166,9 +175,15 @@ jobs:
             -e POSTGRES_PASSWORD=brain \
             -e POSTGRES_DB=brain \
             pgvector/pgvector:pg16
-          for i in $(seq 1 30); do
-            if docker exec brain-tenant-postgres pg_isready -U brain -d brain; then break; fi
-            if [ "${i}" = "30" ]; then docker logs brain-tenant-postgres; exit 1; fi
+          # Same bootstrap-server race as the container-integration job above:
+          # probe over TCP so readiness cannot be satisfied by the temporary
+          # initialisation server that only listens on the unix socket.
+          for i in $(seq 1 60); do
+            if docker exec -e PGPASSWORD=brain brain-tenant-postgres \
+                 psql -h 127.0.0.1 -U brain -d brain -tAc 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            if [ "${i}" = "60" ]; then docker logs brain-tenant-postgres; exit 1; fi
             sleep 1
           done
           docker exec -i brain-tenant-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
