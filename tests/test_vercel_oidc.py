@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+import tools.live_cockpit_routes as live_cockpit
 from tools.vercel_oidc import VercelOidcConfig, VercelOidcVerifier
 
 
@@ -96,3 +98,23 @@ def test_rejects_expired_token() -> None:
 def test_disabled_without_explicit_identity_scope() -> None:
     verifier = VercelOidcVerifier(VercelOidcConfig("", "", ""))
     assert verifier.verify("anything") == (False, "vercel_oidc_not_configured")
+
+
+def test_legacy_oidc_bridge_requires_flag_and_disabled_tenant_mode(monkeypatch) -> None:
+    monkeypatch.setattr(
+        live_cockpit.tenant_api,
+        "tenant_security",
+        SimpleNamespace(mode="disabled"),
+    )
+    monkeypatch.delenv("BRAIN_OBSERVATORY_LEGACY_OIDC_BRIDGE", raising=False)
+    assert not live_cockpit._legacy_oidc_bridge_enabled()
+
+    monkeypatch.setenv("BRAIN_OBSERVATORY_LEGACY_OIDC_BRIDGE", "true")
+    assert live_cockpit._legacy_oidc_bridge_enabled()
+
+    monkeypatch.setattr(
+        live_cockpit.tenant_api,
+        "tenant_security",
+        SimpleNamespace(mode="required"),
+    )
+    assert not live_cockpit._legacy_oidc_bridge_enabled()
