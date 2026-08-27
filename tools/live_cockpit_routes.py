@@ -169,7 +169,6 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
-                self._log_verified_identity()
                 translated_scope = self._translated_scope(scope, headers, local_key)
 
                 # Explicit compatibility path for the pre-tenant production
@@ -178,6 +177,7 @@ class VercelOidcAuthBridge:
                 # _legacy_oidc_bridge_enabled() returns false unless tenant mode
                 # is disabled.
                 if _legacy_oidc_bridge_enabled():
+                    self._log_verified_identity()
                     await self.inner_app(translated_scope, receive, send)
                     return
 
@@ -224,6 +224,7 @@ class VercelOidcAuthBridge:
                     await response(scope, receive, send)
                     return
 
+                self._log_verified_identity()
                 with tenant_context_scope(context):
                     await self.inner_app(translated_scope, receive, send)
                 return
