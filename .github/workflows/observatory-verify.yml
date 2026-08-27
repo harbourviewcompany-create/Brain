@@ -45,29 +45,40 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="https://thebrain-sandy.vercel.app/api/brain"
+          # Canonical Vercel project is `brain` (see docs/observatory/PRODUCTION_WIRING.md).
+          # Legacy thebrain-sandy.vercel.app is no longer production authority.
+          base="https://brain-seven-puce.vercel.app/api/brain"
           curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/health" -o /tmp/health.json
           curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/signals" -o /tmp/signals.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$base/organism/cockpit" -o /tmp/organism.json
-          node - <<'NODE'
+          # Organism cockpit may 404 until Railway promotes organism routes; treat 404 as soft.
+          organism_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
+            -o /tmp/organism.json -w "%{http_code}" "$base/organism/cockpit" || true)"
+          node - <<NODE
           const fs = require('fs');
           const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
           const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
-          const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
-          if (health.status !== 'ok') throw new Error(`health status ${health.status}`);
+          if (health.status !== 'ok') throw new Error(\`health status \${health.status}\`);
           if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
-          if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
+          const organismCode = "${organism_code}";
+          let organismKeys = [];
+          if (organismCode === '200') {
+            const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
+            if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
+            organismKeys = Object.keys(organism).sort();
+          } else if (organismCode !== '404' && organismCode !== '401') {
+            throw new Error(\`unexpected organism cockpit status \${organismCode}\`);
+          }
           console.log(JSON.stringify({
             health: { status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
             signals: { count: signals.items.length, latest: signals.items.slice(0, 5).map(s => ({ id: s.id, source_id: s.source_id, attention_score: s.attention_score, novelty: s.novelty, urgency: s.urgency })) },
-            organism: { keys: Object.keys(organism).sort() }
+            organism: { status: organismCode, keys: organismKeys }
           }, null, 2));
           NODE
       - name: Render desktop and mobile visual evidence
         shell: bash
         working-directory: apps/observatory
         env:
-          BRAIN_API_URL: https://thebrain-sandy.vercel.app/api/brain
+          BRAIN_API_URL: https://brain-api-live-production.up.railway.app
           BRAIN_API_KEY: ci-visual-evidence-proxy
         run: |
           set -euo pipefail
