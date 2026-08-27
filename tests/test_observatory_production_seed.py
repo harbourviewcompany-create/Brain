@@ -1,12 +1,43 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from apps.api.cognitive_organism_routes import (
     OBSERVATORY_PRODUCTION_SEED_V1,
     seed_observatory_organism_baseline,
 )
 from brain.adapters.cognition import InMemoryCognitiveOrganismStore
 from brain.cognitive_organism import CognitiveOrganism
-from tools.seed_observatory_production import BELIEFS, EVIDENCE, SEED_PACK, STIMULI, sid
+from tools.seed_observatory_production import (
+    BELIEFS,
+    EVIDENCE,
+    SEED_PACK,
+    STIMULI,
+    _upsert_system_source,
+    sid,
+)
+
+
+class _Result:
+    def __init__(self, *, row=None, rowcount: int = 1) -> None:
+        self._row = row
+        self.rowcount = rowcount
+
+    def fetchone(self):
+        return self._row
+
+
+class _SourceSchemaConnection:
+    def __init__(self, *, tenant_scoped: bool) -> None:
+        self.tenant_scoped = tenant_scoped
+        self.statements: list[str] = []
+
+    def execute(self, statement: str, params=None):
+        normalized = " ".join(statement.split())
+        self.statements.append(normalized)
+        if "information_schema.columns" in normalized:
+            return _Result(row=(self.tenant_scoped,))
+        return _Result(rowcount=1)
 
 
 def test_seed_pack_ids_are_stable_and_unique() -> None:
@@ -72,3 +103,34 @@ def test_organism_baseline_is_opt_in() -> None:
     )
     assert target.self_model.current is None
     assert store.load_checkpoint("organism_runtime") is None
+
+
+def test_source_seed_uses_legacy_conflict_target_before_tenant_scope() -> None:
+    conn = _SourceSchemaConnection(tenant_scoped=False)
+    assert _upsert_system_source(conn, key="runtime", name="Runtime", trust=0.9) == 1
+    write = conn.statements[-1]
+    assert "on conflict (key) do update" in write
+    assert "where tenant_id is null" not in write
+
+
+def test_source_seed_uses_system_partial_index_after_tenant_scope() -> None:
+    conn = _SourceSchemaConnection(tenant_scoped=True)
+    assert _upsert_system_source(conn, key="runtime", name="Runtime", trust=0.9) == 1
+    write = conn.statements[-1]
+    assert "tenant_id" in write
+    assert "on conflict (key) where tenant_id is null do update" in write
+
+
+def test_seed_replay_preserves_learned_belief_versions() -> None:
+    source = Path("tools/seed_observatory_production.py").read_text(encoding="utf-8")
+    assert "where public.beliefs.version = 1" in source
+    assert "BRAIN_MIGRATION_DATABASE_URL" in source
+
+
+def test_tenant_runtime_seeds_real_partitions_and_expires_prediction_reads() -> None:
+    source = Path("apps/api/tenant_app.py").read_text(encoding="utf-8")
+    assert "def _build_organism() -> CognitiveOrganism:" in source
+    assert "seed_observatory_organism_baseline(" in source
+    assert "TenantPartitionedFactory(_build_organism, evictable=False)" in source
+    assert "def _expire_predictions_before_read() -> None:" in source
+    assert "base.learning.expire_due_predictions()" in source
