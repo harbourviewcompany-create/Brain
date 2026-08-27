@@ -65,18 +65,21 @@ const EMPTY_SCENE: CognitiveScene = {
   },
 };
 
+const EMPTY_DIFF: FieldDiff = {
+  added: [],
+  removed: [],
+  updated: [],
+  cameraHintId: null,
+};
+
 export function BrainObservatory() {
   const { snapshot, history, loading } = useBrainObservatory();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const [births, setBirths] = useState<BirthMap>(() => createBirthMap());
+  const [diff, setDiff] = useState<FieldDiff>(EMPTY_DIFF);
   const previousSceneRef = useRef<CognitiveScene | null>(null);
-  const lastDiffRef = useRef<FieldDiff>({
-    added: [],
-    removed: [],
-    updated: [],
-    cameraHintId: null,
-  });
+  const scrubBoundaryRef = useRef<number | null>(null);
 
   const displayedSnapshot = scrubIndex === null ? snapshot : history[scrubIndex] ?? snapshot;
   const scene = useMemo(
@@ -85,20 +88,23 @@ export function BrainObservatory() {
   );
 
   useEffect(() => {
+    const scrubBoundary = scrubIndex !== scrubBoundaryRef.current;
+    if (scrubBoundary) {
+      scrubBoundaryRef.current = scrubIndex;
+      if (scrubIndex !== null) {
+        const replayDiff = diffScene(null, scene);
+        setDiff(replayDiff);
+        setBirths(applyDiffToBirths(createBirthMap(), replayDiff));
+        previousSceneRef.current = scene;
+        return;
+      }
+    }
+
     const nextDiff = diffScene(previousSceneRef.current, scene);
-    lastDiffRef.current = nextDiff;
+    setDiff(nextDiff);
     setBirths((current) => applyDiffToBirths(current, nextDiff));
     previousSceneRef.current = scene;
-  }, [scene]);
-
-  // Scrubbing rebuilds structure from history; reset birth ages so replay still morphs in.
-  useEffect(() => {
-    if (scrubIndex === null) return;
-    const replayDiff = diffScene(null, scene);
-    lastDiffRef.current = replayDiff;
-    setBirths(applyDiffToBirths(createBirthMap(), replayDiff));
-    previousSceneRef.current = scene;
-  }, [scrubIndex]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional scrub boundary
+  }, [scene, scrubIndex]);
 
   const flares = useMemo(
     () => flaresFromErrors(displayedSnapshot?.errors ?? []),
@@ -106,7 +112,6 @@ export function BrainObservatory() {
   );
 
   const selectedNode = scene.nodes.find((node) => node.id === selectedId) ?? null;
-  const diff = lastDiffRef.current;
 
   useEffect(() => {
     if (selectedId && !scene.nodes.some((node) => node.id === selectedId)) setSelectedId(null);
