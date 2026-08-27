@@ -219,6 +219,25 @@ def _ingest_singleton() -> Any:
     return _ingest
 
 
+def _lease_still_held() -> bool:
+    """Whether this process may still write cognition.
+
+    True when no lease was ever taken -- an in-memory worker with no database
+    shares nothing and needs no permission. Otherwise re-asks the lease, which
+    revalidates its connection on its own interval and re-acquires when the
+    lock has been lost.
+    """
+
+    lease = _cognition_lease
+    if lease is None:
+        return True
+    try:
+        return bool(lease.acquire())
+    except Exception:
+        log.exception("cognition lease could not be revalidated")
+        return False
+
+
 def run_forever_with_maintenance(
     *, tick_sleep: float = 1.0, ingest_every: int = 30, maintenance_every: int = 60
 ) -> None:
@@ -229,12 +248,29 @@ def run_forever_with_maintenance(
     n = 0
     while True:
         n += 1
+        if not _lease_still_held():
+            # The lease lives in a connection, and a Postgres restart or an
+            # idle-connection reaper drops it without telling this process.
+            # Continuing to write on a lock we no longer hold is exactly the
+            # two-writer state the lease exists to prevent, so stop thinking
+            # until it is back.
+            time.sleep(max(tick_sleep, 1.0))
+            continue
         if ingest_every > 0 and n % ingest_every == 0:
             try:
                 ingest.ingest_due_sources()
             except Exception:
                 log.exception("connector ingest cycle failed")
-        worked = runner.run_once()
+        # An empty inbox does not make this loop idle: endogenous cognition
+        # always produces a stimulus (the mind falls back to self-reflection),
+        # so run_once() returns true on nearly every pass. Pacing on that
+        # alone spun a core flat out, grew the event ledger without bound, and
+        # reset idle_ticks forever so scheduled maintenance never ran. The
+        # runner's own idle counter says which kind of cycle just happened.
+        idle_before = getattr(runner, "_idle_cycles", 0)
+        processed = runner.run_once()
+        endogenous = getattr(runner, "_idle_cycles", 0) != idle_before
+        worked = bool(processed) and not endogenous
         if worked:
             idle_ticks = 0
         else:
@@ -458,6 +494,12 @@ def main() -> None:
             run_cognition_loop()
             return
         try:
+            # The lease guards writes, not a code path. The Temporal activity
+            # drives the same _runner_singleton() as the in-process loop, so
+            # without taking it here a Temporal worker and an API replica
+            # running inline cognition would both write cycles to the same
+            # event store, each believing it was the only one.
+            acquire_cognition_lease()
             asyncio.run(run_temporal_worker())
             return
         except Exception:

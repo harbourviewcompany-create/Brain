@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from math import isfinite
 from typing import Any
 from uuid import UUID
 
@@ -32,6 +33,14 @@ class PostgresBrainStore(InMemoryBrainStore):
     rebuilt at startup, so process restarts do not erase beliefs or graph state.
     """
 
+    #: Ceiling on how long a read path will wait for a pooled connection.
+    #: psycopg_pool's own default is 30s, so a database that has gone away
+    #: turns every projection read into a half-minute hang -- and the cockpit
+    #: polls eighteen of them at once. Failing in a few seconds and serving
+    #: the last good projection is the better answer; #75 bounded the health
+    #: check for the same reason.
+    READ_TIMEOUT_SECONDS = 5.0
+
     def __init__(self, dsn: str, *, pool: ConnectionPool | None = None) -> None:
         if pool is None and Jsonb is None:
             raise RuntimeError("PostgreSQL support requires project dependencies")
@@ -40,6 +49,8 @@ class PostgresBrainStore(InMemoryBrainStore):
         self.pool = pool or ConnectionPool(conninfo=dsn, min_size=1, max_size=10, open=True)
         self.event_store = PostgresEventStore(dsn, pool=self.pool)
         self._refresh_lock = threading.Lock()
+        self._counters_lock = threading.Lock()
+        self._counters: tuple[float, dict[str, int] | None] = (0.0, None)
         self.hydrate()
         # The constructor's hydrate is the first refresh; without stamping it
         # here the first refresh_if_stale would immediately hydrate again.
@@ -63,12 +74,48 @@ class PostgresBrainStore(InMemoryBrainStore):
             return False
 
     def hydrate(self) -> None:
-        self.beliefs.clear()
-        self.evidence.clear()
-        self.nodes.clear()
-        self.edges.clear()
-        self.rewires.clear()
-        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        """Rebuild the projection from PostgreSQL, atomically.
+
+        Every collection is built to one side and only swapped in once the
+        whole read succeeded. Two things depended on that:
+
+        Clearing first meant a database that went away mid-refresh left the
+        API serving an *empty* projection -- no beliefs, no graph -- which
+        reads as a Brain that has forgotten everything rather than one that
+        could not reach its database. The last good projection is strictly
+        better than a blank one.
+
+        And the swap rebinds the attributes instead of mutating the live
+        dictionaries, so a reader that is already iterating one of them keeps
+        a complete snapshot rather than watching it empty out underneath --
+        the Observatory polls several projection-backed routes at once, so a
+        refresh always lands mid-iteration somewhere.
+        """
+
+        beliefs, evidence, nodes, edges, rewires = self._load_projection()
+        self.beliefs = beliefs
+        self.evidence = evidence
+        self.nodes = nodes
+        self.edges = edges
+        self.rewires = rewires
+
+    def _load_projection(
+        self,
+    ) -> tuple[
+        dict[UUID, Belief],
+        dict[UUID, Evidence],
+        dict[UUID, Node],
+        dict[UUID, Edge],
+        list[RewireEvent],
+    ]:
+        beliefs: dict[UUID, Belief] = {}
+        evidence: dict[UUID, Evidence] = {}
+        nodes: dict[UUID, Node] = {}
+        edges: dict[UUID, Edge] = {}
+        rewires: list[RewireEvent] = []
+        with self.pool.connection(timeout=self.READ_TIMEOUT_SECONDS) as conn, conn.cursor(
+            row_factory=dict_row
+        ) as cur:
             cur.execute(
                 """
                 select id, statement, confidence, state, unknowns, version, updated_at
@@ -76,7 +123,7 @@ class PostgresBrainStore(InMemoryBrainStore):
                 """
             )
             for row in cur.fetchall():
-                self.beliefs[row["id"]] = Belief(
+                beliefs[row["id"]] = Belief(
                     id=row["id"],
                     statement=row["statement"],
                     confidence=float(row["confidence"]),
@@ -95,7 +142,7 @@ class PostgresBrainStore(InMemoryBrainStore):
             for row in cur.fetchall():
                 metadata = dict(row["metadata"] or {})
                 source_id = str(metadata.pop("source_id", "unknown"))
-                self.evidence[row["id"]] = Evidence(
+                evidence[row["id"]] = Evidence(
                     id=row["id"],
                     observation_id=row["observation_id"],
                     claim=row["claim"],
@@ -107,7 +154,7 @@ class PostgresBrainStore(InMemoryBrainStore):
 
             cur.execute("select belief_id, evidence_id, relation from public.belief_evidence")
             for row in cur.fetchall():
-                belief = self.beliefs.get(row["belief_id"])
+                belief = beliefs.get(row["belief_id"])
                 if belief is None:
                     continue
                 if row["relation"] == "supports":
@@ -118,12 +165,12 @@ class PostgresBrainStore(InMemoryBrainStore):
             # Rebuild the derived dedup set now that beliefs and evidence are
             # both loaded, so a restart cannot let an already-counted claim
             # move confidence a second time.
-            for belief in self.beliefs.values():
-                rebuild_fingerprints(belief, self.evidence)
+            for belief in beliefs.values():
+                rebuild_fingerprints(belief, evidence)
 
             cur.execute("select id, kind, node_key, properties from public.graph_nodes")
             for row in cur.fetchall():
-                self.nodes[row["id"]] = Node(
+                nodes[row["id"]] = Node(
                     id=row["id"],
                     kind=row["kind"],
                     key=row["node_key"],
@@ -138,7 +185,7 @@ class PostgresBrainStore(InMemoryBrainStore):
                 """
             )
             for row in cur.fetchall():
-                self.edges[row["id"]] = Edge(
+                edges[row["id"]] = Edge(
                     id=row["id"],
                     source=row["source_id"],
                     target=row["target_id"],
@@ -158,7 +205,7 @@ class PostgresBrainStore(InMemoryBrainStore):
                 """
             )
             for row in cur.fetchall():
-                self.rewires.append(
+                rewires.append(
                     RewireEvent(
                         id=row["id"],
                         operation=RewireOperation(row["operation"]),
@@ -171,6 +218,8 @@ class PostgresBrainStore(InMemoryBrainStore):
                     )
                 )
 
+        return beliefs, evidence, nodes, edges, rewires
+
     #: Durable markers of cognition. Counted through brain_events_type_idx
     #: (event_type, occurred_at) from migration 001, so this stays an indexed
     #: grouped count rather than the full brain_events scan #75 removed.
@@ -182,17 +231,35 @@ class PostgresBrainStore(InMemoryBrainStore):
         "belief.updated",
     )
 
-    def cognition_counters(self) -> dict[str, int]:
+    def cognition_counters(self, max_age_seconds: float = 0.0) -> dict[str, int]:
         """Counts of cognition events actually recorded in the database.
 
-        The API process runs no cognition loop: every tick happens in the
-        worker, in a different process, against a different in-memory
-        HeartbeatService. Reporting this process's counters therefore always
-        answered zero no matter what the worker was doing. These counts come
-        from the shared event stream, so they describe the system rather than
-        the process that happens to be answering.
+        Reporting the answering process's own counters was always zero in the
+        API, because cognition happens elsewhere -- in the worker, or in this
+        process's inline loop, but either way against a HeartbeatService the
+        request path never touches. These counts come from the shared event
+        stream, so they describe the system rather than whoever answered.
+
+        Cached for ``max_age_seconds``. The index makes this a grouped count
+        over matching entries rather than a full scan, but "not a scan" is not
+        "constant time": the work still grows with the lifetime event history,
+        and the Observatory asks for it twice per poll, every five seconds,
+        forever. Caching bounds that to one count per interval no matter how
+        many readers or routes ask.
         """
-        with self.pool.connection() as conn, conn.cursor() as cur:
+
+        if isfinite(max_age_seconds) and max_age_seconds > 0:
+            with self._counters_lock:
+                counted_at, cached = self._counters
+                if cached is not None and time.monotonic() - counted_at < max_age_seconds:
+                    return dict(cached)
+        counts = self._count_cognition_events()
+        with self._counters_lock:
+            self._counters = (time.monotonic(), counts)
+        return dict(counts)
+
+    def _count_cognition_events(self) -> dict[str, int]:
+        with self.pool.connection(timeout=self.READ_TIMEOUT_SECONDS) as conn, conn.cursor() as cur:
             cur.execute(
                 """
                 select event_type, count(*)
@@ -216,16 +283,22 @@ class PostgresBrainStore(InMemoryBrainStore):
 
         Returns True when a refresh actually ran.
         """
-        if max_age_seconds < 0:
+        if not isfinite(max_age_seconds) or max_age_seconds < 0:
             return False
-        now = time.monotonic()
         with self._refresh_lock:
+            now = time.monotonic()
             if self._hydrated_at is not None and now - self._hydrated_at < max_age_seconds:
                 return False
-            # Claim the slot before the slow call so concurrent readers do not
-            # stampede the database with duplicate hydrates.
-            self._hydrated_at = now
-        self.hydrate()
+            # The whole refresh happens under the lock, not just the decision
+            # to run one. Releasing it first let a second reader see a fresh
+            # timestamp and skip its own refresh while the first was still
+            # loading -- and the TTL is only honest if it starts when the
+            # projection is actually new. Concurrent readers wait for one
+            # hydrate instead of stampeding the database with several.
+            self.hydrate()
+            # Stamped only on success: a failed refresh that advanced the
+            # clock would suppress every retry for the length of the TTL.
+            self._hydrated_at = time.monotonic()
         return True
 
     def append(self, event) -> None:

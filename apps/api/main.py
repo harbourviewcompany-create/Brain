@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from math import isfinite
 from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -37,6 +39,46 @@ _security = SecurityConfig.from_env()
 
 _inline_cognition: InlineCognition | None = None
 
+#: One writer at a time inside this process. The cognition lease keeps two
+#: *processes* from thinking at once, but it says nothing about this one: the
+#: inline thread and any request calling POST /tick (or /signals with
+#: process_now) both drive the same HeartbeatService, whose cycle, inbox and
+#: belief cache are plain unguarded dicts. FastAPI runs sync routes in a thread
+#: pool, so without this an operator tick could interleave with a background
+#: cycle mid-mutation.
+_tick_lock = threading.Lock()
+
+
+def tick_once(*, max_items: int = 1) -> dict[str, Any]:
+    """Run cognition cycles as the only writer in this process."""
+
+    with _tick_lock:
+        return heartbeat.tick(max_items=max_items)
+
+
+def _resume_durable_beliefs() -> None:
+    """Load what the Brain already believes into the cycle it will think with.
+
+    bootstrap_mind() seeds foundational beliefs into the cycle's cache and
+    nothing else, so a cycle started cold reasons as though the lattice were
+    empty -- re-deriving beliefs the database already holds and contradicting
+    none of them, because it cannot see them. apps/worker/main.build_runner()
+    registers the durable projection first for exactly this reason; the inline
+    path has to do the same or restarting the API amounts to amnesia.
+    """
+
+    cycle = getattr(heartbeat, "_cycle", None)
+    register = getattr(cycle, "register_belief", None)
+    if register is None:
+        return
+    beliefs = getattr(_brain_store, "beliefs", {}) or {}
+    for belief in list(beliefs.values()):
+        try:
+            register(belief)
+        except Exception:
+            log.exception("durable belief could not be resumed", extra={"belief_id": str(belief.id)})
+    log.info("inline cognition resumed durable beliefs", extra={"beliefs": len(beliefs)})
+
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -51,7 +93,9 @@ async def _lifespan(_app: FastAPI):
     """
 
     global _inline_cognition
-    _inline_cognition = start_inline_cognition(lambda: heartbeat.tick(max_items=1))
+    _inline_cognition = start_inline_cognition(
+        lambda: tick_once(max_items=1), on_start=_resume_durable_beliefs
+    )
     try:
         yield
     finally:
@@ -81,6 +125,26 @@ _API_KEY_ENV_VAR = "BRAIN_API_KEY"
 log = get_logger("api")
 
 _PUBLIC_PATHS = frozenset({"/health", "/ready"})
+
+
+#: Routes answered from the cached projection rather than from PostgreSQL
+#: directly. Wiring the refresh into three handlers left the rest -- the
+#: cockpit's /contradictions, /curiosity and /sources among them -- serving the
+#: boot snapshot indefinitely, and the Observatory polls them all in parallel,
+#: so which routes happened to be fresh depended on request ordering. One
+#: boundary is easier to keep honest than a call in every handler.
+_PROJECTION_EXEMPT_PATHS = frozenset({"/health", "/ready"})
+
+
+@app.middleware("http")
+async def refresh_projection_reads(request: Request, call_next):
+    # /health and /ready are exempt: they answer whether the database is
+    # reachable at all, and must keep failing fast when it is not rather than
+    # waiting on a read they already know will not work. /health refreshes
+    # itself once readiness passes.
+    if request.method in {"GET", "HEAD"} and request.url.path not in _PROJECTION_EXEMPT_PATHS:
+        _refresh_reads()
+    return await call_next(request)
 
 
 @app.middleware("http")
@@ -151,7 +215,14 @@ def _configure_from_env() -> None:
         attributions=PostgresAttributionStore(store.pool),
         sources=PostgresSourceStore(store.pool),
     )
-    heartbeat = HeartbeatService(event_store=store.event_store, learning=learning)
+    # The store, not store.event_store. PostgresEventStore can append to the
+    # ledger but has no save(), and CognitiveCycle._persist_belief() looks for
+    # exactly that method -- so a cycle driven through the event store wrote
+    # belief.created events while never touching the beliefs table the cockpit
+    # reads. Harmless while apps/api ran no cognition; the moment it does, it
+    # would climb CYCLE against a lattice that stays permanently UNFORMED.
+    # apps/worker/main.build_runner() passes the store for the same reason.
+    heartbeat = HeartbeatService(event_store=store, learning=learning)
 
     revenue_store = PostgresRevenueStore(pool=store.pool)
     money_spine = MoneySpineService(store=revenue_store)
@@ -354,9 +425,20 @@ def _read_refresh_seconds() -> float:
     if not raw:
         return 5.0
     try:
-        return float(raw)
+        parsed = float(raw)
     except ValueError:
         return 5.0
+    # float() accepts "nan" and "inf". Neither takes the garbage-value
+    # fallback on its own, and both break the TTL rather than tuning it: NaN
+    # fails every age comparison and hydrates on every single request, while
+    # Infinity makes the boot snapshot fresh forever -- restoring exactly the
+    # stale-read bug the TTL exists to fix.
+    if not isfinite(parsed):
+        log.warning(
+            "ignoring non-finite BRAIN_READ_REFRESH_SECONDS", extra={"value": raw}
+        )
+        return 5.0
+    return parsed
 
 
 def _refresh_reads() -> None:
@@ -391,15 +473,17 @@ def _cognition_status() -> dict[str, Any]:
     if counters is None:
         return status
     try:
-        counts = counters()
+        counts = counters(_read_refresh_seconds())
     except Exception:
         log.exception("durable cognition counters unavailable; reporting process-local heartbeat")
         return status
 
     status["ticks"] = counts.get("cycle.completed", status.get("ticks", 0))
-    status["total_processed"] = counts.get(
-        "observation.received", counts.get("signal.enqueued", status.get("total_processed", 0))
-    )
+    # observation.received or nothing. signal.enqueued is emitted when a signal
+    # is *queued*, before any cognition touches it, so falling back to it would
+    # report every waiting signal as processed -- loudest in precisely the case
+    # this endpoint exists to expose, a stalled loop with a full inbox.
+    status["total_processed"] = counts.get("observation.received", 0)
     status["signals_enqueued"] = counts.get("signal.enqueued", 0)
     status["beliefs_created"] = counts.get("belief.created", 0)
     status["beliefs_updated"] = counts.get("belief.updated", 0)
@@ -419,8 +503,14 @@ def _database_ready() -> tuple[bool, str]:
 @app.get("/health")
 def health():
     database_ok, database_status = _database_ready()
-    _refresh_reads()
-    hb = _cognition_status()
+    # Both of these open pooled connections with no timeout of their own, so
+    # each can wait out the pool's 30s default. _database_ready() is
+    # deliberately bounded to ~3s (#75) precisely so a dead database fails
+    # fast; running them anyway would turn an already-known 503 into a
+    # minute-long hang and time out every monitor watching this endpoint.
+    if database_ok:
+        _refresh_reads()
+    hb = _cognition_status() if database_ok else dict(heartbeat.status())
     payload = {
         "status": "ok" if database_ok else "degraded",
         "version": "0.8.1",
@@ -473,7 +563,7 @@ def enqueue_signal(body: PerceiveRequest):
         operator_burden=body.operator_burden,
         metadata=body.metadata,
     )
-    tick_result = heartbeat.tick(max_items=1) if body.process_now else None
+    tick_result = tick_once(max_items=1) if body.process_now else None
     return {
         "id": str(item.id),
         "source_key": item.source_key,
@@ -487,7 +577,7 @@ def enqueue_signal(body: PerceiveRequest):
 @app.post("/tick")
 def run_heartbeat_tick(body: TickRequest | None = None):
     max_items = body.max_items if body is not None else 1
-    return heartbeat.tick(max_items=max_items)
+    return tick_once(max_items=max_items)
 
 
 @app.get("/runner/status")

@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from math import isfinite
 from typing import Any, Callable
 
 from brain.cognition_lease import CognitionLease
@@ -32,21 +33,52 @@ _DISABLED = {"false", "0", "off", "no"}
 
 
 def _float_env(name: str, default: float) -> float:
+    """A non-negative, finite interval, or the default.
+
+    float() accepts "nan" and "inf", and neither survives contact with this
+    loop. Event.wait(Infinity) raises OverflowError -- which, thrown from the
+    tick path, escapes into run()'s handler whose own wait raises again, so
+    the thread dies without ever releasing the lease and nothing else can take
+    over. NaN compares false against everything and turns the pacing sleep
+    into a hot retry loop. A negative interval is the same hazard with a
+    plainer cause.
+    """
+
     raw = (os.environ.get(name) or "").strip()
     if not raw:
         return default
     try:
-        return float(raw)
+        parsed = float(raw)
     except ValueError:
         log.warning("ignoring non-numeric value", extra={"variable": name, "value": raw})
         return default
+    if not isfinite(parsed) or parsed < 0:
+        log.warning(
+            "ignoring out-of-range value", extra={"variable": name, "value": raw}
+        )
+        return default
+    return parsed
+
+
+def tenant_rls_partitioned() -> bool:
+    """Whether this deployment routes every read through a tenant context.
+
+    Under BRAIN_TENANT_MODE=required, apps.api.tenant_app rebinds the store
+    and heartbeat to tenant-partitioned proxies and resolves the tenant from
+    each request. A background thread has no request, so it would select the
+    system partition and write brain_events with no brain.tenant_id -- which
+    the enforced insert policy rejects, leaving a thread that holds the lease,
+    completes no cycles, and blocks a real worker from taking over for the
+    length of a yield interval. Inline cognition in a tenant-partitioned
+    deployment needs a designed service context; until there is one, it stays
+    off and the worker remains the only writer.
+    """
+
+    return (os.environ.get("BRAIN_TENANT_MODE") or "").strip().lower() == "required"
 
 
 def cognition_dsn() -> str:
     """The database this process's own store writes to.
-
-    DATABASE_URL first, deliberately, and not the worker DSN the shared worker
-    helper prefers. Two reasons, and they point the same way:
 
     Advisory locks are scoped to a database, not to a role, so the lease must
     be taken in the database the lease-holder actually writes cognition into.
@@ -54,19 +86,17 @@ def cognition_dsn() -> str:
     somewhere else would let this process and a worker both believe they hold
     a lease nobody shares.
 
-    And BRAIN_WORKER_DATABASE_URL names a trusted-service login that only
-    exists once tenant migrations 019+ have been applied. On a deployment held
-    at the pre-tenant baseline -- which production is -- that login is not
-    there, so preferring it would fail to connect on every attempt and the API
-    would never take a lease it is entitled to. The lock grants no access, so
-    reaching for the more privileged identity buys nothing here.
+    There is deliberately no BRAIN_WORKER_DATABASE_URL fallback.
+    _configure_from_env() builds the API's durable store from DATABASE_URL
+    alone, so a deployment carrying only the worker DSN leaves this process on
+    InMemoryBrainStore -- and falling back would take the *worker's* advisory
+    lock to protect cognition that is ephemeral and invisible to every reader,
+    locking the real worker out of the database it was configured for. That
+    login also only exists once tenant migrations 019+ have been applied,
+    which on a pre-tenant baseline it has not.
     """
 
-    return (
-        os.environ.get("DATABASE_URL")
-        or os.environ.get("BRAIN_WORKER_DATABASE_URL")
-        or ""
-    ).strip()
+    return (os.environ.get("DATABASE_URL") or "").strip()
 
 
 def inline_cognition_requested() -> bool:
@@ -80,6 +110,9 @@ def inline_cognition_requested() -> bool:
     """
 
     if (os.environ.get("BRAIN_INLINE_COGNITION") or "").strip().lower() in _DISABLED:
+        return False
+    if tenant_rls_partitioned():
+        log.info("inline cognition stays off in a tenant-partitioned deployment")
         return False
     return bool(cognition_dsn())
 
@@ -97,10 +130,13 @@ class InlineCognition:
         yield_seconds: float = 300.0,
         yield_pause_seconds: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
+        on_start: Callable[[], None] | None = None,
     ) -> None:
         self._tick = tick
         self._lease = lease
         self._clock = clock
+        self._on_start = on_start
+        self._started = False
         self._tick_sleep = tick_sleep
         self._retry_seconds = retry_seconds
         self._yield_seconds = yield_seconds
@@ -142,7 +178,15 @@ class InlineCognition:
                 # and leaves the lease held until the process exits, which is
                 # worse than any single failed cycle.
                 log.exception("inline cognition step failed")
-                self._stop.wait(self._tick_sleep)
+                try:
+                    self._stop.wait(self._tick_sleep)
+                except Exception:
+                    # The recovery path must not be the thing that kills the
+                    # thread: an exception raised here escapes the loop
+                    # entirely and skips the release below, stranding the
+                    # lease on a live connection nothing will ever close.
+                    log.exception("inline cognition backoff failed")
+                    break
         self._release()
 
     def _step(self) -> None:
@@ -154,6 +198,14 @@ class InlineCognition:
         if self._held_since is None:
             self._held_since = self._clock()
             log.info("inline cognition acquired the cognition lease")
+
+        if not self._started:
+            # Only once the lease is actually held: resuming durable state is
+            # preparation for writing, and a process that never wins the race
+            # should not do it.
+            self._started = True
+            if self._on_start is not None:
+                self._on_start()
 
         if (
             self._yield_seconds > 0
@@ -191,8 +243,14 @@ def _did_work(result: Any) -> bool:
     return bool(result)
 
 
-def start_inline_cognition(tick: Callable[[], Any]) -> InlineCognition | None:
-    """Start in-process cognition, or return None if this process should not."""
+def start_inline_cognition(
+    tick: Callable[[], Any], *, on_start: Callable[[], None] | None = None
+) -> InlineCognition | None:
+    """Start in-process cognition, or return None if this process should not.
+
+    ``on_start`` runs once, on the thread, after the lease is first won -- the
+    place to load durable state the loop is about to reason over.
+    """
 
     if not inline_cognition_requested():
         return None
@@ -201,6 +259,7 @@ def start_inline_cognition(tick: Callable[[], Any]) -> InlineCognition | None:
     engine = InlineCognition(
         tick=tick,
         lease=lease,
+        on_start=on_start,
         tick_sleep=_float_env("BRAIN_TICK_SLEEP", 1.0),
         retry_seconds=_float_env("BRAIN_INLINE_RETRY_SECONDS", 15.0),
         yield_seconds=_float_env("BRAIN_INLINE_YIELD_SECONDS", 300.0),
