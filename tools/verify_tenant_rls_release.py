@@ -7,6 +7,7 @@ It never creates credentials and is designed for ephemeral CI after migrations
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 from pathlib import Path
@@ -48,8 +49,26 @@ def _migration_hashes() -> dict[str, str]:
     }
 
 
-def verify_migration_ledger(migration_dsn: str) -> None:
-    expected = _migration_hashes()
+def _migration_version(filename: str) -> int | None:
+    prefix = filename.split("_", 1)[0]
+    return int(prefix) if prefix.isdigit() else None
+
+
+def verify_migration_ledger(
+    migration_dsn: str,
+    *,
+    max_version: int | None = None,
+) -> None:
+    expected_all = _migration_hashes()
+    expected = {
+        name: digest
+        for name, digest in expected_all.items()
+        if max_version is None
+        or (
+            (version := _migration_version(name)) is not None
+            and version <= max_version
+        )
+    }
     with psycopg.connect(migration_dsn, autocommit=True) as conn:
         rows = conn.execute(
             "select filename, sha256 from public.brain_schema_migrations"
@@ -71,7 +90,11 @@ def verify_migration_ledger(migration_dsn: str) -> None:
     ):
         if required not in actual:
             raise RuntimeError(f"required tenant migration missing: {required}")
-    print(f"migration ledger/hash verification passed ({len(expected)} files)")
+    ceiling = "all" if max_version is None else str(max_version)
+    print(
+        "migration ledger/hash verification passed "
+        f"({len(expected)} files, max_version={ceiling})"
+    )
 
 
 def seed_tenant_fixtures(migration_dsn: str) -> None:
@@ -228,11 +251,22 @@ def verify_trusted_worker(worker_dsn: str) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--max-version",
+        type=int,
+        default=None,
+        help="verify migration ledger/hash only through this canonical version",
+    )
+    args = parser.parse_args()
+    if args.max_version is not None and args.max_version < 22:
+        parser.error("--max-version must include tenant migrations 019-022")
+
     migration_dsn = _dsn("BRAIN_MIGRATION_DATABASE_URL")
     runtime_dsn = _dsn("DATABASE_URL")
     worker_dsn = _dsn("BRAIN_WORKER_DATABASE_URL")
 
-    verify_migration_ledger(migration_dsn)
+    verify_migration_ledger(migration_dsn, max_version=args.max_version)
     seed_tenant_fixtures(migration_dsn)
     verify_runtime_role_and_isolation(runtime_dsn)
     verify_trusted_worker(worker_dsn)
