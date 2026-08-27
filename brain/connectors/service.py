@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from ..events import BrainEvent
+from ..logging_config import get_logger
 from .http_json import HttpJsonConnector
 from .protocol import (
     AccessDisposition,
@@ -21,7 +22,39 @@ from .protocol import (
 )
 from .revenue_adapter import revenue_signal_from_observation
 from .rss import RssConnector
-from .store import InMemoryConnectorRegistry
+from .store import InMemoryConnectorRegistry, PostgresConnectorRegistry
+
+log = get_logger("connectors.service")
+
+
+def _pool_for(event_store: Any | None) -> Any | None:
+    if event_store is None:
+        return None
+    pool = getattr(event_store, "pool", None)
+    if pool is not None:
+        return pool
+    nested = getattr(event_store, "event_store", None)
+    return getattr(nested, "pool", None) if nested is not None else None
+
+
+def _default_registry(event_store: Any | None) -> Any:
+    """Prefer restart-safe acquisition state without breaking pre-024 deployments.
+
+    Migration 024 is deliberately capability-detected because current production may
+    still be on the approved pre-tenant migration ceiling. In that state ingestion
+    remains functional but announces that its connector schedule/dedupe is ephemeral.
+    """
+    pool = _pool_for(event_store)
+    if pool is not None:
+        durable = PostgresConnectorRegistry(pool)
+        if durable.available():
+            log.info("connector ingestion bound to durable PostgreSQL registry")
+            return durable
+        log.warning(
+            "migration 024 connector runtime is unavailable; connector scheduling and "
+            "raw acquisition provenance remain in-memory until the migration is applied"
+        )
+    return InMemoryConnectorRegistry()
 
 
 @dataclass(slots=True)
@@ -102,7 +135,7 @@ class IngestService:
         default_source_reliability: float = 0.65,
         revenue: Any | None = None,
     ) -> None:
-        self.registry = registry or InMemoryConnectorRegistry()
+        self.registry = registry if registry is not None else _default_registry(event_store)
         self.inbox = inbox
         self.event_store = event_store
         self.connectors: list[SourceConnector] = connectors or [RssConnector(), HttpJsonConnector()]
@@ -536,7 +569,7 @@ class IngestService:
             "enabled": sum(1 for s in sources if s.enabled),
             "due": len(self.registry.due_sources()),
             "seen_hashes": self.registry.seen_count(),
-            "durable_registry": self.registry.__class__.__name__ == "PostgresConnectorRegistry",
+            "durable_registry": isinstance(self.registry, PostgresConnectorRegistry),
             "batches_run": len(self._runs),
             "last_batch": self._runs[-1].as_dict() if self._runs else None,
         }
