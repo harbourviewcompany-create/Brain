@@ -1,10 +1,14 @@
+# Compatibility alias for the Railway service literally named brain-api-live.
+# It builds the same image and runs the same entrypoint as railway.toml; the
+# only reason it still exists is that the service's config-as-code path may
+# still point here. Keep it byte-equivalent to railway.toml in effect.
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.railway"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 preDeployCommand = ["python tools/apply_migrations.py"]
-healthcheckPath = "/health"
+healthcheckPath = "/ready"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5
