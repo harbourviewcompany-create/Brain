@@ -1,7 +1,7 @@
 """Heartbeat service."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from threading import Lock
 from typing import Any
@@ -17,6 +17,22 @@ from .runner import ContinuousCognitionRunner
 from .sensory_inbox import InMemorySensoryInbox, InboxItem
 
 
+def _postgres_pool_for(store: Any) -> Any | None:
+    """Return a shared Postgres pool when *store* is backed by one.
+
+    Brain runtime surfaces pass either PostgresBrainStore or its underlying
+    PostgresEventStore. Keeping pool discovery here lets API ingress, inline
+    cognition and the dedicated worker converge on the same durable sensory
+    queue without coupling callers to a particular adapter class.
+    """
+
+    pool = getattr(store, "pool", None)
+    if pool is not None:
+        return pool
+    nested = getattr(store, "event_store", None)
+    return getattr(nested, "pool", None) if nested is not None else None
+
+
 @dataclass(slots=True)
 class CycleRunRecord:
     inbox_id: UUID
@@ -27,13 +43,22 @@ class CycleRunRecord:
 class HeartbeatService:
     event_store: Any
     learning: LearningService | None = None
-    inbox: InMemorySensoryInbox = field(default_factory=InMemorySensoryInbox)
+    inbox: Any | None = None
     attention_threshold: float = 0.0
     cognitive_budget: int = 2
     auto_predict: bool = True
     idle_sleep_seconds: float = 1.0
 
     def __post_init__(self) -> None:
+        pool = _postgres_pool_for(self.event_store)
+        if self.inbox is None:
+            if pool is not None:
+                from .adapters.cognition import PostgresSensoryInbox
+
+                self.inbox = PostgresSensoryInbox(pool)
+            else:
+                self.inbox = InMemorySensoryInbox()
+
         self._cycle = CognitiveCycle(
             self.event_store,
             attention_threshold=self.attention_threshold,
@@ -45,18 +70,29 @@ class HeartbeatService:
         self._processed: int = 0
         self._bootstrapped: bool = False
 
+        durable_runs = None
+        if pool is not None:
+            from .adapters.cognition import CognitiveCycleRunStore
+
+            durable_runs = CognitiveCycleRunStore(pool)
+
         class _RunsAdapter:
-            def __init__(self, outer: HeartbeatService) -> None:
+            def __init__(self, outer: HeartbeatService, durable: Any | None = None) -> None:
                 self._outer = outer
+                self._durable = durable
 
             def save(self, inbox_id: UUID, result: CognitiveCycleResult) -> None:
+                # Durable persistence is authoritative when configured. Do not
+                # report a local success if the database write failed.
+                if self._durable is not None:
+                    self._durable.save(inbox_id, result)
                 with self._outer._runs_lock:
                     self._outer._runs.append(CycleRunRecord(inbox_id, result))
 
         self._runner = ContinuousCognitionRunner(
             cycle=self._cycle,
             inbox=self.inbox,
-            cycle_runs=_RunsAdapter(self),
+            cycle_runs=_RunsAdapter(self, durable_runs),
             idle_sleep_seconds=self.idle_sleep_seconds,
             enable_endogenous=True,
             status_provider=self.status,
@@ -106,12 +142,24 @@ class HeartbeatService:
             "operator_burden": operator_burden,
             "metadata": dict(metadata or {}),
         }
-        item = self.inbox.enqueue(
+        queued = self.inbox.enqueue(
             source_key=source_key,
             content=content,
             claim=claim,
             payload=payload,
         )
+        if isinstance(queued, InboxItem):
+            item = queued
+        else:
+            # PostgresSensoryInbox returns the durable UUID. Normalize the API
+            # contract without creating a second in-memory queue entry.
+            item = InboxItem(
+                id=queued,
+                source_key=source_key,
+                content=content,
+                claim=claim,
+                payload=payload,
+            )
         if hasattr(self.event_store, "append"):
             self.event_store.append(
                 BrainEvent(
@@ -129,11 +177,19 @@ class HeartbeatService:
         return item
 
     def bootstrap_mind(self) -> int:
-        if self._bootstrapped and self._cycle._belief_cache:
+        if self._bootstrapped:
             return len(self._cycle._belief_cache)
-        seeds = seed_foundational_beliefs()
-        for belief in seeds:
+
+        existing_statements = {
+            str(getattr(belief, "statement", "")).strip()
+            for belief in self._cycle._belief_cache.values()
+        }
+        for belief in seed_foundational_beliefs():
+            statement = str(getattr(belief, "statement", "")).strip()
+            if statement and statement in existing_statements:
+                continue
             self._cycle._belief_cache[belief.id] = belief
+            existing_statements.add(statement)
             if hasattr(self.event_store, "append"):
                 self.event_store.append(
                     BrainEvent(
@@ -150,7 +206,7 @@ class HeartbeatService:
                     )
                 )
         self._bootstrapped = True
-        return len(seeds)
+        return len(self._cycle._belief_cache)
 
     def tick(self, *, max_items: int = 1) -> dict[str, Any]:
         if not self._bootstrapped:
@@ -283,17 +339,36 @@ def build_default_heartbeat(
     store = event_store or InMemoryBrainStore()
     if learning is None and with_learning:
         try:
-            from brain.adapters.learning_store import InMemoryLearningStore
             from brain.learning import LearningService as LS
 
-            mem = InMemoryLearningStore()
-            learning = LS(
-                store,
-                predictions=mem,
-                edges=mem,
-                attributions=mem,
-                sources=mem,
-            )
+            pool = _postgres_pool_for(store)
+            if pool is not None:
+                from brain.adapters.learning_store import (
+                    PostgresAttributionStore,
+                    PostgresEdgeStore,
+                    PostgresPredictionStore,
+                    PostgresSourceStore,
+                )
+
+                learning_event_store = getattr(store, "event_store", store)
+                learning = LS(
+                    learning_event_store,
+                    predictions=PostgresPredictionStore(pool),
+                    edges=PostgresEdgeStore(pool),
+                    attributions=PostgresAttributionStore(pool),
+                    sources=PostgresSourceStore(pool),
+                )
+            else:
+                from brain.adapters.learning_store import InMemoryLearningStore
+
+                mem = InMemoryLearningStore()
+                learning = LS(
+                    store,
+                    predictions=mem,
+                    edges=mem,
+                    attributions=mem,
+                    sources=mem,
+                )
         except Exception:
             learning = None
     return HeartbeatService(event_store=store, learning=learning)

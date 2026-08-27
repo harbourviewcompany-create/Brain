@@ -61,7 +61,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/cycle.py | partial | partial | partial | partial | present | missing | partial | HOLD |
 | brain/debate.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/development.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
-| brain/developmental/cognitive_extension_curriculum.py | partial | present | present | present | present | partial | missing | HOLD |
+| brain/developmental/cognitive_extension_curriculum.py | partial | present | present | present | present | present | missing | HOLD |
 | brain/developmental/consolidation.py | partial | partial | partial | partial | partial | partial | partial | HOLD |
 | brain/developmental/evidence_store.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/developmental/global_workspace.py | partial | partial | partial | partial | partial | partial | partial | HOLD |

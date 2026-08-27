@@ -950,7 +950,8 @@
         "stateful modules have a documented, test-enforced state machine",
         "perception supports image and audio modalities via classical signal-processing features (no external model dependency)",
         "motor execution has at least one concrete, real (non-stub) Effector implementation, testable without live credentials or network access",
-        "each of the seven modules has a standalone to_event() audit-event constructor usable outside CognitiveCycle, and CognitiveCycle itself uses the same shared constructors rather than duplicating payload construction"
+        "each of the seven modules has a standalone to_event() audit-event constructor usable outside CognitiveCycle, and CognitiveCycle itself uses the same shared constructors rather than duplicating payload construction",
+        "theory_of_mind.py's predict_action confidence formula is empirically calibrated (Expected Calibration Error measured across 5 seeds, ~0.03-0.07, down from ~0.16-0.22 for the prior formula) -- see tests/test_theory_of_mind_calibration.py"
       ],
       "audit_events": [
         "circadian.phase_changed",
@@ -996,16 +997,18 @@
         "every stage claim cites a real, currently-passing test or class as evidence, verified against the actual repo before being written",
         "no module claims a stage it does not have real capability for",
         "advanced stages (METACOGNITIVE, SELF_REPAIRING, CONSOLIDATED) are explicitly not claimed, with a stated reason for each",
-        "HigherOrderCognitionService's own advanced-stage evidence gate is exercised, not bypassed"
+        "HigherOrderCognitionService's own advanced-stage evidence gate is exercised, not bypassed",
+        "theory_of_mind.py legitimately reaches METACOGNITIVE: predict_action confidence is empirically calibrated against actual accuracy (not just directionally correlated), verified via SelfModelService.claim_capability() with real evidence_refs/test_refs/acceptance_refs, and the synthetic-data limitation is explicitly recorded via record_limitation() rather than omitted"
       ],
       "audit_events": [
         "none: offline assessment tool that populates DevelopmentalStageRecord objects in-memory; does not participate in the live event-sourced CognitiveCycle loop, so there is nothing to audit-event"
       ],
       "source_preservation": "preserved",
       "unresolved_gaps": [
-        "no per-module self-report of confidence/uncertainty exists yet (prerequisite for METACOGNITIVE)",
+        "no per-module self-report of confidence/uncertainty exists yet for affect/executive/circadian/hedonic/perception/motor (prerequisite for METACOGNITIVE on those six)",
         "no DevelopmentalPlasticityDelta has been generated from any of these seven modules yet (prerequisite for SELF_REPAIRING)",
-        "no sustained real production-cycle history exists yet (prerequisite for CONSOLIDATED)"
+        "no sustained real production-cycle history exists yet (prerequisite for CONSOLIDATED)",
+        "theory_of_mind.py's METACOGNITIVE claim is bounded to synthetic/simulated calibration data; a production-data re-check is required before that limitation can be lifted"
       ]
     },
     {

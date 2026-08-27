@@ -80,19 +80,25 @@ def test_prediction_accuracy_reflects_track_record() -> None:
     assert model.prediction_accuracy == 0.5
 
 
-def test_low_trust_agent_model_reports_lower_prediction_confidence() -> None:
+def test_unreliable_agent_model_reports_lower_prediction_confidence_than_reliable_one() -> None:
+    """Confidence must be earned through the real evidence path
+    (record_prediction/resolve_prediction), not by poking trust directly
+    -- that's the entire point of grounding confidence in smoothed
+    empirical accuracy from resolved predictions instead of a
+    hand-settable field. Build reliability the legitimate way for both
+    agents and confirm the resulting confidence still differentiates."""
     svc = TheoryOfMindService()
+
     svc.infer_goal("frank", statement="expand internationally", confidence=0.9, evidence_refs=["e"])
-    model = svc.get_or_create("frank")
-    model.trust = 0.1
-    _, low_trust_confidence = svc.predict_action(
-        "frank", ["expand internationally now", "stay local"]
-    )
+    for _ in range(6):
+        rec = svc.record_prediction("frank", "expand internationally now")
+        svc.resolve_prediction("frank", rec, actual_action="stayed local instead")  # consistently wrong
 
     svc.infer_goal("grace", statement="expand internationally", confidence=0.9, evidence_refs=["e"])
-    model2 = svc.get_or_create("grace")
-    model2.trust = 0.9
-    _, high_trust_confidence = svc.predict_action(
-        "grace", ["expand internationally now", "stay local"]
-    )
-    assert low_trust_confidence < high_trust_confidence
+    for _ in range(6):
+        rec = svc.record_prediction("grace", "expand internationally now")
+        svc.resolve_prediction("grace", rec, actual_action="expand internationally now")  # consistently right
+
+    _, low_confidence = svc.predict_action("frank", ["expand internationally now", "stay local"])
+    _, high_confidence = svc.predict_action("grace", ["expand internationally now", "stay local"])
+    assert low_confidence < high_confidence
