@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+import tools.live_cockpit_routes as live_cockpit
 from tools.vercel_oidc import VercelOidcConfig, VercelOidcVerifier
 
 
@@ -21,10 +25,15 @@ class _StaticJwksClient:
         return _SigningKey(self._key)
 
 
+class _AlwaysVerified:
+    def verify(self, _token: str) -> tuple[bool, str]:
+        return True, "vercel_oidc_verified"
+
+
 def _config() -> VercelOidcConfig:
     return VercelOidcConfig(
         team_slug="harbourview",
-        project="thebrain",
+        project="brain",
         environment="production",
     )
 
@@ -51,6 +60,19 @@ def _verifier():
         jwks_client=_StaticJwksClient(private_key.public_key()),
     )
     return verifier, private_key
+
+
+def _echo_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.get("/protected")
+    async def protected(request: Request):
+        return {
+            "api_key": request.headers.get("x-brain-api-key"),
+            "authorization": request.headers.get("authorization"),
+        }
+
+    return app
 
 
 def test_accepts_exact_production_vercel_identity() -> None:
@@ -96,3 +118,55 @@ def test_rejects_expired_token() -> None:
 def test_disabled_without_explicit_identity_scope() -> None:
     verifier = VercelOidcVerifier(VercelOidcConfig("", "", ""))
     assert verifier.verify("anything") == (False, "vercel_oidc_not_configured")
+
+
+def test_verified_oidc_translates_directly_when_tenant_mode_disabled(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("BRAIN_API_KEY", "railway-local-key")
+    monkeypatch.setattr(
+        live_cockpit.tenant_api,
+        "tenant_security",
+        SimpleNamespace(mode="disabled"),
+    )
+    monkeypatch.setattr(live_cockpit.tenant_api, "_membership_resolver", None)
+
+    bridge = live_cockpit.VercelOidcAuthBridge(_echo_app())
+    bridge.verifier = _AlwaysVerified()
+
+    response = TestClient(bridge).get(
+        "/protected",
+        headers={
+            "Authorization": "Bearer vercel-deployment-token",
+            "X-Brain-Api-Key": "untrusted-caller-value",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "api_key": "railway-local-key",
+        "authorization": None,
+    }
+
+
+def test_verified_oidc_still_requires_membership_when_tenant_mode_enabled(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("BRAIN_API_KEY", "railway-local-key")
+    monkeypatch.setattr(
+        live_cockpit.tenant_api,
+        "tenant_security",
+        SimpleNamespace(mode="required"),
+    )
+    monkeypatch.setattr(live_cockpit.tenant_api, "_membership_resolver", None)
+
+    bridge = live_cockpit.VercelOidcAuthBridge(_echo_app())
+    bridge.verifier = _AlwaysVerified()
+
+    response = TestClient(bridge).get(
+        "/protected",
+        headers={"Authorization": "Bearer vercel-deployment-token"},
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "tenant_membership_store_unavailable"}
