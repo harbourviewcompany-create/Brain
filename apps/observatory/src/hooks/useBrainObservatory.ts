@@ -107,6 +107,19 @@ export function useBrainObservatory() {
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
 
+    const clearTimer = () => {
+      if (timeout) {
+        clearTimeout(timeout);
+        timeout = null;
+      }
+    };
+
+    const schedule = () => {
+      clearTimer();
+      if (cancelled) return;
+      timeout = setTimeout(poll, document.hidden ? HIDDEN_POLL_MS : LIVE_POLL_MS);
+    };
+
     const poll = async () => {
       const previous = currentRef.current;
       const reads = await Promise.allSettled([
@@ -167,13 +180,23 @@ export function useBrainObservatory() {
       });
       setLoading(false);
 
-      timeout = setTimeout(poll, document.hidden ? HIDDEN_POLL_MS : LIVE_POLL_MS);
+      schedule();
+    };
+
+    const onVisibility = () => {
+      if (cancelled || document.hidden) return;
+      // Tab became visible: pull fresh data promptly instead of waiting out a long hidden interval.
+      clearTimer();
+      void poll();
     };
 
     void poll();
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelled = true;
-      if (timeout) clearTimeout(timeout);
+      clearTimer();
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
