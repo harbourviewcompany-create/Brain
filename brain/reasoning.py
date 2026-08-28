@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import urllib.error
@@ -17,6 +18,7 @@ class ReasonRequest:
     prompt: str
     context: dict[str, Any] = field(default_factory=dict)
     max_tokens: int = 400
+    timeout_seconds: float | None = None
 
 @dataclass(slots=True)
 class ReasonResult:
@@ -143,9 +145,14 @@ class HttpLLMReasoner:
         system = self.SYSTEM_PROMPTS.get(request.task_type, self.DEFAULT_SYSTEM_PROMPT)
         user = f"Task: {request.task_type}\nPrompt: {request.prompt}\nContext: {json.dumps(request.context)[:2000]}"
         body = json.dumps({"model": self.model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}], "max_tokens": request.max_tokens, "temperature": 0.3}).encode()
+        timeout = self.timeout
+        if request.timeout_seconds is not None:
+            requested_timeout = float(request.timeout_seconds)
+            if math.isfinite(requested_timeout) and requested_timeout > 0:
+                timeout = max(0.01, min(timeout, requested_timeout))
         try:
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 payload = json.loads(resp.read().decode())
             content = payload["choices"][0]["message"]["content"]
             return ReasonResult(content=content, confidence=0.55, task_type=request.task_type, model_id=self.model_id, metadata={"reasoner": "http_llm", "raw_keys": list(payload.keys())})
