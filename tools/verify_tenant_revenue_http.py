@@ -3,7 +3,8 @@
 Runs the canonical ``apps.api.tenant_app`` entrypoint against a disposable
 PostgreSQL database using a non-owner ``brain_runtime_role`` login. It proves
 that signed tenant requests persist signal -> score -> offer -> approval-required
-action state with tenant ownership, and that a second tenant cannot read the action.
+action state with tenant ownership, that a second tenant cannot read the action,
+and then executes the atomic rollback + warm-replica consistency regressions.
 """
 from __future__ import annotations
 
@@ -173,6 +174,16 @@ def main() -> int:
         "TENANT_REVENUE_HTTP_GO: canonical tenant_app persisted tenant-owned "
         "signal/score/offer/approval rows and isolated the action from a second tenant"
     )
+
+    # These execute on the same post-025 disposable PostgreSQL/RLS topology used by
+    # the canonical HTTP verifier. They do not touch production.
+    from tools.verify_revenue_atomic_replica import (
+        prove_atomic_rollback,
+        prove_two_replica_rls,
+    )
+
+    prove_atomic_rollback(admin_dsn)
+    prove_two_replica_rls(admin_dsn)
     return 0
 
 
