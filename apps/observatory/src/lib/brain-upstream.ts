@@ -3,21 +3,34 @@ import { getVercelOidcToken } from "@vercel/oidc";
 /**
  * Server-only upstream config for the Brain Runtime API.
  * Used exclusively by /api/brain/[...path] — never import from client components.
+ *
+ * The zero-dollar runtime has no Railway fallback. Production must explicitly
+ * point BRAIN_API_URL at the stateless Vercel-hosted Turso runtime. A missing,
+ * non-HTTPS, or legacy Railway URL fails closed instead of silently restoring a
+ * paid/runtime dependency that the migration is removing.
  */
 
-const LIVE_RAILWAY_BASE = "https://brain-api-live-production.up.railway.app";
-const DEPRECATED_RAILWAY_BASES = new Set([
-  "https://brain-api-docker-production.up.railway.app",
-  "https://brain-api-production-f142.up.railway.app",
+const LEGACY_RAILWAY_HOSTS = new Set([
+  "brain-api-live-production.up.railway.app",
+  "brain-api-docker-production.up.railway.app",
+  "brain-api-production-f142.up.railway.app",
 ]);
 
 function resolveBase(): string {
-  const configured = (process.env.BRAIN_API_URL || process.env.NEXT_PUBLIC_BRAIN_API_URL || "")
-    .replace(/\/$/, "");
-  if (!configured || DEPRECATED_RAILWAY_BASES.has(configured)) {
-    return LIVE_RAILWAY_BASE;
+  const configured = (process.env.BRAIN_API_URL || "").trim().replace(/\/$/, "");
+  if (!configured) return "";
+
+  let parsed: URL;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    return "";
   }
-  return configured;
+  if (parsed.protocol !== "https:") return "";
+  if (LEGACY_RAILWAY_HOSTS.has(parsed.hostname) || parsed.hostname.endsWith(".railway.app")) {
+    return "";
+  }
+  return parsed.origin + parsed.pathname.replace(/\/$/, "");
 }
 
 export function upstreamBase(): string {
@@ -32,21 +45,16 @@ export function upstreamKeyConfigured(): boolean {
   return Boolean(upstreamApiKey());
 }
 
+export function upstreamConfigured(): boolean {
+  return Boolean(upstreamBase());
+}
+
 /**
  * Whether to forward Vercel deployment identity upstream.
  *
- * Every deployment entrypoint verifies it. tools/live_cockpit_routes wraps
- * apps.api.tenant_app in VercelOidcAuthBridge, which checks the token's issuer,
- * audience and subject against tools/vercel_oidc.py before exchanging it for
- * the local API key -- and that bridged app is now what the canonical
- * Dockerfile, both railway*.toml configs and fly.toml all serve. It used to be
- * reachable only through Dockerfile.railway, so against the canonical image the
- * bearer token was simply ignored; see tests/test_railway_deploy_contract.py.
- *
- * Forwarding it is safe either way now that apps/api/main.py accepts any
- * presented credential that matches, rather than letting the bearer header mask
- * a valid X-Brain-Api-Key. Set BRAIN_UPSTREAM_ACCEPTS_OIDC=false to suppress it
- * when pointing at an upstream that should never see a deployment token.
+ * The canonical Vercel-hosted FastAPI runtime may verify Vercel deployment
+ * identity in addition to the existing server-only API key. Set
+ * BRAIN_UPSTREAM_ACCEPTS_OIDC=false for a runtime that accepts only the API key.
  */
 function upstreamAcceptsOidc(): boolean {
   const configured = (process.env.BRAIN_UPSTREAM_ACCEPTS_OIDC || "").trim().toLowerCase();
@@ -111,6 +119,17 @@ export async function proxyToBrain(
     return Response.json({ detail: "path_not_allowed" }, { status: 404 });
   }
 
+  const base = upstreamBase();
+  if (!base) {
+    return Response.json(
+      {
+        detail: "brain_runtime_upstream_not_configured",
+        hint: "Set BRAIN_API_URL to the HTTPS origin of the Vercel-hosted Turso Brain runtime.",
+      },
+      { status: 503, headers: { "cache-control": "no-store" } }
+    );
+  }
+
   const [oidcToken, key] = await Promise.all([
     upstreamVercelOidcToken(),
     Promise.resolve(upstreamApiKey()),
@@ -127,7 +146,6 @@ export async function proxyToBrain(
     );
   }
 
-  const base = upstreamBase();
   const path = "/" + pathSegments.map(encodeURIComponent).join("/");
   const url = `${base}${path}${init.search || ""}`;
 
@@ -153,9 +171,6 @@ export async function proxyToBrain(
   outHeaders.set("cache-control", "no-store");
 
   if (upstream.status === 401) {
-    // Report the API key first: it is the credential the upstream actually
-    // checks, so naming the deployment identity here would point debugging at
-    // the wrong half of the configuration.
     if (key) {
       return Response.json(
         {
