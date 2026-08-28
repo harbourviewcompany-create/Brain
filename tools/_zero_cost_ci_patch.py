@@ -74,20 +74,24 @@ fixture = '''  zero-cost-migration-fixture:
               ('00000000-0000-0000-0000-000000000003','cycle.completed','cycle','00000000-0000-0000-0000-000000000103','00000000-0000-0000-0000-000000000002','00000000-0000-0000-0000-000000000201','{"sequence":3}','2026-08-28T12:00:02+00:00'),
           ]
           with psycopg.connect(dsn) as conn:
-              conn.execute('''CREATE TABLE public.brain_events(
-                  id uuid PRIMARY KEY,
-                  event_type text NOT NULL,
-                  aggregate_type text NOT NULL,
-                  aggregate_id uuid NOT NULL,
-                  causation_id uuid,
-                  correlation_id uuid,
-                  payload jsonb NOT NULL,
-                  occurred_at timestamptz NOT NULL
-              )''')
+              conn.execute(
+                  'CREATE TABLE public.brain_events('
+                  'id uuid PRIMARY KEY,'
+                  'event_type text NOT NULL,'
+                  'aggregate_type text NOT NULL,'
+                  'aggregate_id uuid NOT NULL,'
+                  'causation_id uuid,'
+                  'correlation_id uuid,'
+                  'payload jsonb NOT NULL,'
+                  'occurred_at timestamptz NOT NULL)'
+              )
               conn.execute('CREATE TABLE public.migration_fixture_notes(id text PRIMARY KEY,payload text NOT NULL)')
-              conn.executemany('''INSERT INTO public.brain_events(
-                  id,event_type,aggregate_type,aggregate_id,causation_id,correlation_id,payload,occurred_at
-              ) VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s)''', events)
+              conn.executemany(
+                  'INSERT INTO public.brain_events('
+                  'id,event_type,aggregate_type,aggregate_id,causation_id,correlation_id,payload,occurred_at) '
+                  'VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s)',
+                  events,
+              )
               conn.execute("INSERT INTO public.migration_fixture_notes VALUES ('fixture-1','complete-extra-table-row')")
           PY
       - name: Convert and verify deterministic PostgreSQL to SQLite fixture
