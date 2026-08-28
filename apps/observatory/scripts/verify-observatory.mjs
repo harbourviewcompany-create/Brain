@@ -15,6 +15,7 @@ const required = [
   "src/lib/observatory.ts",
   "src/types/living-brain.ts",
   "../../docs/observatory/BRAIN_OBSERVATORY.md",
+  "../../docs/observatory/LIVING_COGNITIVE_MACHINE.md",
 ];
 
 for (const path of required) {
@@ -77,6 +78,9 @@ if (livingProjection.includes("MultiSystemMemory.retrieve_episodes(")) {
 const upstream = fs.readFileSync("src/lib/brain-upstream.ts", "utf8");
 if (!upstream.includes("getVercelOidcToken") || !upstream.includes("Authorization") && !upstream.includes("authorization")) {
   throw new Error("Vercel OIDC BFF authentication contract is missing");
+}
+for (const prefix of ['"evidence"', '"working-memory"', '"learning-events"']) {
+  if (!upstream.includes(prefix)) throw new Error(`BFF allowlist is missing ${prefix}`);
 }
 
 const page = fs.readFileSync("src/app/page.tsx", "utf8");
