@@ -3,7 +3,8 @@
 The extractor is deliberately conservative. Model output is never trusted merely
 because the model assigns itself a high confidence. Every accepted field must carry
 an exact supporting quote found in the source, the extracted value itself must be
-verbatim inside that quote, and confidence must be finite and inside 0.0-1.0.
+verbatim inside that quote, and confidence must be a real finite number inside
+0.0-1.0. Boolean JSON values are not numeric confidence evidence.
 """
 from __future__ import annotations
 
@@ -41,13 +42,15 @@ def extract_revenue_entities(
     *,
     reasoner: Reasoner,
     confidence_threshold: float = DEFAULT_CONFIDENCE_THRESHOLD,
+    request_timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Extract commercial facts only when the source proves the exact value.
 
     Every accepted field must have a verbatim ``evidence_quote`` from the source,
     and the normalized extracted ``value`` must itself occur inside that quote.
     This prevents a model from pairing an invented value with an unrelated real
-    quote to satisfy the grounding gate.
+    quote to satisfy the grounding gate. ``request_timeout_seconds`` is propagated
+    to the reasoner so the ingest operation can bound optional model latency.
     """
     text = f"{item.title}\n{item.claim}\n{item.content}".strip()
     bounded_text = text[:4000]
@@ -56,6 +59,7 @@ def extract_revenue_entities(
         prompt=bounded_text,
         context={"raw_text": bounded_text, "source_url": item.source_url},
         max_tokens=450,
+        timeout_seconds=request_timeout_seconds,
     )
     try:
         result = reasoner.reason(request)
@@ -83,11 +87,12 @@ def extract_revenue_entities(
             continue
         if not isinstance(evidence_quote, str) or not evidence_quote.strip():
             continue
-
-        try:
-            confidence_value = float(confidence)
-        except (TypeError, ValueError):
+        # bool is a subclass of int in Python. JSON true/false must therefore be
+        # rejected before numeric conversion instead of becoming 1.0/0.0.
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
             continue
+
+        confidence_value = float(confidence)
         if not math.isfinite(confidence_value) or not 0.0 <= confidence_value <= 1.0:
             continue
 
