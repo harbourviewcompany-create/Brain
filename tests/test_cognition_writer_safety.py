@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
+from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
@@ -1361,3 +1362,334 @@ def test_a_request_tick_is_refused_while_the_resume_has_not_succeeded(monkeypatc
         api.request_tick(max_items=1)
 
     assert refused.value.status_code == 409
+
+
+# --- Codex round three, against 890d234 ------------------------------------
+
+
+def test_a_borrowed_lease_tick_resumes_durable_beliefs_first(monkeypatch):
+    """The path taken when inline cognition is off, and the only one unguarded.
+
+    _resume_durable_beliefs() had exactly one caller: the inline engine's
+    on_start. Switch inline cognition off and a request that borrows the lease
+    ticks against a cycle cache that was never loaded at all -- reasoning from
+    the boot snapshot, re-deriving what the database already holds, and
+    persisting it over the previous writer's beliefs while holding exclusive
+    ownership.
+    """
+
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(api, "_inline_cognition", None)
+    monkeypatch.setattr(api, "CognitionLease", lambda dsn: _FakeLease(granted=True))
+
+    order = []
+    monkeypatch.setattr(api, "_resume_durable_beliefs", lambda: order.append("resume"))
+    monkeypatch.setattr(api, "tick_once", lambda **kwargs: order.append("tick") or {"ok": True})
+
+    assert api.request_tick(max_items=1) == {"ok": True}
+    assert order == ["resume", "tick"]
+
+
+def test_a_borrowed_lease_tick_is_refused_when_the_resume_fails(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(api, "_inline_cognition", None)
+    monkeypatch.setattr(api, "CognitionLease", lambda dsn: _FakeLease(granted=True))
+    monkeypatch.setattr(
+        api,
+        "_resume_durable_beliefs",
+        lambda: (_ for _ in ()).throw(RuntimeError("database gone")),
+    )
+    monkeypatch.setattr(
+        api,
+        "tick_once",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not tick")),
+    )
+
+    with pytest.raises(HTTPException) as refused:
+        api.request_tick(max_items=1)
+
+    assert refused.value.status_code == 503
+
+
+def test_resuming_forces_a_hydrate_rather_than_honouring_the_read_ttl(monkeypatch):
+    """A yield-and-retake is seconds; BRAIN_READ_REFRESH_SECONDS is longer.
+
+    Delegating to _refresh_reads() meant the resume asked for a TTL-bounded
+    refresh, got told the cache was fresh enough, and "succeeded" against the
+    very pre-handover snapshot it exists to replace.
+    """
+
+    asked = []
+
+    class Store:
+        beliefs: dict = {}
+
+        def refresh_if_stale(self, max_age_seconds):
+            asked.append(max_age_seconds)
+            return True
+
+    monkeypatch.setattr(api, "_brain_store", Store())
+    monkeypatch.setattr(api.heartbeat, "_cycle", type("C", (), {"register_belief": lambda s, b: None})())
+
+    api._resume_durable_beliefs()
+
+    # Zero, not the read TTL: no cached answer is fresh enough for this.
+    assert asked == [0.0]
+
+
+def test_a_failed_resume_refresh_is_not_swallowed(monkeypatch):
+    """_refresh_reads() swallows, correctly, for read routes. Not for this.
+
+    A swallowed failure reports a resume that never happened -- and that
+    report is what marks the process ready to write.
+    """
+
+    class Store:
+        beliefs: dict = {}
+
+        def refresh_if_stale(self, max_age_seconds):
+            raise RuntimeError("database gone")
+
+    monkeypatch.setattr(api, "_brain_store", Store())
+    monkeypatch.setattr(api.heartbeat, "_cycle", type("C", (), {"register_belief": lambda s, b: None})())
+
+    with pytest.raises(RuntimeError):
+        api._resume_durable_beliefs()
+
+
+def test_a_queued_signal_survives_a_refused_immediate_tick(monkeypatch):
+    """perceive() has already committed by the time the tick is refused.
+
+    Letting the 409 be the response omitted the id and sent a well-behaved
+    client back to retry, enqueuing the same signal twice.
+    """
+
+    monkeypatch.setenv("BRAIN_API_KEY", "test-key")
+    monkeypatch.setattr(
+        api,
+        "request_tick",
+        lambda **kwargs: (_ for _ in ()).throw(
+            HTTPException(status_code=409, detail="cognition_lease_held_elsewhere: x")
+        ),
+    )
+
+    client = TestClient(api.app)
+    response = client.post(
+        "/signals",
+        json={"content": "c", "claim": "k", "process_now": True},
+        headers={"X-Brain-Api-Key": "test-key"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"]
+    assert body["tick"]["deferred"] is True
+    assert body["tick"]["status_code"] == 409
+
+
+def test_the_lease_is_rechecked_after_connector_ingest(monkeypatch):
+    """Ingest talks to the network and can block for a long time.
+
+    The check happened before it; the lock can be dropped anywhere inside it.
+    Falling straight through to run_once() spent that window writing a
+    cognition cycle as a second writer.
+    """
+
+    checks = []
+    ticked = []
+
+    def lease_check():
+        checks.append(1)
+        # Held for the top-of-pass and the pre-ingest check, gone after.
+        return len(checks) <= 2
+
+    class Ingest:
+        def ingest_due_sources(self):
+            return None
+
+    class Runner:
+        _idle_cycles = 0
+
+        def run_once(self):
+            ticked.append(1)
+            raise AssertionError("must not tick after losing the lease during ingest")
+
+    monkeypatch.setattr(worker, "_lease_still_held", lease_check)
+    monkeypatch.setattr(worker, "_runner_singleton", lambda: Runner())
+    monkeypatch.setattr(worker, "_learning_singleton", lambda: None)
+    monkeypatch.setattr(worker, "_ingest_singleton", lambda: Ingest())
+    monkeypatch.setattr(worker.time, "sleep", lambda s: (_ for _ in ()).throw(StopIteration))
+
+    with pytest.raises(StopIteration):
+        worker.run_forever_with_maintenance(tick_sleep=0, ingest_every=1, maintenance_every=0)
+
+    assert ticked == []
+
+
+def test_reacquiring_a_lost_lease_reloads_the_projection(monkeypatch):
+    """Getting the lock back is not the same as being current.
+
+    Somebody else held it, and wrote. The runner and its store still carry the
+    pre-handover projection, so resuming on it reasons from stale beliefs and
+    persists conflicting versions over the writer that actually held the lease.
+    """
+
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(worker, "_cognition_lease", None)
+    monkeypatch.setattr(worker, "_lease_required", True)
+
+    import brain.cognition_lease as lease_module
+
+    monkeypatch.setattr(lease_module, "CognitionLease", lambda dsn: _FakeLease(granted=True))
+
+    resumed = []
+    monkeypatch.setattr(worker, "_resume_worker_state", lambda: resumed.append(1))
+
+    assert worker._reacquire_cognition_lease() is True
+    assert resumed == [1]
+
+
+def test_a_reacquisition_that_cannot_reload_does_not_grant_permission(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(worker, "_cognition_lease", None)
+    monkeypatch.setattr(worker, "_lease_required", True)
+
+    import brain.cognition_lease as lease_module
+
+    released = _FakeLease(granted=True)
+    monkeypatch.setattr(lease_module, "CognitionLease", lambda dsn: released)
+    monkeypatch.setattr(
+        worker,
+        "_resume_worker_state",
+        lambda: (_ for _ in ()).throw(RuntimeError("database gone")),
+    )
+
+    # Better to stay idle and retry than to write from a cache we know is
+    # stale; and the lock goes back so a healthy process can have it.
+    assert worker._reacquire_cognition_lease() is False
+    assert released.released == 1
+
+
+def test_the_worker_resume_forces_a_hydrate(monkeypatch):
+    asked = []
+    registered = []
+
+    class Store:
+        beliefs = {"a": object()}
+
+        def refresh_if_stale(self, max_age_seconds):
+            asked.append(max_age_seconds)
+            return True
+
+    class Cycle:
+        event_store = Store()
+
+        def register_belief(self, belief):
+            registered.append(belief)
+
+    monkeypatch.setattr(worker, "_runner", type("R", (), {"cycle": Cycle()})())
+
+    worker._resume_worker_state()
+
+    assert asked == [0.0]
+    assert len(registered) == 1
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "-1", "not-a-number"])
+def test_an_unusable_worker_tick_interval_falls_back(monkeypatch, raw):
+    """Pacing endogenous cycles put time.sleep() on nearly every pass.
+
+    Before that it was all but unreachable, so a bad BRAIN_TICK_SLEEP sat
+    harmless. Now infinity raises OverflowError and a negative raises
+    ValueError on the first idle tick, killing the worker.
+    """
+
+    monkeypatch.setenv("BRAIN_TICK_SLEEP", raw)
+
+    value = worker._tick_sleep_seconds()
+
+    assert value == 1.0
+    time.sleep(value * 0)  # the fallback is a value time.sleep() accepts
+
+
+def test_a_usable_worker_tick_interval_is_honoured(monkeypatch):
+    monkeypatch.setenv("BRAIN_TICK_SLEEP", "0.25")
+
+    assert worker._tick_sleep_seconds() == 0.25
+
+
+def test_a_rewire_written_during_a_load_is_not_installed_twice():
+    """A load is a series of queries, not an instant.
+
+    A rewire committed after the load began but before the rewire_events query
+    ran is both read and recorded in flight, and extending unconditionally
+    then showed every reader two copies of one durable event.
+    """
+
+    from brain.domain import RewireEvent, RewireOperation
+
+    store = _detached_store()
+    shared = RewireEvent(
+        operation=RewireOperation.STRENGTHEN_EDGE,
+        reason="observed twice",
+        target_id=uuid4(),
+        previous={},
+        current={},
+    )
+
+    def load():
+        # The query returns it, and the in-flight buffer holds it too.
+        store._inflight["rewires"].append(shared)
+        return {}, {}, {}, {}, [shared]
+
+    store._load_projection = load
+    store.hydrate()
+
+    assert [item.id for item in store.rewires] == [shared.id]
+
+
+def test_temporal_activities_check_the_lease_off_the_event_loop():
+    """_lease_still_held() can open a connection and run a query.
+
+    Awaited directly inside an async activity, that blocks the Temporal
+    worker's event-loop thread -- stalling dispatch, cancellation and shutdown
+    for the whole of a database outage, which is exactly when the check is
+    slowest. cognition_tick_activity already went through a thread; the other
+    two called it inline. A source-level check because the failure is which
+    thread the call runs on, which no return value reveals.
+    """
+
+    import ast
+    import inspect
+    import textwrap
+
+    source = textwrap.dedent(inspect.getsource(worker))
+    tree = ast.parse(source)
+
+    guarded = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AsyncFunctionDef) or not node.name.endswith("_activity"):
+            continue
+        direct = False
+        threaded = False
+        for inner in ast.walk(node):
+            # await asyncio.to_thread(_lease_still_held)
+            if isinstance(inner, ast.Await) and isinstance(inner.value, ast.Call):
+                call = inner.value
+                args = [a for a in call.args if isinstance(a, ast.Name)]
+                if any(a.id == "_lease_still_held" for a in args):
+                    threaded = True
+                    continue
+            # _lease_still_held() called straight on the loop
+            if (
+                isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Name)
+                and inner.func.id == "_lease_still_held"
+            ):
+                direct = True
+        if direct or threaded:
+            guarded[node.name] = (direct, threaded)
+
+    assert guarded, "no lease-checking Temporal activities found"
+    offenders = {name for name, (direct, _) in guarded.items() if direct}
+    assert offenders == set(), f"lease checked on the event loop in: {sorted(offenders)}"

@@ -5,6 +5,7 @@ import asyncio
 import os
 import time
 from datetime import timedelta
+from math import isfinite
 from typing import Any
 
 import psycopg
@@ -274,9 +275,93 @@ def _reacquire_cognition_lease() -> bool:
     except Exception:
         log.exception("cognition lease could not be re-acquired")
         return False
+
+    # Losing the lease means somebody else has been writing. This runner and
+    # its store still hold the projection from before that handover, so
+    # handing the lock straight back to it would resume cognition from beliefs
+    # that are now several versions stale -- and persist conflicting ones over
+    # the writer that actually held the lease in the meantime. Getting the
+    # lock back is not the same as being current, and only one of those is
+    # permission to write.
+    try:
+        _resume_worker_state()
+    except Exception:
+        log.exception("durable state could not be reloaded after re-acquiring the lease")
+        try:
+            lease.release()
+        except Exception:
+            log.exception("cognition lease could not be released after a failed resume")
+        return False
+
     log.info("cognition lease re-acquired; resuming cognition")
     _cognition_lease = lease
     return True
+
+
+def _resume_worker_state() -> None:
+    """Reload the durable projection into the runner that is about to write.
+
+    The mirror of apps/api/main._resume_durable_beliefs(), and of what
+    build_runner() already does once at construction. Forced rather than
+    TTL-bounded: a handover is exactly the case where the cached copy is both
+    recent and wrong.
+    """
+
+    runner = _runner
+    if runner is None:
+        # Nothing has been built yet, and build_runner() resumes on
+        # construction, so there is no stale cache to correct.
+        return
+    cycle = getattr(runner, "cycle", None)
+    register = getattr(cycle, "register_belief", None)
+    store = getattr(cycle, "event_store", None)
+    if register is None or store is None:
+        return
+    refresh = getattr(store, "refresh_if_stale", None)
+    if refresh is not None:
+        refresh(0.0)
+    beliefs = getattr(store, "beliefs", {}) or {}
+    for belief in list(beliefs.values()):
+        try:
+            register(belief)
+        except Exception:
+            log.exception(
+                "durable belief could not be resumed",
+                extra={"belief_id": str(getattr(belief, "id", ""))},
+            )
+    log.info(
+        "worker reloaded durable beliefs after a lease handover",
+        extra={"beliefs": len(beliefs)},
+    )
+
+
+def _tick_sleep_seconds(default: float = 1.0) -> float:
+    """A finite, non-negative pause between cognition cycles.
+
+    The twin of apps/api/inline_cognition._float_env, kept here rather than
+    imported because a worker must not depend on the API package. float()
+    accepts "nan" and "inf" and neither survives time.sleep(): infinity raises
+    OverflowError, a negative raises ValueError, and NaN compares false
+    against everything so pacing degrades to a hot loop. This used to be
+    unreachable in practice -- the loop only slept when the inbox was empty
+    *and* the mind produced nothing, which it almost never is. Pacing
+    endogenous cycles put that sleep on nearly every pass, which turns a
+    typo in one environment variable into a worker that dies on its first
+    idle tick.
+    """
+
+    raw = (os.environ.get("BRAIN_TICK_SLEEP") or "").strip()
+    if not raw:
+        return default
+    try:
+        parsed = float(raw)
+    except ValueError:
+        log.warning("ignoring non-numeric BRAIN_TICK_SLEEP", extra={"value": raw})
+        return default
+    if not isfinite(parsed) or parsed < 0:
+        log.warning("ignoring out-of-range BRAIN_TICK_SLEEP", extra={"value": raw})
+        return default
+    return parsed
 
 
 def run_forever_with_maintenance(
@@ -302,6 +387,15 @@ def run_forever_with_maintenance(
                 ingest.ingest_due_sources()
             except Exception:
                 log.exception("connector ingest cycle failed")
+            # Ingest talks to external connectors and can block for a long
+            # time. The check above happened before that; the lock can be
+            # dropped anywhere inside it, and an API replica can take over
+            # while this process is still waiting on a socket. Falling
+            # straight through to run_once() would spend that window writing
+            # a cognition cycle as a second writer.
+            if not _lease_still_held():
+                time.sleep(max(tick_sleep, 1.0))
+                continue
         # An empty inbox does not make this loop idle: endogenous cognition
         # always produces a stimulus (the mind falls back to self-reflection),
         # so run_once() returns true on nearly every pass. Pacing on that
@@ -422,7 +516,14 @@ if _HAS_TEMPORAL:
         # A dict rather than a bare count, so the workflow can tell "ran and
         # expired nothing" from "declined for want of the lease". Returning 0
         # for both let the workflow count maintenance that never happened.
-        if not _lease_still_held():
+        #
+        # In a thread, like the work it guards: _lease_still_held() can open a
+        # PostgreSQL connection and run a query when its verification interval
+        # has expired or the lock was lost. Awaiting that on the event loop
+        # stalls the whole Temporal worker -- dispatch, cancellation and
+        # shutdown included -- for the length of a database outage, which is
+        # precisely when it will be slowest.
+        if not await asyncio.to_thread(_lease_still_held):
             return {"skipped": "cognition_lease_unavailable"}
         learning = _learning_singleton()
         if learning is None or not hasattr(learning, "expire_due_predictions"):
@@ -432,7 +533,8 @@ if _HAS_TEMPORAL:
 
     @activity.defn(name="brain.ingest_due_sources")
     async def ingest_due_sources_activity() -> dict[str, Any]:
-        if not _lease_still_held():
+        # In a thread, for the reason given on prediction_maintenance_activity.
+        if not await asyncio.to_thread(_lease_still_held):
             return {"skipped": "cognition_lease_unavailable"}
         svc = _ingest_singleton()
         batch = await asyncio.to_thread(svc.ingest_due_sources)
@@ -556,7 +658,7 @@ def run_cognition_loop() -> None:
     """The durable in-process cognition loop, with env-tunable cadence."""
     acquire_cognition_lease()
     run_forever_with_maintenance(
-        tick_sleep=float(os.environ.get("BRAIN_TICK_SLEEP", "1")),
+        tick_sleep=_tick_sleep_seconds(),
         ingest_every=int(os.environ.get("BRAIN_INGEST_EVERY", "30")),
         maintenance_every=int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
     )

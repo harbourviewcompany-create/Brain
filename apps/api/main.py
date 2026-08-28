@@ -123,6 +123,27 @@ def request_tick(*, max_items: int = 1) -> dict[str, Any]:
                 ),
             )
         try:
+            # Owning the lease is not the same as being fit to use it. This
+            # branch runs when no inline engine exists -- inline cognition
+            # switched off, or declined -- and _resume_durable_beliefs() is
+            # otherwise only ever called by that engine. So without this the
+            # API's cycle cache has never been loaded at all: an operator tick
+            # taken over from a worker would reason from the boot snapshot,
+            # re-derive what the database already holds, and persist it over
+            # the previous writer's beliefs while holding exclusive ownership.
+            # Exclusivity makes that worse, not safer -- nothing else is left
+            # to notice.
+            try:
+                _resume_durable_beliefs()
+            except Exception:
+                log.exception("durable beliefs could not be resumed for a request tick")
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "cognition_state_unavailable: the durable belief projection "
+                        "could not be read, so this tick would think from stale state"
+                    ),
+                ) from None
             return tick_once(max_items=max_items)
         finally:
             lease.release()
@@ -143,9 +164,18 @@ def _resume_durable_beliefs() -> None:
     register = getattr(cycle, "register_belief", None)
     if register is None:
         return
-    # See what the other writer left behind, not the snapshot this process
-    # booted with -- resuming is only worth doing against current state.
-    _refresh_reads()
+    # A forced hydrate, and one that is allowed to fail. _refresh_reads() is
+    # built for read routes: it honours BRAIN_READ_REFRESH_SECONDS and
+    # swallows errors so a request still gets the cached projection. Both are
+    # wrong here. Inside the TTL it would skip the load entirely -- and a
+    # yield-and-retake takes seconds, well within it -- so the resume would
+    # "succeed" against the very pre-handoff cache it exists to replace. And
+    # swallowing the failure would report a resume that never happened, which
+    # is what marks this process ready to write.
+    refresh = getattr(_brain_store, "refresh_if_stale", None)
+    if refresh is not None:
+        # max_age 0: every call hydrates, no cached answer is fresh enough.
+        refresh(0.0)
     beliefs = getattr(_brain_store, "beliefs", {}) or {}
     # Under the same lock as ticking: register_belief mutates the cycle's
     # belief cache, and a request tick can be running in the thread pool.
@@ -659,7 +689,27 @@ def enqueue_signal(body: PerceiveRequest):
         operator_burden=body.operator_burden,
         metadata=body.metadata,
     )
-    tick_result = request_tick(max_items=1) if body.process_now else None
+    tick_result = None
+    if body.process_now:
+        try:
+            tick_result = request_tick(max_items=1)
+        except HTTPException as refused:
+            # The signal is already durably queued by this point: perceive()
+            # has committed it. Letting the refusal become the response would
+            # report the whole request as failed, omit the id, and send a
+            # well-behaved client back to retry -- enqueuing the same signal a
+            # second time and duplicating the cognition it eventually gets.
+            # Losing the lease race is not a failure to accept the signal; it
+            # is a tick that happens later, so say that and hand back the id.
+            log.info(
+                "signal queued but immediate processing was declined",
+                extra={"signal_id": str(item.id), "reason": str(refused.detail)},
+            )
+            tick_result = {
+                "deferred": True,
+                "status_code": refused.status_code,
+                "reason": refused.detail,
+            }
     return {
         "id": str(item.id),
         "source_key": item.source_key,

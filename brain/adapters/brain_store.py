@@ -132,7 +132,17 @@ class PostgresBrainStore(InMemoryBrainStore):
             evidence.update(pending["evidence"])
             nodes.update(pending["nodes"])
             edges.update(pending["edges"])
-            rewires.extend(pending["rewires"])
+            # By id, not by extend. A load is a series of queries, so a rewire
+            # committed while hydration is in progress but before the
+            # rewire_events query runs is read *and* recorded in flight --
+            # and extending unconditionally then installed two copies of one
+            # durable event, which every reader would show until some later
+            # uncontended refresh happened to clear it. The dict-backed
+            # collections above already dedupe by key; this one has to say so.
+            seen = {getattr(item, "id", None) for item in rewires}
+            rewires.extend(
+                item for item in pending["rewires"] if getattr(item, "id", None) not in seen
+            )
 
             self.beliefs = beliefs
             self.evidence = evidence
