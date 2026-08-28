@@ -1,8 +1,8 @@
-"""Production-shaped verification for revenue scoring persistence migration 025.
+"""Production-shaped verification for revenue scoring persistence migration 024.
 
-Run against a disposable PostgreSQL database that has either the legacy pre-025
-schema or migration 025 applied. This intentionally exercises the real psycopg
-adapter and MoneySpineService, not fake pools.
+Run against a disposable PostgreSQL database that has either the legacy pre-024
+schema or migration 024 applied. This exercises the real psycopg adapter and
+MoneySpineService rather than fake pools.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from brain.money_spine import MoneySpineService, RevenueSignal
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--expect", choices=("pre025", "post025"), required=True)
+    parser.add_argument("--expect", choices=("pre024", "post024"), required=True)
     args = parser.parse_args()
 
     dsn = os.environ.get("DATABASE_URL")
@@ -40,7 +40,7 @@ def main() -> int:
             execution_difficulty=0.2,
             legal_access_risk=0.0,
             time_delay=0.1,
-            metadata={"verification": "migration-025-production-shaped"},
+            metadata={"verification": "migration-024-production-shaped"},
         )
         scored = money.score_signal(signal)
         if not scored.actionable:
@@ -58,10 +58,10 @@ def main() -> int:
                 "select count(*) from public.packaged_offers where id = %s", (offer.id,)
             ).fetchone()[0]
 
-            if args.expect == "pre025":
+            if args.expect == "pre024":
                 assert store._signal_audit_schema_is_ready() is False
                 assert (signal_count, scored_count, offer_count) == (0, 0, 0)
-                print("PRE025_GO: scoring succeeded and audit writes safely no-op on legacy UUID schema")
+                print("PRE024_GO: scoring succeeded and audit writes safely no-op on legacy UUID schema")
                 return 0
 
             assert store._signal_audit_schema_is_ready() is True
@@ -76,7 +76,7 @@ def main() -> int:
             ).fetchone()[0]
             assert signal_keys == ("integration-source-key", "high_intent_lead_pack")
             assert scored_lane == "high_intent_lead_pack"
-            print("POST025_GO: signal, score, and offer persisted with stable text keys")
+            print("POST024_GO: signal, score, and offer persisted with stable text keys")
             return 0
     finally:
         store.close()
