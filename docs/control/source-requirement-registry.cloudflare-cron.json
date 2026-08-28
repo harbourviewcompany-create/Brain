@@ -1,0 +1,53 @@
+{
+  "registry_id": "brain-source-requirement-registry-cloudflare-cron-extension-v1",
+  "status": "APPROVED_FOR_TRACEABILITY_ENFORCEMENT",
+  "purpose": "Traceability for free Cloudflare cron lease-aware cognition tick route and Worker package metadata.",
+  "rules": [
+    "External cron ticks must acquire the cognition lease non-blocking and never double-write.",
+    "Cloudflare Worker is fetch-only; Python cognition stays on the API host."
+  ],
+  "sources": [
+    {
+      "source_id": "SRC-CLOUDFLARE-CRON-DOCS",
+      "path": "docs/deployment-cloudflare-cron.md",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-INFRA-CONTROL",
+      "path": "docs/control/brain-build-rules.md",
+      "label": "APPROVED"
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-CLOUDFLARE-COGNITION-CRON",
+      "source_ids": ["SRC-CLOUDFLARE-CRON-DOCS", "SRC-INFRA-CONTROL"],
+      "label": "APPROVED"
+    }
+  ],
+  "code_module_records": [
+    {
+      "record_id": "TRACE-CLOUDFLARE-COGNITION-CRON",
+      "paths": ["apps/api/cognition_cron_routes.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "REVIEW",
+      "source_ids": ["SRC-CLOUDFLARE-CRON-DOCS", "SRC-INFRA-CONTROL"],
+      "requirement_ids": ["REQ-CLOUDFLARE-COGNITION-CRON"],
+      "owner_object": "Lease-aware external cognition tick HTTP route for free serverless schedulers",
+      "schema": "ExternalTickRequest max_items/max_ticks (1..5); response status ticked|lease_held_elsewhere",
+      "runtime_service": "apps.api.cognition_cron_routes.register_cognition_cron_routes",
+      "state_machine": "authenticate -> try non-blocking lease -> tick bounded or skip -> release",
+      "fixtures": ["tests/test_cognition_cron_tick.py"],
+      "tests": ["tests/test_cognition_cron_tick.py", "python -m pytest -q"],
+      "acceptance_criteria": [
+        "unauthenticated requests are rejected",
+        "lease held elsewhere performs zero ticks",
+        "acquired lease is always released",
+        "Cloudflare Worker package sources are present under deploy/cloudflare-cognition-cron"
+      ],
+      "audit_events": ["EXTERNAL_COGNITION_TICK", "COGNITION_LEASE_HELD_ELSEWHERE"],
+      "source_preservation": "preserved; does not replace worker or inline cognition",
+      "unresolved_gaps": ["live Cloudflare Worker deploy remains operator action", "cron alone is coarse (~1/min) versus in-process loop"]
+    }
+  ]
+}
