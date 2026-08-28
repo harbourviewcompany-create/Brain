@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild one tenant's Neo4j projection from canonical PostgreSQL graph rows."""
+"""Rebuild one tenant's Neo4j projection from canonical PostgreSQL graph + evidence."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from brain.adapters.neo4j_projection import Neo4jProjection
-from brain.domain import Edge, Node
+from brain.domain import Edge, Evidence, Node
 from brain.tenant_runtime import require_safe_runtime_role, tenant_rls_enforced
 
 
@@ -25,7 +25,9 @@ def _required_uuid(name: str) -> UUID:
         raise RuntimeError(f"{name} must be a valid UUID") from exc
 
 
-def _load_graph(dsn: str, tenant_id: UUID) -> tuple[list[Node], list[Edge]]:
+def _load_graph(
+    dsn: str, tenant_id: UUID
+) -> tuple[list[Node], list[Edge], list[Evidence]]:
     with psycopg.connect(dsn, autocommit=True, row_factory=dict_row) as conn:
         if tenant_rls_enforced(conn):
             require_safe_runtime_role(conn, require_trusted_service=True)
@@ -50,6 +52,33 @@ def _load_graph(dsn: str, tenant_id: UUID) -> tuple[list[Node], list[Edge]]:
             (tenant_id,),
         ).fetchall()
 
+        # All tenant evidence rows (edge.evidence_ids still drive JUSTIFIES links).
+        evidence_rows = conn.execute(
+            """
+            select id, observation_id, claim, reliability, created_at, metadata
+            from public.evidence
+            where tenant_id = %s
+            order by id
+            """,
+            (tenant_id,),
+        ).fetchall()
+
+    evidence = []
+    for row in evidence_rows:
+        metadata = dict(row["metadata"] or {})
+        source_id = str(metadata.pop("source_id", "unknown"))
+        evidence.append(
+            Evidence(
+                id=row["id"],
+                observation_id=row["observation_id"],
+                claim=row["claim"],
+                source_id=source_id,
+                reliability=float(row["reliability"]),
+                created_at=row["created_at"],
+                metadata=metadata,
+            )
+        )
+
     return (
         [
             Node(
@@ -73,6 +102,7 @@ def _load_graph(dsn: str, tenant_id: UUID) -> tuple[list[Node], list[Edge]]:
             )
             for row in edges
         ],
+        evidence,
     )
 
 
@@ -90,8 +120,8 @@ def main() -> int:
             raise RuntimeError("NEO4J_URI and NEO4J_PROJECTION_ENABLED=true are required")
 
         try:
-            nodes, edges = _load_graph(dsn, tenant_id)
-            result = projection.rebuild(nodes, edges, scope=tenant_id)
+            nodes, edges, evidence = _load_graph(dsn, tenant_id)
+            result = projection.rebuild(nodes, edges, scope=tenant_id, evidence=evidence)
         finally:
             projection.close()
     except Exception as exc:
