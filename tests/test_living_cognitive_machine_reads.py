@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -7,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from apps.api.cockpit_read_routes import register_cockpit_read_routes
+from brain.adapters.postgres import PostgresEventStore
 from brain.domain import Belief, Evidence
 from brain.events import BrainEvent
 from brain.memory import InMemoryBrainStore
@@ -237,8 +239,17 @@ def test_nested_durable_event_store_is_authoritative_for_event_reads():
         beliefs={},
         evidence={},
         event_store=durable,
-        read_all=lambda: [],
+        read_all=lambda: (_ for _ in ()).throw(AssertionError("projection read_all must not be used")),
     )
     body = _client(projection).get("/signals").json()
     assert body["total"] == 1
     assert body["items"][0]["metadata"]["content"] == "Durable only"
+
+
+def test_postgres_recent_event_read_is_index_bounded_not_full_ledger_scan():
+    source = inspect.getsource(PostgresEventStore.read_recent)
+    assert "where event_type = %s" in source
+    assert "order by occurred_at desc" in source
+    assert "limit %s" in source
+    assert "read_all" not in source
+    assert "event_type = any" not in source, "multi-type reads must not build one giant sort input"
