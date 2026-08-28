@@ -713,6 +713,9 @@ def test_a_request_tick_rides_the_lease_the_inline_loop_already_holds(monkeypatc
     class Holder:
         holds_lease = True
 
+        def revalidate_lease(self):
+            return True
+
     monkeypatch.setattr(api, "_inline_cognition", Holder())
     monkeypatch.setattr(
         api,
@@ -817,10 +820,13 @@ def test_a_belief_written_during_a_load_survives_the_swap(monkeypatch):
     store = _detached_store()
     written = Belief(statement="written mid load", confidence=0.5)
 
+    from brain.memory import InMemoryBrainStore
+
     def load_and_write(self):
         # Commits after the belief query has already run, which is the window
-        # that made the swap lose it.
-        self._record_inflight(written)
+        # that made the swap lose it -- through the real write path, so this
+        # exercises the same lock the swap takes.
+        self._apply_local(written, InMemoryBrainStore.save)
         return ({"from-database": "belief"}, {}, {}, {}, [])
 
     monkeypatch.setattr(PostgresBrainStore, "_load_projection", load_and_write)
@@ -960,3 +966,194 @@ def test_the_timeout_value_is_passed_as_text_not_an_integer():
     assert "set_config" in statement
     assert params == (str(int(PostgresBrainStore.READ_TIMEOUT_SECONDS * 1000)),)
     assert isinstance(params[0], str)
+
+
+# --- ownership checked and used without letting go in between -------------
+
+
+def test_a_request_cannot_tick_on_a_lease_the_loop_is_giving_away():
+    """The TOCTOU CodeRabbit found in the first version of request_tick.
+
+    A request read holds_lease, and before it reached the tick the inline loop
+    hit its periodic yield and released -- so a worker could take the advisory
+    lock and the request ticked as a second writer, having truthfully observed
+    itself to be the first.
+    """
+
+    guard = threading.RLock()
+    lease = _FakeLease()
+    clock = FakeClock()
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=lease,
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=300,
+        yield_pause_seconds=0,
+        clock=clock,
+        guard=guard,
+    )
+    eng._step()
+    assert eng.holds_lease is True
+
+    observed = []
+    released = threading.Event()
+
+    def yielder():
+        clock.advance(300)
+        eng._step()
+        released.set()
+
+    # Hold the guard the way request_tick does, then let the loop try to yield.
+    with guard:
+        thread = threading.Thread(target=yielder, daemon=True)
+        thread.start()
+        # It cannot release while the guard is held, so ownership observed
+        # inside this block stays true for as long as the block lasts.
+        released.wait(timeout=0.2)
+        observed.append(eng.holds_lease)
+    thread.join(timeout=5)
+
+    assert observed == [True]
+    assert eng.holds_lease is False
+
+
+def test_request_tick_revalidates_rather_than_trusting_a_timestamp(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(api, "tick_once", lambda **kwargs: {"ticked": True})
+    borrowed = []
+
+    class StaleHolder:
+        # holds_lease is a local timestamp; the connection behind it is gone.
+        holds_lease = True
+
+        def revalidate_lease(self):
+            return False
+
+    monkeypatch.setattr(api, "_inline_cognition", StaleHolder())
+
+    class Available:
+        def __init__(self, dsn):
+            borrowed.append(dsn)
+
+        def acquire(self, *, blocking=False):
+            return True
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(api, "CognitionLease", Available)
+
+    assert api.request_tick(max_items=1) == {"ticked": True}
+    # Fell through to taking its own lease rather than writing on a stale one.
+    assert borrowed == ["postgres:///brain"]
+
+
+def test_the_tick_lock_is_reentrant():
+    # The inline loop holds the guard across a lease transition and then calls
+    # tick_once, which takes it again on the same thread. A plain Lock would
+    # deadlock the cognition thread on its first yield.
+    assert type(api._tick_lock).__name__ == "RLock"
+
+
+# --- no write can be lost in the swap, including a rewire -----------------
+
+
+def test_a_write_between_the_drain_and_the_swap_is_not_lost(monkeypatch):
+    """The second race CodeRabbit found.
+
+    Draining _inflight first and assigning afterwards left an interval where a
+    write mutated the old projection, found no buffer to record itself in, and
+    was then discarded by the assignment.
+    """
+
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(PostgresBrainStore.hydrate)))
+
+    def guarded_bodies(node):
+        """Every statement list that runs while _inflight_lock is held."""
+
+        for child in ast.walk(node):
+            if not isinstance(child, ast.With):
+                continue
+            if any(
+                isinstance(item.context_expr, ast.Attribute)
+                and item.context_expr.attr == "_inflight_lock"
+                for item in child.items
+            ):
+                yield child
+
+    def mentions(node, text):
+        return text in ast.dump(node)
+
+    swapping = [
+        block
+        for block in guarded_bodies(tree)
+        if mentions(block, "'_inflight'") and mentions(block, "attr='beliefs'")
+    ]
+
+    # Draining the buffer and assigning the new projection have to be the same
+    # critical section. Split across two, a write lands in between, finds no
+    # buffer to record itself in, and is discarded by the assignment.
+    assert swapping, (
+        "the drain and the projection swap must happen under one "
+        "_inflight_lock block"
+    )
+
+
+def test_local_writes_mutate_and_record_under_one_lock():
+    import inspect
+
+    source = inspect.getsource(PostgresBrainStore._apply_local)
+    lock = source.index("with self._inflight_lock")
+    mutate = source.index("method(self, item)")
+    record = source.index('pending["beliefs"]')
+    # A write that has mutated the projection but not yet recorded itself is
+    # exactly the write a concurrent swap loses.
+    assert lock < mutate < record
+
+
+def test_a_rewire_written_during_a_load_survives_the_swap(monkeypatch):
+    from brain.domain import RewireEvent, RewireOperation
+    from brain.memory import InMemoryBrainStore
+
+    store = _detached_store()
+    from uuid import uuid4
+
+    event = RewireEvent(
+        operation=RewireOperation.STRENGTHEN_EDGE,
+        reason="written mid load",
+        target_id=uuid4(),
+        previous={},
+        current={},
+    )
+
+    def load_and_write(self):
+        self._apply_local(event, InMemoryBrainStore.log_rewire)
+        return ({}, {}, {}, {}, [])
+
+    monkeypatch.setattr(PostgresBrainStore, "_load_projection", load_and_write)
+
+    store.hydrate()
+
+    # log_rewire was the one write path the in-flight buffer did not cover.
+    assert event in store.rewires
+
+
+def test_every_projection_write_path_goes_through_apply_local():
+    import inspect
+
+    for method in (
+        PostgresBrainStore.save,
+        PostgresBrainStore.upsert_node,
+        PostgresBrainStore.upsert_edge,
+        PostgresBrainStore.log_rewire,
+    ):
+        source = inspect.getsource(method)
+        assert "_apply_local" in source, f"{method.__name__} bypasses the swap lock"
+        assert "super()." not in source, (
+            f"{method.__name__} mutates the projection outside the lock"
+        )

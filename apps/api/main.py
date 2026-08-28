@@ -52,7 +52,10 @@ _inline_cognition: InlineCognition | None = None
 #: belief cache are plain unguarded dicts. FastAPI runs sync routes in a thread
 #: pool, so without this an operator tick could interleave with a background
 #: cycle mid-mutation.
-_tick_lock = threading.Lock()
+#: Reentrant, because it is now the writer-ownership boundary as well as the
+#: tick boundary: the inline loop holds it across a lease transition and then
+#: calls tick_once, which takes it again on the same thread.
+_tick_lock = threading.RLock()
 
 
 def tick_once(*, max_items: int = 1) -> dict[str, Any]:
@@ -78,27 +81,39 @@ def request_tick(*, max_items: int = 1) -> dict[str, Any]:
     rather than quietly making a mess.
     """
 
-    if not cognition_dsn():
+    dsn = cognition_dsn()
+    if not dsn:
         # No database, nothing shared, nobody to race.
         return tick_once(max_items=max_items)
 
-    engine = _inline_cognition
-    if engine is not None and engine.holds_lease:
-        return tick_once(max_items=max_items)
+    # Ownership is checked and used without letting go in between. Reading
+    # holds_lease and then ticking left a window in which the inline loop
+    # reached its periodic yield, released the lease, and a worker took the
+    # advisory lock -- so the request ticked as a second writer having
+    # truthfully observed itself to be the first. The inline loop takes this
+    # same lock around its lease transitions, so it cannot be releasing while
+    # a request is inside here.
+    with _tick_lock:
+        engine = _inline_cognition
+        if engine is not None and engine.holds_lease and engine.revalidate_lease():
+            # revalidate_lease, not holds_lease alone: that is a local
+            # timestamp, and says nothing about whether the advisory-lock
+            # connection behind it is still alive.
+            return tick_once(max_items=max_items)
 
-    lease = CognitionLease(cognition_dsn())
-    if not lease.acquire():
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "cognition_lease_held_elsewhere: another process is running "
-                "cognition against this database; retry once it yields"
-            ),
-        )
-    try:
-        return tick_once(max_items=max_items)
-    finally:
-        lease.release()
+        lease = CognitionLease(dsn)
+        if not lease.acquire():
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "cognition_lease_held_elsewhere: another process is running "
+                    "cognition against this database; retry once it yields"
+                ),
+            )
+        try:
+            return tick_once(max_items=max_items)
+        finally:
+            lease.release()
 
 
 def _resume_durable_beliefs() -> None:
@@ -148,7 +163,12 @@ async def _lifespan(_app: FastAPI):
 
     global _inline_cognition
     _inline_cognition = start_inline_cognition(
-        lambda: tick_once(max_items=1), on_start=_resume_durable_beliefs
+        lambda: tick_once(max_items=1),
+        on_start=_resume_durable_beliefs,
+        # The same lock request_tick holds. Lease transitions and ticks have
+        # to be one boundary, or a request can observe ownership that the
+        # background thread is in the middle of giving away.
+        guard=_tick_lock,
     )
     try:
         yield

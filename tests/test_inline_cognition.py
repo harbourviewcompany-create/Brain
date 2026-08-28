@@ -313,7 +313,7 @@ def test_serving_the_app_starts_and_stops_cognition(monkeypatch):
     recorder = Recorder()
     started = []
 
-    def fake_start(tick, *, on_start=None):
+    def fake_start(tick, *, on_start=None, guard=None):
         started.append(tick)
         return recorder
 
@@ -332,7 +332,7 @@ def test_the_lifespan_ticks_the_api_heartbeat(monkeypatch):
 
     captured = {}
 
-    def capture(tick, *, on_start=None):
+    def capture(tick, *, on_start=None, guard=None):
         captured["tick"] = tick
         return None
 

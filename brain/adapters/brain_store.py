@@ -101,34 +101,55 @@ class PostgresBrainStore(InMemoryBrainStore):
         """
 
         with self._inflight_lock:
-            self._inflight = {"beliefs": {}, "evidence": {}, "nodes": {}, "edges": {}}
+            self._inflight = {
+                "beliefs": {},
+                "evidence": {},
+                "nodes": {},
+                "edges": {},
+                "rewires": [],
+            }
         try:
             beliefs, evidence, nodes, edges, rewires = self._load_projection()
-        finally:
+        except BaseException:
             with self._inflight_lock:
-                pending, self._inflight = self._inflight, None
+                self._inflight = None
+            raise
 
-        # A load is a series of queries, not an instant. Now that this process
-        # writes cognition of its own, a belief can be committed after the
-        # belief query has already run and before the swap -- and swapping the
-        # older snapshot in would drop it from every read until some later
-        # refresh happened to pick it up. Writes that landed during the load
-        # win, because they are newer than what was read.
-        beliefs.update(pending["beliefs"])
-        evidence.update(pending["evidence"])
-        nodes.update(pending["nodes"])
-        edges.update(pending["edges"])
+        # Draining and swapping are one step, under the same lock every local
+        # write takes. Draining first and assigning afterwards left an
+        # interval where a write mutated the *old* projection, saw no in-flight
+        # buffer to record itself in, and was then thrown away by the
+        # assignment -- the very loss the buffer was added to prevent, moved a
+        # few lines later. Inside the lock there is nowhere for a write to
+        # land: it either recorded itself before the drain, or it mutates the
+        # new projection after the swap.
+        with self._inflight_lock:
+            pending, self._inflight = self._inflight, None
+            # Writes that landed during the load win over what was read: a
+            # load is a series of queries, not an instant, so a belief can be
+            # committed after the belief query has already run.
+            beliefs.update(pending["beliefs"])
+            evidence.update(pending["evidence"])
+            nodes.update(pending["nodes"])
+            edges.update(pending["edges"])
+            rewires.extend(pending["rewires"])
 
-        self.beliefs = beliefs
-        self.evidence = evidence
-        self.nodes = nodes
-        self.edges = edges
-        self.rewires = rewires
+            self.beliefs = beliefs
+            self.evidence = evidence
+            self.nodes = nodes
+            self.edges = edges
+            self.rewires = rewires
 
-    def _record_inflight(self, item: Any) -> None:
-        """Remember a write that lands while a projection load is running."""
+    def _apply_local(self, item: Any, method: Any) -> None:
+        """Mutate the live projection and record the write as one step.
+
+        Both halves under one lock, because a write that has updated the
+        in-memory projection but not yet recorded itself is exactly the write
+        a concurrent swap loses.
+        """
 
         with self._inflight_lock:
+            method(self, item)
             pending = self._inflight
             if pending is None:
                 return
@@ -140,6 +161,8 @@ class PostgresBrainStore(InMemoryBrainStore):
                 pending["nodes"][item.id] = item
             elif isinstance(item, Edge):
                 pending["edges"][item.id] = item
+            elif isinstance(item, RewireEvent):
+                pending["rewires"].append(item)
 
     def _load_projection(
         self,
@@ -458,11 +481,9 @@ class PostgresBrainStore(InMemoryBrainStore):
                 )
                 conn.commit()
         else:
-            super().save(item)
-            self._record_inflight(item)
+            self._apply_local(item, InMemoryBrainStore.save)
             return
-        super().save(item)
-        self._record_inflight(item)
+        self._apply_local(item, InMemoryBrainStore.save)
 
     def upsert_node(self, node: Node) -> None:
         with self.pool.connection() as conn:
@@ -478,8 +499,7 @@ class PostgresBrainStore(InMemoryBrainStore):
                 (node.id, node.kind, node.key, _json(dict(node.properties))),
             )
             conn.commit()
-        super().upsert_node(node)
-        self._record_inflight(node)
+        self._apply_local(node, InMemoryBrainStore.upsert_node)
 
     def upsert_edge(self, edge: Edge) -> None:
         with self.pool.connection() as conn:
@@ -509,8 +529,7 @@ class PostgresBrainStore(InMemoryBrainStore):
                 ),
             )
             conn.commit()
-        super().upsert_edge(edge)
-        self._record_inflight(edge)
+        self._apply_local(edge, InMemoryBrainStore.upsert_edge)
 
     def log_rewire(self, event: RewireEvent) -> None:
         with self.pool.connection() as conn:
@@ -533,4 +552,4 @@ class PostgresBrainStore(InMemoryBrainStore):
                 ),
             )
             conn.commit()
-        super().log_rewire(event)
+        self._apply_local(event, InMemoryBrainStore.log_rewire)

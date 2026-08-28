@@ -131,12 +131,17 @@ class InlineCognition:
         yield_pause_seconds: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
         on_start: Callable[[], None] | None = None,
+        guard: Any | None = None,
     ) -> None:
         self._tick = tick
         self._lease = lease
         self._clock = clock
         self._on_start = on_start
         self._started = False
+        # Shared with whatever else in this process may write on the strength
+        # of this lease. Its own lock when nothing else does, so the engine is
+        # correct standalone.
+        self._guard = guard if guard is not None else threading.RLock()
         self._tick_sleep = tick_sleep
         self._retry_seconds = retry_seconds
         self._yield_seconds = yield_seconds
@@ -189,13 +194,35 @@ class InlineCognition:
                     break
         self._release()
 
+    def revalidate_lease(self) -> bool:
+        """Whether the lease is still genuinely this process's, right now.
+
+        holds_lease is a local timestamp and can outlive the connection the
+        advisory lock actually lives on. Anything about to write on the
+        strength of this engine's ownership has to ask the lease itself.
+        """
+
+        try:
+            return bool(self._lease.acquire())
+        except Exception:
+            log.exception("cognition lease could not be revalidated")
+            return False
+
     def _step(self) -> None:
-        if not self._lease.acquire():
-            # Losing the lease is losing currency too: whoever holds it now is
-            # writing beliefs this cycle has not seen, so the next acquisition
-            # must resume before it thinks.
-            self._held_since = None
-            self._started = False
+        # Under the guard, because losing or gaining the lease has to be
+        # indivisible from the decision to write on it -- otherwise a request
+        # can check ownership, and this thread can give it away, in that
+        # order, with both believing they are the only writer.
+        with self._guard:
+            acquired = self._lease.acquire()
+            if not acquired:
+                # Losing the lease is losing currency too: whoever holds it
+                # now is writing beliefs this cycle has not seen, so the next
+                # acquisition must resume before it thinks.
+                self._held_since = None
+                self._started = False
+
+        if not acquired:
             self._stop.wait(self._retry_seconds)
             return
 
@@ -222,7 +249,10 @@ class InlineCognition:
             # Hand the lease back periodically so a dedicated worker that is
             # blocked waiting for it can take over without anyone restarting
             # this process. If nothing is waiting, we take it straight back.
-            self._release()
+            # Under the guard: a request holding it is mid-tick on the
+            # strength of this lease and must finish first.
+            with self._guard:
+                self._release()
             self._stop.wait(self._yield_pause_seconds)
             return
 
@@ -253,7 +283,10 @@ def _did_work(result: Any) -> bool:
 
 
 def start_inline_cognition(
-    tick: Callable[[], Any], *, on_start: Callable[[], None] | None = None
+    tick: Callable[[], Any],
+    *,
+    on_start: Callable[[], None] | None = None,
+    guard: Any | None = None,
 ) -> InlineCognition | None:
     """Start in-process cognition, or return None if this process should not.
 
@@ -269,6 +302,7 @@ def start_inline_cognition(
         tick=tick,
         lease=lease,
         on_start=on_start,
+        guard=guard,
         tick_sleep=_float_env("BRAIN_TICK_SLEEP", 1.0),
         retry_seconds=_float_env("BRAIN_INLINE_RETRY_SECONDS", 15.0),
         yield_seconds=_float_env("BRAIN_INLINE_YIELD_SECONDS", 300.0),
