@@ -40,6 +40,12 @@ _cognition_lease: Any | None = None
 #: opposite meanings: nobody to race (write freely) and lost the lock (do not
 #: write at all). Conflating them is how a lease fails open.
 _lease_required: bool = False
+#: Set when the lease came back on a new session and the durable reload that
+#: must follow has not yet succeeded. Kept as its own flag rather than inferred
+#: from the generation: after one failed reload the generation is already the
+#: new one, so the next pass would compare equal, skip the reload it still owes,
+#: and hand the runner permission to write from the pre-handover cache.
+_state_reload_pending: bool = False
 
 
 def worker_database_url() -> str:
@@ -259,13 +265,21 @@ def _lease_still_held() -> bool:
     # was skipped and this runner carried on from its pre-handover cache. The
     # generation is the only thing that distinguishes "still ours" from "ours
     # again", and until now only InlineCognition was reading it.
+    global _state_reload_pending
     if getattr(lease, "generation", None) != before:
         log.warning("cognition lease reconnected; reloading durable state")
+        _state_reload_pending = True
+
+    if _state_reload_pending:
         try:
             _resume_worker_state()
         except Exception:
+            # Still owed. Returning False without remembering that let the very
+            # next check see an unchanged generation, skip the reload, and
+            # grant permission to write from the stale cache anyway.
             log.exception("durable state could not be reloaded after a lease reconnect")
             return False
+        _state_reload_pending = False
     return True
 
 
@@ -277,7 +291,7 @@ def _reacquire_cognition_lease() -> bool:
     call that cannot be paced or logged.
     """
 
-    global _cognition_lease
+    global _cognition_lease, _state_reload_pending
 
     dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not dsn:
@@ -311,6 +325,7 @@ def _reacquire_cognition_lease() -> bool:
         return False
 
     log.info("cognition lease re-acquired; resuming cognition")
+    _state_reload_pending = False
     _cognition_lease = lease
     return True
 

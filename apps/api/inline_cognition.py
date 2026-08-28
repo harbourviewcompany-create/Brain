@@ -342,11 +342,21 @@ class InlineCognition:
 def _did_work(result: Any) -> bool:
     """Whether a tick processed a real stimulus, as opposed to idling.
 
-    Endogenous thought reports no processed items, so an idle Brain sleeps
-    between ticks instead of spinning a core on self-generated stimuli.
+    processed_this_call cannot answer this on its own, though an earlier
+    version of this comment claimed it could. The endogenous runner enqueues
+    its self-generated thought, processes it, and saves a cycle-run record
+    exactly as an inbox item would, so the count is 1 for a Brain talking to
+    itself and 1 for a Brain doing real work. Pacing on it meant never
+    sleeping: a core spun flat out and the event ledger grew without bound.
+
+    So the caller classifies, and says so. Absent that flag the count is still
+    the best available answer, which keeps this correct for any tick callable
+    that does not classify.
     """
 
     if isinstance(result, dict):
+        if result.get("endogenous"):
+            return False
         return bool(result.get("processed_this_call"))
     return bool(result)
 

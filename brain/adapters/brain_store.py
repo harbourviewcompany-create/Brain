@@ -59,6 +59,10 @@ class PostgresBrainStore(InMemoryBrainStore):
         # hydrate, and a write must never block waiting for a read to finish.
         self._inflight_lock = threading.Lock()
         self._inflight: dict[str, dict] | None = None
+        #: Bumped once per completed refresh attempt, success or failure, so a
+        #: caller can tell "an attempt finished while I queued" from "nobody
+        #: has tried yet".
+        self._refresh_attempts = 0
         self.hydrate()
         # The constructor's hydrate is the first refresh; without stamping it
         # here the first refresh_if_stale would immediately hydrate again.
@@ -395,17 +399,36 @@ class PostgresBrainStore(InMemoryBrainStore):
         """
         if not isfinite(max_age_seconds) or max_age_seconds < 0:
             return False
+        # Read before queueing for the lock, so it names the attempt that was
+        # in flight when this caller arrived.
+        attempt = self._refresh_attempts
         with self._refresh_lock:
             now = time.monotonic()
             if self._hydrated_at is not None and now - self._hydrated_at < max_age_seconds:
                 return False
+            if self._refresh_attempts != attempt:
+                # An attempt completed while this caller waited. If it
+                # succeeded the TTL check above has already returned -- except
+                # at TTL 0, where nothing is ever fresh enough. If it failed,
+                # the database was unreachable a moment ago and _hydrated_at is
+                # unchanged, so without this every waiter took the lock in turn
+                # and spent another READ_TIMEOUT_SECONDS discovering the same
+                # outage: with the cockpit polling several routes at once, one
+                # dead database became seconds of added latency per page while
+                # a perfectly good last-known projection sat ready to serve.
+                # A request arriving later still retries; only the queue that
+                # was already waiting on this attempt shares its answer.
+                return False
+            try:
+                self.hydrate()
+            finally:
+                self._refresh_attempts += 1
             # The whole refresh happens under the lock, not just the decision
             # to run one. Releasing it first let a second reader see a fresh
             # timestamp and skip its own refresh while the first was still
             # loading -- and the TTL is only honest if it starts when the
             # projection is actually new. Concurrent readers wait for one
             # hydrate instead of stampeding the database with several.
-            self.hydrate()
             # Stamped only on success: a failed refresh that advanced the
             # clock would suppress every retry for the length of the TTL.
             self._hydrated_at = time.monotonic()

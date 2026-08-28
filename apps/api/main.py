@@ -70,6 +70,30 @@ def tick_once(*, max_items: int = 1) -> dict[str, Any]:
         return heartbeat.tick(max_items=max_items)
 
 
+def paced_tick(*, max_items: int = 1) -> dict[str, Any]:
+    """A tick that says whether it did real work or thought to itself.
+
+    HeartbeatService.tick() cannot tell the difference. _run_endogenous()
+    processes its self-generated thought and saves a cycle-run record exactly
+    as an inbox item would, so processed_this_call is 1 either way -- and the
+    inline loop, pacing on that alone, treated perpetual self-reflection as
+    perpetual work and never slept. That is the same hot loop the worker had,
+    fixed there by watching the runner's idle counter and left here.
+
+    The counter is read under the same lock as the tick, so the reading always
+    belongs to the cycle it describes.
+    """
+
+    runner = getattr(heartbeat, "_runner", None)
+    with _tick_lock:
+        idle_before = getattr(runner, "_idle_cycles", 0)
+        result = heartbeat.tick(max_items=max_items)
+        endogenous = getattr(runner, "_idle_cycles", 0) != idle_before
+    if isinstance(result, dict):
+        result = {**result, "endogenous": endogenous}
+    return result
+
+
 def request_tick(*, max_items: int = 1) -> dict[str, Any]:
     """A tick asked for by a request, run only if this process may write.
 
@@ -205,7 +229,7 @@ async def _lifespan(_app: FastAPI):
 
     global _inline_cognition
     _inline_cognition = start_inline_cognition(
-        lambda: tick_once(max_items=1),
+        lambda: paced_tick(max_items=1),
         on_start=_resume_durable_beliefs,
         # The same lock request_tick holds. Lease transitions and ticks have
         # to be one boundary, or a request can observe ownership that the
@@ -728,13 +752,16 @@ def run_heartbeat_tick(body: TickRequest | None = None):
 
 @app.get("/runner/status")
 def runner_status():
-    _refresh_reads()
+    # No _refresh_reads() here: refresh_projection_reads has already run one
+    # for this request. At BRAIN_READ_REFRESH_SECONDS=0 -- documented as
+    # refreshing every read -- refresh_if_stale never short-circuits, so a
+    # second call is a second full projection load, serially, on every poll.
     return _cognition_status()
 
 
 @app.get("/beliefs")
 def list_beliefs():
-    _refresh_reads()
+    # Refreshed by the read boundary; see runner_status().
     items = [
         {
             "id": str(belief.id),

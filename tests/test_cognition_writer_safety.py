@@ -205,10 +205,39 @@ def test_every_tick_entry_point_goes_through_the_serialised_helper():
         assert "request_tick(" in source
 
 
-def test_the_inline_loop_ticks_through_the_serialised_helper():
+def test_the_inline_loop_ticks_through_the_serialised_helper(monkeypatch):
+    """The loop's tick must hold the writer lock, whichever helper it is.
+
+    Asserted by behaviour rather than by searching the lifespan source for a
+    function name: the loop now goes through paced_tick(), which serialises
+    exactly as tick_once() does and additionally classifies the cycle, and a
+    substring test would have called that a regression.
+    """
+
     import inspect
 
-    assert "tick_once(max_items=1)" in inspect.getsource(api._lifespan)
+    held_during_tick = []
+
+    def observe(**kwargs):
+        # A different thread, because _tick_lock is reentrant and would let
+        # this one straight back in.
+        result = []
+        probe = threading.Thread(target=lambda: result.append(api._tick_lock.acquire(blocking=False)))
+        probe.start()
+        probe.join(timeout=5)
+        if result and result[0]:
+            api._tick_lock.release()
+        held_during_tick.append(not (result and result[0]))
+        return {"processed_this_call": 0}
+
+    monkeypatch.setattr(api.heartbeat, "tick", observe)
+
+    source = inspect.getsource(api._lifespan)
+    assert "paced_tick(max_items=1)" in source or "tick_once(max_items=1)" in source
+
+    api.paced_tick(max_items=1)
+
+    assert held_during_tick == [True]
 
 
 # --- configuration that must not break the loop ---------------------------
@@ -342,6 +371,7 @@ def _detached_store() -> PostgresBrainStore:
     store._counters = (0.0, None)
     store._inflight_lock = threading.Lock()
     store._inflight = None
+    store._refresh_attempts = 0
     store.beliefs = {"kept": "belief"}
     store.evidence = {}
     store.nodes = {}
@@ -1984,3 +2014,147 @@ def test_the_workflow_is_started_with_a_validated_interval():
 
     assert len(raw_reads) == 1
     assert enclosing == ["_idle_sleep_seconds"]
+
+
+# --- Codex round six, against 87346b5 --------------------------------------
+
+
+def test_the_inline_loop_paces_endogenous_cycles():
+    """The hot loop I fixed on the worker and left in the API.
+
+    _run_endogenous() enqueues its self-generated thought, processes it, and
+    saves a cycle-run record exactly as an inbox item would -- so
+    processed_this_call is 1 for a Brain talking to itself. Pacing on that
+    alone meant the inline loop never slept.
+    """
+
+    from apps.api.inline_cognition import _did_work
+
+    assert _did_work({"processed_this_call": 1, "endogenous": True}) is False
+    assert _did_work({"processed_this_call": 1, "endogenous": False}) is True
+    # No classification: fall back to the count, so an unclassified tick
+    # callable still behaves as before.
+    assert _did_work({"processed_this_call": 1}) is True
+
+
+def test_paced_tick_classifies_a_self_generated_cycle(monkeypatch):
+    class Runner:
+        _idle_cycles = 0
+
+    runner = Runner()
+    monkeypatch.setattr(api.heartbeat, "_runner", runner, raising=False)
+
+    def endogenous_tick(**kwargs):
+        runner._idle_cycles += 1
+        return {"processed_this_call": 1}
+
+    monkeypatch.setattr(api.heartbeat, "tick", endogenous_tick)
+    assert api.paced_tick(max_items=1)["endogenous"] is True
+
+    monkeypatch.setattr(api.heartbeat, "tick", lambda **k: {"processed_this_call": 1})
+    assert api.paced_tick(max_items=1)["endogenous"] is False
+
+
+@pytest.mark.parametrize("path", ["/beliefs", "/runner/status"])
+def test_a_read_refreshes_the_projection_exactly_once(monkeypatch, path):
+    """At BRAIN_READ_REFRESH_SECONDS=0 nothing is ever fresh enough.
+
+    The read boundary refreshed, then the handler refreshed again, so every
+    poll ran two full projection loads back to back.
+    """
+
+    monkeypatch.setenv("BRAIN_API_KEY", "test-key")
+    monkeypatch.setenv("BRAIN_READ_REFRESH_SECONDS", "0")
+
+    refreshes = []
+
+    from brain.memory import InMemoryBrainStore
+
+    class Store(InMemoryBrainStore):
+        def refresh_if_stale(self, max_age_seconds):
+            refreshes.append(max_age_seconds)
+            return True
+
+    monkeypatch.setattr(api, "_brain_store", Store())
+
+    TestClient(api.app).get(path, headers={"X-Brain-Api-Key": "test-key"})
+
+    assert len(refreshes) == 1
+
+
+def test_a_worker_reload_owed_is_not_forgotten_next_pass(monkeypatch):
+    """Returning False without remembering let the debt evaporate.
+
+    After one failed reload the generation is already the new one, so the very
+    next check compared equal, skipped the reload it still owed, and granted
+    permission to write from the pre-handover cache.
+    """
+
+    lease = _ReconnectingLease()
+    monkeypatch.setattr(worker, "_cognition_lease", lease)
+    monkeypatch.setattr(worker, "_lease_required", True)
+    monkeypatch.setattr(worker, "_state_reload_pending", False)
+
+    attempts = []
+
+    def failing_reload():
+        attempts.append(1)
+        raise RuntimeError("database still gone")
+
+    monkeypatch.setattr(worker, "_resume_worker_state", failing_reload)
+    lease.sever()
+
+    assert worker._lease_still_held() is False
+    assert worker._lease_still_held() is False
+    assert len(attempts) == 2, "the reload is still owed, so it must be retried"
+
+    # And once it can succeed, writing is permitted again.
+    monkeypatch.setattr(worker, "_resume_worker_state", lambda: None)
+    assert worker._lease_still_held() is True
+
+
+def test_waiters_behind_one_failed_refresh_do_not_each_retry():
+    """One dead database should cost one timeout, not one per reader.
+
+    The cockpit polls several projection routes at once. Each waiter took the
+    lock in turn and spent another READ_TIMEOUT_SECONDS rediscovering the same
+    outage, while a perfectly good last-known projection sat ready to serve.
+    """
+
+    store = _detached_store()
+    attempts = []
+    first_in = threading.Event()
+    let_it_fail = threading.Event()
+
+    def failing_load(self):
+        attempts.append(1)
+        first_in.set()
+        let_it_fail.wait(timeout=5)
+        raise RuntimeError("database went away")
+
+    store._load_projection = failing_load.__get__(store)
+
+    def refresh():
+        try:
+            store.refresh_if_stale(0.0)
+        except Exception:
+            pass
+
+    first = threading.Thread(target=refresh, daemon=True)
+    first.start()
+    assert first_in.wait(timeout=5) is True
+
+    # Queued behind the in-flight attempt.
+    second = threading.Thread(target=refresh, daemon=True)
+    second.start()
+    time.sleep(0.1)
+
+    let_it_fail.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    assert len(attempts) == 1
+
+    # A request arriving afterwards still gets to try for itself.
+    refresh()
+    assert len(attempts) == 2
