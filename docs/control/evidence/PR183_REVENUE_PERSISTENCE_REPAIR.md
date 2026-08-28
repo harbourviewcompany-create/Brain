@@ -30,6 +30,12 @@ Repair the migration-025 and pre-migration-ceiling persistence defects on `fix/r
 
 The executable verifier is `tools/verify_revenue_persistence_migration.py`.
 
+## Prior replay finding and correction
+
+The strengthened replay already passed the pre-025 capability gate, tenant/RLS migrations, ordinary-owner FORCE-RLS application of migration 025, UUID-to-stable-key translation, legacy-null preservation and FORCE restoration. It then failed while constructing `MoneySpineService` because the verification fixture had seeded `money_lanes.opportunity_class='lead'`, which is not a valid domain `OpportunityClass`. The fixture is corrected to `high_intent_lead`; no migration or runtime logic change was required for that failure.
+
+This documentation commit intentionally follows the PR-body control-schema correction so the next pull-request synchronization event validates the current metadata rather than the stale pre-correction body.
+
 ## Tenant / RLS boundary
 
 The prior evidence incorrectly claimed that the scoring-audit tables lacked tenant ownership and runtime grants. Migration 020 adds `tenant_id` to `revenue_signals`, `scored_revenue_opportunities`, and `packaged_offers`; migration 022 grants `brain_runtime_role` DML dynamically to tenant-owned tables carrying `tenant_id`. That schema/grant boundary is therefore already present.
