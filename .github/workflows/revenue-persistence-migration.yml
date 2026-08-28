@@ -37,41 +37,173 @@ jobs:
           docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
           create role anon nologin;
           create role authenticated nologin;
+          create role brain_api_ci login password 'brain-api-ci';
+          create role brain_worker_ci login password 'brain-worker-ci';
+          create role brain_migrator_ci login password 'brain-migrator-ci' nosuperuser nobypassrls;
+          grant usage on schema public to brain_migrator_ci;
           SQL
 
       - name: Replay production-compatible baseline through migration 018
-        run: |
-          for migration in $(find db/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
-            version=$(basename "${migration}" | cut -d_ -f1)
-            if [ "$((10#${version}))" -gt 18 ]; then
-              continue
-            fi
-            echo "Applying ${migration}"
-            docker exec -i brain-revenue-postgres \
-              psql -v ON_ERROR_STOP=1 -U brain -d brain < "${migration}"
-          done
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
+        run: python tools/apply_migrations.py --max-version 18
 
-      - name: Verify pre-025 scoring safely degrades on legacy UUID layout
+      - name: Verify pre-024 scoring safely degrades on legacy UUID layout
         env:
           DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
-        run: python tools/verify_revenue_persistence_migration.py --expect pre025
+        run: python tools/verify_revenue_persistence_migration.py --expect pre024
 
-      - name: Apply migration 025
+      - name: Seed legacy UUID and nullable audit rows
         run: |
-          docker exec -i brain-revenue-postgres \
-            psql -v ON_ERROR_STOP=1 -U brain -d brain \
-            < db/migrations/025_revenue_signal_source_lane_text_keys.sql
+          docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          insert into public.sources (id, key, name)
+          values ('11111111-1111-1111-1111-111111111111', 'legacy-source-key', 'Legacy Source');
 
-      - name: Verify post-025 signal to score to offer persistence
+          insert into public.money_lanes (
+            id, lane_key, title, opportunity_class, packaged_offer, buyer_type,
+            seller_or_target_type, first_48_hour_action
+          ) values (
+            '22222222-2222-2222-2222-222222222222',
+            'legacy-lane-key',
+            'Legacy Lane',
+            'lead',
+            'Legacy Offer',
+            'buyer',
+            'seller',
+            'verify migration'
+          );
+
+          insert into public.revenue_signals (
+            id, money_lane_id, source_id, raw_signal
+          ) values (
+            '33333333-3333-3333-3333-333333333333',
+            '22222222-2222-2222-2222-222222222222',
+            '11111111-1111-1111-1111-111111111111',
+            'legacy non-null signal'
+          );
+
+          insert into public.scored_revenue_opportunities (
+            id, revenue_signal_id, money_lane_id, score
+          ) values (
+            '44444444-4444-4444-4444-444444444444',
+            '33333333-3333-3333-3333-333333333333',
+            '22222222-2222-2222-2222-222222222222',
+            0.75
+          );
+
+          insert into public.revenue_signals (id, raw_signal)
+          values ('55555555-5555-5555-5555-555555555555', 'legacy nullable signal');
+
+          insert into public.scored_revenue_opportunities (
+            id, revenue_signal_id, money_lane_id, score
+          ) values (
+            '66666666-6666-6666-6666-666666666666',
+            '55555555-5555-5555-5555-555555555555',
+            null,
+            0.25
+          );
+          SQL
+
+      - name: Apply tenant/RLS migrations through 023
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55434/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55434/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: python tools/apply_migrations.py --max-version 23
+
+      - name: Make migration 024 prove FORCE-RLS legacy translation as ordinary owner
+        run: |
+          docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          alter table public.sources owner to brain_migrator_ci;
+          alter table public.money_lanes owner to brain_migrator_ci;
+          alter table public.revenue_signals owner to brain_migrator_ci;
+          alter table public.scored_revenue_opportunities owner to brain_migrator_ci;
+          SQL
+          PGPASSWORD=brain-migrator-ci psql \
+            -h 127.0.0.1 -p 55434 -U brain_migrator_ci -d brain \
+            -v ON_ERROR_STOP=1 \
+            -f db/migrations/024_revenue_signal_source_lane_text_keys.sql
+
+      - name: Verify migration 024 preserves values, nullability, and FORCE RLS
+        run: |
+          docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          do $$
+          declare
+            signal_keys record;
+            scored_lane text;
+            nullable_signal record;
+            nullable_scored text;
+            nullable_columns integer;
+            forced_tables integer;
+          begin
+            select source_id, money_lane_id into signal_keys
+            from public.revenue_signals
+            where id = '33333333-3333-3333-3333-333333333333';
+            if signal_keys.source_id <> 'legacy-source-key'
+               or signal_keys.money_lane_id <> 'legacy-lane-key' then
+              raise exception 'legacy signal keys were not translated: %', signal_keys;
+            end if;
+
+            select money_lane_id into scored_lane
+            from public.scored_revenue_opportunities
+            where id = '44444444-4444-4444-4444-444444444444';
+            if scored_lane <> 'legacy-lane-key' then
+              raise exception 'legacy scored lane was not translated: %', scored_lane;
+            end if;
+
+            select source_id, money_lane_id into nullable_signal
+            from public.revenue_signals
+            where id = '55555555-5555-5555-5555-555555555555';
+            if nullable_signal.source_id is not null or nullable_signal.money_lane_id is not null then
+              raise exception 'legacy null signal keys were not preserved';
+            end if;
+
+            select money_lane_id into nullable_scored
+            from public.scored_revenue_opportunities
+            where id = '66666666-6666-6666-6666-666666666666';
+            if nullable_scored is not null then
+              raise exception 'legacy null scored lane was not preserved';
+            end if;
+
+            select count(*) into nullable_columns
+            from information_schema.columns
+            where table_schema = 'public'
+              and is_nullable = 'YES'
+              and (
+                (table_name = 'revenue_signals' and column_name in ('source_id', 'money_lane_id'))
+                or (table_name = 'scored_revenue_opportunities' and column_name = 'money_lane_id')
+              );
+            if nullable_columns <> 3 then
+              raise exception 'expected all three migrated key columns to remain nullable, got %', nullable_columns;
+            end if;
+
+            select count(*) into forced_tables
+            from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'public'
+              and c.relname in ('sources', 'revenue_signals', 'scored_revenue_opportunities')
+              and c.relforcerowsecurity;
+            if forced_tables <> 3 then
+              raise exception 'FORCE RLS was not restored on all affected tables';
+            end if;
+          end $$;
+          SQL
+          echo 'MIGRATION024_LEGACY_GO: UUID keys translated under FORCE RLS, nulls preserved, FORCE restored'
+
+      - name: Verify post-024 signal to score to offer persistence
         env:
           DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
-        run: python tools/verify_revenue_persistence_migration.py --expect post025
+        run: python tools/verify_revenue_persistence_migration.py --expect post024
 
-      - name: Prove migration 025 replay is idempotent
+      - name: Prove migration 024 replay is idempotent
         run: |
-          docker exec -i brain-revenue-postgres \
-            psql -v ON_ERROR_STOP=1 -U brain -d brain \
-            < db/migrations/025_revenue_signal_source_lane_text_keys.sql
+          PGPASSWORD=brain-migrator-ci psql \
+            -h 127.0.0.1 -p 55434 -U brain_migrator_ci -d brain \
+            -v ON_ERROR_STOP=1 \
+            -f db/migrations/024_revenue_signal_source_lane_text_keys.sql
           text_columns=$(docker exec brain-revenue-postgres psql -At -U brain -d brain -c "
             select count(*) from information_schema.columns
             where table_schema='public' and data_type='text' and (
@@ -88,6 +220,7 @@ jobs:
                 'scored_revenue_opportunities_money_lane_id_fkey'
               );")
           test "${legacy_fks}" = "0"
+          echo 'MIGRATION024_REPLAY_GO: text-key migration is replay-safe'
 
       - name: PostgreSQL logs on failure
         if: failure()
