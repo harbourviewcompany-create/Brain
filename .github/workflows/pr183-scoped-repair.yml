@@ -1,0 +1,144 @@
+name: PR183 Scoped Repair
+
+on:
+  push:
+    branches:
+      - fix/revenue-signal-schema
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/revenue-signal-schema
+          fetch-depth: 0
+
+      - name: Apply exact anchored PR183 repair
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one anchor, found {count}: {old[:120]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # 1) Remove resolved persistence work from active unresolved gaps while
+          # preserving the genuinely global lane/source-learning boundary.
+          replace_once(
+              "docs/control/source-requirement-registry.json",
+              '''        "revenue_source_scores, money_lanes and the 017 revenue tables carry no tenant_id, so migration 022's grant loop never covered them and no policy grants brain_runtime_role access; persistence is therefore only reachable while the API runs as an unconstrained role, and remains HOLD under the tenant-enforced topology",\n        "RESOLVED by db/migrations/025_revenue_signal_source_lane_text_keys.sql + PostgresRevenueStore.save_signal/save_scored_opportunity/save_offer: revenue_signals.source_id and money_lane_id are now text (matching source_key/lane_id), and all three tables are persisted as an append-only scoring audit trail, guarded by the same _UndefinedTable degradation as revenue_source_scores since migration 025 may also be above a given deploy target's ceiling",\n''',
+              '''        "money_lanes and revenue_source_scores remain intentionally global/non-tenant storage; tenant runtimes do not mutate them, and tenant lane/source learning is reconstructed from tenant-owned revenue_outcome_ledger rows after migration 025",\n''',
+          )
+
+          # 2) PostgreSQL atomic signal+score transaction plus single-action lookup.
+          replace_once(
+              "brain/adapters/revenue_store.py",
+              '''    def load_actions(self) -> dict[UUID, RevenueExecutionAction]:\n''',
+              '''    def execution_persistence_ready(self) -> bool:\n        """Base PostgreSQL execution tables are expected to be available."""\n        return True\n\n    def load_actions(self) -> dict[UUID, RevenueExecutionAction]:\n''',
+          )
+          replace_once(
+              "brain/adapters/revenue_store.py",
+              '''    def save_action(self, action: RevenueExecutionAction) -> None:\n''',
+              '''    def get_action(self, action_id: UUID) -> RevenueExecutionAction | None:\n        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:\n            cur.execute(\n                """\n                select id, opportunity_id, offer_id, lane_id, source_id, action_type,\n                       target_contact, proposal, evidence_refs, approval_required, state,\n                       approved_by, manual_proof_ref, created_at, updated_at\n                from public.revenue_execution_actions\n                where id = %s\n                """,\n                (action_id,),\n            )\n            row = cur.fetchone()\n        return self._row_to_action(row) if row else None\n\n    def save_action(self, action: RevenueExecutionAction) -> None:\n''',
+          )
+          replace_once(
+              "brain/adapters/revenue_store.py",
+              '''    def save_signal(self, signal: RevenueSignal) -> None:\n''',
+              '''    def save_signal_and_score(\n        self, signal: RevenueSignal, scored: ScoredOpportunity\n    ) -> None:\n        """Persist the signal and its score atomically on one PostgreSQL transaction."""\n        if not self._signal_audit_schema_is_ready():\n            return\n        with self.pool.connection() as conn:\n            try:\n                conn.execute(\n                    """\n                    insert into public.revenue_signals (\n                        id, money_lane_id, source_id, raw_signal, named_buyer, named_seller,\n                        decision_maker, visible_pain, urgency_reason, payment_path, contact_channel,\n                        evidence_refs, commercial_value, confidence, urgency, contactability,\n                        execution_difficulty, legal_access_risk, time_delay, metadata\n                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)\n                    on conflict (id) do nothing\n                    """,\n                    (\n                        signal.id, signal.money_lane_id, signal.source_id, signal.raw_signal,\n                        signal.named_buyer, signal.named_seller, signal.decision_maker,\n                        signal.visible_pain, signal.urgency_reason, signal.payment_path,\n                        signal.contact_channel, Jsonb(list(signal.evidence_refs)),\n                        signal.commercial_value, signal.confidence, signal.urgency,\n                        signal.contactability, signal.execution_difficulty, signal.legal_access_risk,\n                        signal.time_delay, Jsonb(dict(signal.metadata)),\n                    ),\n                )\n                conn.execute(\n                    """\n                    insert into public.scored_revenue_opportunities (\n                        id, revenue_signal_id, money_lane_id, score, actionable,\n                        rejection_reasons, next_action\n                    ) values (%s, %s, %s, %s, %s, %s, %s)\n                    on conflict (id) do nothing\n                    """,\n                    (\n                        scored.id, scored.signal_id, scored.lane_id, scored.score, scored.actionable,\n                        Jsonb(list(scored.rejection_reasons)), scored.next_action,\n                    ),\n                )\n                conn.commit()\n            except Exception:\n                conn.rollback()\n                raise\n\n    def save_signal(self, signal: RevenueSignal) -> None:\n''',
+          )
+
+          # 3) Domain service prefers the atomic store operation and refreshes durable
+          # execution state at read/mutation boundaries for warm-replica safety.
+          replace_once(
+              "brain/money_spine.py",
+              '''        if self.store is not None:\n            self.store.save_signal(signal)\n            self.store.save_scored_opportunity(scored)\n        return scored\n''',
+              '''        if self.store is not None:\n            atomic_save = getattr(self.store, "save_signal_and_score", None)\n            if callable(atomic_save):\n                atomic_save(signal, scored)\n            else:\n                self.store.save_signal(signal)\n                self.store.save_scored_opportunity(scored)\n        return scored\n''',
+          )
+          replace_once(
+              "brain/money_spine.py",
+              '''    def queue_action_from_signal(\n''',
+              '''    def _execution_persistence_ready(self) -> bool:\n        if self.store is None:\n            return False\n        checker = getattr(self.store, "execution_persistence_ready", None)\n        return bool(checker()) if callable(checker) else True\n\n    def refresh_from_store(self) -> None:\n        """Refresh tenant-scoped durable execution state for warm-replica reads."""\n        if not self._execution_persistence_ready():\n            return\n        self.actions = self.store.load_actions()\n        self.followups = self.store.load_followups()\n        self.outcomes = self.store.load_outcomes()\n\n    def get_action(self, action_id: UUID) -> RevenueExecutionAction:\n        if self._execution_persistence_ready():\n            getter = getattr(self.store, "get_action", None)\n            if callable(getter):\n                action = getter(action_id)\n            else:\n                action = self.store.load_actions().get(action_id)\n            if action is None:\n                self.actions.pop(action_id, None)\n                raise KeyError(action_id)\n            self.actions[action_id] = action\n            return action\n        return self.actions[action_id]\n\n    def queue_action_from_signal(\n''',
+          )
+          for method in (
+              "approve_action",
+              "log_manual_action",
+              "schedule_follow_up",
+              "record_outcome",
+          ):
+              marker = f"    def {method}("
+              text = Path("brain/money_spine.py").read_text()
+              start = text.index(marker)
+              pos = text.index("        action = self.actions[action_id]\n", start)
+              text = text[:pos] + "        action = self.get_action(action_id)\n" + text[pos + len("        action = self.actions[action_id]\n"):]
+              Path("brain/money_spine.py").write_text(text)
+          replace_once(
+              "brain/money_spine.py",
+              '''    def due_followups(self, *, now: datetime | None = None) -> list[RevenueFollowUp]:\n        current = now or datetime.now(timezone.utc)\n''',
+              '''    def due_followups(self, *, now: datetime | None = None) -> list[RevenueFollowUp]:\n        self.refresh_from_store()\n        current = now or datetime.now(timezone.utc)\n''',
+          )
+          replace_once(
+              "brain/money_spine.py",
+              '''    def snapshot(self) -> dict[str, Any]:\n        action_counts: dict[str, int] = {state.value: 0 for state in RevenueActionState}\n''',
+              '''    def snapshot(self) -> dict[str, Any]:\n        self.refresh_from_store()\n        action_counts: dict[str, int] = {state.value: 0 for state in RevenueActionState}\n''',
+          )
+
+          # Canonical detail route must use the same durable read-through path.
+          replace_once(
+              "apps/api/main.py",
+              '''    try:\n        return asdict(revenue_spine.actions[action_id])\n    except KeyError as exc:\n''',
+              '''    try:\n        return asdict(revenue_spine.get_action(action_id))\n    except KeyError as exc:\n''',
+          )
+
+          # Tenant adapter exposes the capability gate to the generic execution spine
+          # and prevents pre-025 point lookups from touching inaccessible tables.
+          replace_once(
+              "apps/api/tenant_app.py",
+              '''    def load_actions(self) -> dict[Any, Any]:\n        return super().load_actions() if self._tenant_execution_schema_is_ready() else {}\n''',
+              '''    def execution_persistence_ready(self) -> bool:\n        return self._tenant_execution_schema_is_ready()\n\n    def get_action(self, action_id: Any) -> Any | None:\n        return super().get_action(action_id) if self._tenant_execution_schema_is_ready() else None\n\n    def load_actions(self) -> dict[Any, Any]:\n        return super().load_actions() if self._tenant_execution_schema_is_ready() else {}\n''',
+          )
+
+          # Unit regression: MoneySpine must prefer the pairwise atomic store API.
+          Path("tests/test_revenue_atomic_contract.py").write_text('''from __future__ import annotations\n\nfrom brain.money_spine import MoneySpineService, RevenueSignal\n\n\nclass AtomicStore:\n    def __init__(self):\n        self.atomic_calls = 0\n        self.signals = {}\n        self.scores = {}\n\n    def load_lanes(self):\n        return {}\n\n    def seed_lanes(self, lanes):\n        self.lanes = {lane.lane_id: lane for lane in lanes}\n\n    def load_source_scores(self):\n        return {}\n\n    def save_signal_and_score(self, signal, scored):\n        self.atomic_calls += 1\n        self.signals[signal.id] = signal\n        self.scores[scored.id] = scored\n\n    def save_signal(self, signal):\n        raise AssertionError("non-atomic signal write used")\n\n    def save_scored_opportunity(self, scored):\n        raise AssertionError("non-atomic score write used")\n\n\ndef test_money_spine_prefers_atomic_signal_score_store_operation():\n    store = AtomicStore()\n    service = MoneySpineService(store=store)\n    signal = RevenueSignal(\n        raw_signal="atomic contract",\n        source_id="atomic-source",\n        money_lane_id="high_intent_lead_pack",\n        evidence_refs=["https://example.test/atomic"],\n        named_buyer="Buyer",\n        decision_maker="Operator",\n        visible_pain="urgent",\n        urgency_reason="now",\n        payment_path="approved manual action",\n        contact_channel="buyer@example.test",\n    )\n    scored = service.score_signal(signal)\n    assert store.atomic_calls == 1\n    assert signal.id in store.signals\n    assert scored.id in store.scores\n''')
+
+          # Production-shaped disposable-Postgres verifier for transactional rollback
+          # and two already-warm tenant service replicas sharing one RLS database.
+          Path("tools/verify_revenue_atomic_replica.py").write_text('''"""PR #183 atomic scoring and warm-replica tenant execution verifier."""\nfrom __future__ import annotations\n\nimport os\nfrom uuid import UUID\n\nimport psycopg\n\nfrom brain.adapters.revenue_store import PostgresRevenueStore\nfrom brain.money_spine import (\n    MoneySpineService,\n    RevenueActionState,\n    RevenueExecutionSpine,\n    RevenueOutcomeType,\n    RevenueSignal,\n    ScoredOpportunity,\n)\nfrom brain.tenant_auth import TenantRole\nfrom brain.tenant_context import trusted_tenant_context\nfrom brain.tenant_runtime import tenant_context_scope\n\nTENANT_A = UUID("cacacaca-caca-caca-caca-cacacacacaca")\nTENANT_B = UUID("dbdbdbdb-dbdb-dbdb-dbdb-dbdbdbdbdbdb")\nACTOR_A = "replica-operator-a"\nACTOR_B = "replica-operator-b"\nFAULT_SIGNAL = UUID("91919191-9191-9191-9191-919191919191")\nFAULT_SCORE = UUID("92929292-9292-9292-9292-929292929292")\n\n\ndef required_env(name: str) -> str:\n    value = os.environ.get(name)\n    if not value:\n        raise RuntimeError(f"{name} is required")\n    return value\n\n\ndef seed_tenants(admin_dsn: str) -> None:\n    with psycopg.connect(admin_dsn) as conn:\n        conn.execute(\n            """\n            insert into public.tenants (id, name, slug, status)\n            values\n              (%s, 'Replica Tenant A', 'replica-tenant-a', 'active'),\n              (%s, 'Replica Tenant B', 'replica-tenant-b', 'active')\n            on conflict (id) do update set status = 'active'\n            """,\n            (TENANT_A, TENANT_B),\n        )\n        conn.execute(\n            """\n            insert into public.tenant_memberships (tenant_id, user_id, role, status)\n            values\n              (%s, %s, 'operator', 'active'),\n              (%s, %s, 'operator', 'active')\n            on conflict (tenant_id, user_id) do update set\n              role = excluded.role, status = excluded.status, removed_at = null\n            """,\n            (TENANT_A, ACTOR_A, TENANT_B, ACTOR_B),\n        )\n        conn.commit()\n\n\ndef signal(raw: str, source_id: str = "replica-source") -> RevenueSignal:\n    return RevenueSignal(\n        raw_signal=raw,\n        source_id=source_id,\n        money_lane_id="high_intent_lead_pack",\n        evidence_refs=["https://example.test/replica"],\n        named_buyer="Replica Buyer",\n        decision_maker="Operations Lead",\n        visible_pain="Urgent verified need",\n        urgency_reason="Public urgent request",\n        payment_path="Approved manual action",\n        contact_channel="buyer@example.test",\n        commercial_value=0.8,\n        confidence=0.9,\n        urgency=0.9,\n        contactability=0.9,\n        execution_difficulty=0.2,\n        legal_access_risk=0.0,\n        time_delay=0.1,\n    )\n\n\ndef prove_atomic_rollback(admin_dsn: str) -> None:\n    store = PostgresRevenueStore(dsn=admin_dsn)\n    fault_signal = signal("fault-injected atomic rollback", "fault-source")\n    fault_signal.id = FAULT_SIGNAL\n    fault_score = ScoredOpportunity(\n        signal_id=FAULT_SIGNAL,\n        lane_id="high_intent_lead_pack",\n        score=91.0,\n        actionable=True,\n        rejection_reasons=[],\n        id=FAULT_SCORE,\n    )\n    with psycopg.connect(admin_dsn, autocommit=True) as conn:\n        conn.execute("drop trigger if exists brain_ci_fail_scored_insert on public.scored_revenue_opportunities")\n        conn.execute("drop function if exists public.brain_ci_fail_scored_insert()")\n        conn.execute(\n            f"""\n            create function public.brain_ci_fail_scored_insert() returns trigger\n            language plpgsql as $$\n            begin\n              if new.id = '{FAULT_SCORE}'::uuid then\n                raise exception 'ci injected scored-opportunity failure';\n              end if;\n              return new;\n            end\n            $$\n            """\n        )\n        conn.execute(\n            """\n            create trigger brain_ci_fail_scored_insert\n            before insert on public.scored_revenue_opportunities\n            for each row execute function public.brain_ci_fail_scored_insert()\n            """\n        )\n    try:\n        try:\n            store.save_signal_and_score(fault_signal, fault_score)\n        except psycopg.Error as exc:\n            assert "ci injected scored-opportunity failure" in str(exc)\n        else:\n            raise AssertionError("fault injection did not fail scored-opportunity insert")\n        with psycopg.connect(admin_dsn) as conn:\n            signal_count = conn.execute(\n                "select count(*) from public.revenue_signals where id = %s",\n                (FAULT_SIGNAL,),\n            ).fetchone()[0]\n            score_count = conn.execute(\n                "select count(*) from public.scored_revenue_opportunities where id = %s",\n                (FAULT_SCORE,),\n            ).fetchone()[0]\n        assert signal_count == 0, signal_count\n        assert score_count == 0, score_count\n    finally:\n        with psycopg.connect(admin_dsn, autocommit=True) as conn:\n            conn.execute("drop trigger if exists brain_ci_fail_scored_insert on public.scored_revenue_opportunities")\n            conn.execute("drop function if exists public.brain_ci_fail_scored_insert()")\n        store.close()\n    print("REVENUE_SIGNAL_SCORE_ATOMIC_ROLLBACK_GO: injected score failure rolled back both audit rows")\n\n\ndef prove_two_replica_rls(admin_dsn: str) -> None:\n    seed_tenants(admin_dsn)\n    from apps.api import tenant_app\n\n    if tenant_app._scoped_pool is None:\n        raise AssertionError("canonical tenant scoped pool unavailable")\n    context_a = trusted_tenant_context(\n        tenant_id=TENANT_A, actor_id=ACTOR_A, roles=(TenantRole.OPERATOR,)\n    )\n    context_b = trusted_tenant_context(\n        tenant_id=TENANT_B, actor_id=ACTOR_B, roles=(TenantRole.OPERATOR,)\n    )\n\n    with tenant_context_scope(context_a):\n        store_a = tenant_app.TenantRevenueStore(pool=tenant_app._scoped_pool)\n        store_b = tenant_app.TenantRevenueStore(pool=tenant_app._scoped_pool)\n        replica_a = RevenueExecutionSpine(\n            money=MoneySpineService(store=store_a), store=store_a\n        )\n        replica_b = RevenueExecutionSpine(\n            money=MoneySpineService(store=store_b), store=store_b\n        )\n        assert replica_a.snapshot()["actions"] == 0\n        assert replica_b.snapshot()["actions"] == 0\n\n        _, _, action = replica_a.queue_action_from_signal(\n            signal("action queued on already-warm replica A")\n        )\n        assert action.id not in replica_b.actions\n        assert replica_b.get_action(action.id).id == action.id\n\n        approved = replica_b.approve_action(action.id, approved_by=ACTOR_A)\n        assert approved.state == RevenueActionState.APPROVED\n        followup = replica_b.schedule_follow_up(\n            action.id, script="replica B durable follow-up", delay_hours=24\n        )\n        outcome = replica_b.record_outcome(\n            action.id,\n            outcome_type=RevenueOutcomeType.PAID_CONVERSION,\n            revenue=375.0,\n            reply=True,\n            meeting_booked=True,\n            paid_conversion=True,\n            legal_risk=0.0,\n            operator_hours=1.0,\n            lesson="warm replica B observed durable replica A action",\n        )\n        assert followup.action_id == action.id\n        assert outcome.action_id == action.id\n        assert replica_b.get_action(action.id).state == RevenueActionState.OUTCOME_LOGGED\n        assert replica_a.get_action(action.id).state == RevenueActionState.OUTCOME_LOGGED\n        snapshot_b = replica_b.snapshot()\n        assert snapshot_b["actions"] == 1\n        assert snapshot_b["followups"] == 1\n        assert snapshot_b["outcomes"] == 1\n\n    with tenant_context_scope(context_b):\n        other_store = tenant_app.TenantRevenueStore(pool=tenant_app._scoped_pool)\n        other_replica = RevenueExecutionSpine(\n            money=MoneySpineService(store=other_store), store=other_store\n        )\n        assert other_replica.snapshot()["actions"] == 0\n        try:\n            other_replica.get_action(action.id)\n        except KeyError:\n            pass\n        else:\n            raise AssertionError("cross-tenant replica read exposed tenant A action")\n\n    print(\n        "TENANT_REVENUE_TWO_REPLICA_GO: warm replica B read, approved, followed up, "\n        "and recorded an outcome for replica A's durable action; tenant B remained isolated"\n    )\n\n\ndef main() -> int:\n    admin_dsn = required_env("VERIFY_DATABASE_URL")\n    required_env("DATABASE_URL")\n    required_env("BRAIN_TENANT_CONTEXT_SECRET")\n    required_env("BRAIN_API_KEY")\n    if os.environ.get("BRAIN_TENANT_MODE") != "required":\n        raise RuntimeError("BRAIN_TENANT_MODE=required is required")\n    prove_atomic_rollback(admin_dsn)\n    prove_two_replica_rls(admin_dsn)\n    return 0\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n''')
+
+          # Add the production-shaped verifier to the existing isolated PostgreSQL CI.
+          replace_once(
+              ".github/workflows/revenue-persistence-migration.yml",
+              '''      - name: Verify canonical tenant HTTP revenue persistence\n''',
+              '''      - name: Verify atomic scoring and two-replica tenant execution\n        env:\n          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55434/brain\n          VERIFY_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain\n          BRAIN_TENANT_MODE: required\n          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture\n          BRAIN_API_KEY: ci-only-api-key\n        run: python -m tools.verify_revenue_atomic_replica\n\n      - name: Verify canonical tenant HTTP revenue persistence\n''',
+          )
+
+          evidence = Path("docs/control/evidence/PR183_REVENUE_PERSISTENCE_REPAIR.md")
+          evidence.write_text(evidence.read_text() + '''\n\n## Three-finding follow-up repair — pending exact-head CI\n\n- Source requirement registry: removed resolved persistence work from active `unresolved_gaps`; the remaining lane/source item is limited to intentionally global/non-tenant storage while tenant learning remains outcome-ledger-backed.\n- Atomic audit persistence: `PostgresRevenueStore.save_signal_and_score()` writes `RevenueSignal` and `ScoredOpportunity` on one connection/transaction; `MoneySpineService` prefers this operation.\n- Warm-replica execution: `RevenueExecutionSpine` now refreshes durable action/detail/approval/follow-up/outcome state at operation boundaries, with tenant pre-025 capability gating preserved.\n- New isolated PostgreSQL verifier injects a scored-opportunity failure and requires both audit rows to roll back, then constructs two already-warm tenant execution spines against one tenant/RLS database and requires replica B to read/approve/follow-up/outcome replica A's action while another tenant cannot read it.\n- Migration ownership remains #180=024 / #183=025; no new migration is introduced.\n- Final GO remains pending exact-head Brain Control Policy, Revenue Persistence Migration, standard test including tenant-RLS and production-container jobs, and Observatory compatibility.\n''')
+
+          Path(".github/workflows/pr183-scoped-repair.yml").unlink()
+          PY
+
+      - name: Validate patch shape
+        run: |
+          python -m py_compile brain/adapters/revenue_store.py brain/money_spine.py apps/api/main.py apps/api/tenant_app.py tools/verify_revenue_atomic_replica.py tests/test_revenue_atomic_contract.py
+          git diff --check
+          test ! -e .github/workflows/pr183-scoped-repair.yml
+          test "$(find db/migrations -maxdepth 1 -type f -name '024_*' | wc -l)" -eq 1
+          test "$(find db/migrations -maxdepth 1 -type f -name '025_*' | wc -l)" -eq 1
+
+      - name: Commit narrow repair
+        run: |
+          git config user.name "Harbourview PR183 Repair"
+          git config user.email "harbourviewcompany@gmail.com"
+          git add -A
+          git status --short
+          git commit -m "fix(revenue): atomic audit and replica refresh"
+          git push origin HEAD:fix/revenue-signal-schema
