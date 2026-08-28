@@ -16,6 +16,7 @@ import type {
   Signal,
   Source,
 } from "@/types/brain";
+import type { LearningEvent, ObservedEvidence, WorkingMemoryObservation } from "@/types/living-brain";
 
 export type SceneKind =
   | "organism"
@@ -64,6 +65,7 @@ export interface ObservedGraphEdge {
   relation?: string;
   weight?: number;
   confidence?: number;
+  evidence_ids?: string[];
   created_at?: string;
   [key: string]: unknown;
 }
@@ -73,6 +75,8 @@ export interface ObservatorySnapshot {
   health: HealthResponse | null;
   runner: RunnerStatus | null;
   signals: Signal[];
+  evidence: ObservedEvidence[];
+  workingMemory: WorkingMemoryObservation | null;
   beliefs: Belief[];
   predictions: Prediction[];
   edges: ObservedGraphEdge[];
@@ -82,6 +86,7 @@ export interface ObservatorySnapshot {
   approvals: ApprovalRequest[];
   opportunities: Opportunity[];
   outcomes: Outcome[];
+  learningEvents: LearningEvent[];
   organism: OrganismCockpit | null;
   selfState: OrganismSelfState | null;
   organismCuriosity: OrganismCuriosityTask[];
