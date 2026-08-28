@@ -165,7 +165,9 @@ def main() -> int:
     assert hidden.status_code == 404, hidden.text
     second_snapshot = client.get("/revenue-actions", headers=headers_b)
     assert second_snapshot.status_code == 200, second_snapshot.text
-    assert second_snapshot.json()["queued"] == 0
+    second_body = second_snapshot.json()
+    assert second_body["actions"] == 0
+    assert second_body["action_counts"]["approval_required"] == 0
 
     print(
         "TENANT_REVENUE_HTTP_GO: canonical tenant_app persisted tenant-owned "
