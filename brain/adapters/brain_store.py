@@ -313,14 +313,26 @@ class PostgresBrainStore(InMemoryBrainStore):
         deadline at all, so a lock or a slow plan can hold a read far past
         READ_TIMEOUT_SECONDS. PostgreSQL's own statement_timeout is the only
         thing that actually bounds execution.
+
+        set_config(), not SET. SET is parsed before parameters are bound, so
+        `set statement_timeout = %s` is a syntax error on the server -- and
+        because it fails *inside* the transaction, it aborts it, and every
+        query after it dies with "current transaction is aborted" rather than
+        anything that names the real cause. set_config is an ordinary function
+        call and takes its value as a parameter. Its third argument makes the
+        setting transaction-local, so it cannot leak onto a pooled connection
+        that some later caller checks out for something slower on purpose.
         """
 
         try:
-            cur.execute("set statement_timeout = %s", (int(self.READ_TIMEOUT_SECONDS * 1000),))
+            cur.execute(
+                "select set_config('statement_timeout', %s, true)",
+                (str(int(self.READ_TIMEOUT_SECONDS * 1000)),),
+            )
         except Exception:
             # A store pointed at something that does not understand the
             # setting should still be readable; the checkout bound remains.
-            log.debug("statement_timeout could not be set", exc_info=True)
+            log.warning("statement_timeout could not be set", exc_info=True)
 
     def _count_cognition_events(self) -> dict[str, int]:
         with self.pool.connection(timeout=self.READ_TIMEOUT_SECONDS) as conn, conn.cursor() as cur:

@@ -904,3 +904,59 @@ def test_resuming_beliefs_reads_current_state_first():
 
     source = inspect.getsource(api._resume_durable_beliefs)
     assert source.index("_refresh_reads()") < source.index("with _tick_lock:")
+
+
+# --- the timeout must be SQL PostgreSQL will actually accept ---------------
+
+
+def test_the_statement_timeout_is_set_through_set_config():
+    """SET is parsed before parameters are bound.
+
+    `set statement_timeout = %s` reaches the server as
+    `set statement_timeout = $1`, which is a syntax error -- and because it
+    fails inside the transaction, it aborts it, so every query after it dies
+    with "current transaction is aborted" instead of anything naming the
+    cause. CI's real PostgreSQL caught this; no fake cursor could have.
+    set_config is an ordinary function call and takes a bound parameter.
+    """
+
+    class Recording:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement, params=()):
+            self.statements.append(statement)
+
+    cur = Recording()
+    _detached_store()._bound_statements(cur)
+    statement = cur.statements[0]
+
+    # Asserted against the SQL actually sent, not the source text: the
+    # docstring explaining this bug quotes the broken form, so a source scan
+    # would trip over the explanation.
+    assert "set_config" in statement
+    assert not statement.lower().lstrip().startswith("set ")
+    # Transaction-local, so the bound cannot leak onto a pooled connection a
+    # later caller checks out for something deliberately slower.
+    assert "true" in statement
+
+
+def test_the_timeout_value_is_passed_as_text_not_an_integer():
+    """set_config's value argument is text; psycopg would send an int as
+    integer and the function would reject it."""
+
+    class Recording:
+        def __init__(self):
+            self.calls = []
+
+        def execute(self, statement, params=()):
+            self.calls.append((statement, params))
+
+    store = _detached_store()
+    cur = Recording()
+    store._bound_statements(cur)
+
+    statement, params = cur.calls[0]
+    assert "set_config" in statement
+    assert params == (str(int(PostgresBrainStore.READ_TIMEOUT_SECONDS * 1000)),)
+    assert isinstance(params[0], str)
