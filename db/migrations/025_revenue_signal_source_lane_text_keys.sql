@@ -98,25 +98,10 @@ begin
   end if;
 end $$;
 
--- Revenue source learning was introduced in migration 023 after the generic
--- migration-022 tenant stamping/grant pass. Convert it to tenant-local state while
--- preserving legacy/system rows as tenant_id is null.
-alter table public.revenue_source_scores
-  add column if not exists tenant_id uuid references public.tenants(id) on delete restrict;
-alter table public.revenue_source_scores
-  alter column tenant_id set default public.current_brain_tenant_id();
-alter table public.revenue_source_scores
-  drop constraint if exists revenue_source_scores_pkey;
-create unique index if not exists revenue_source_scores_system_source_unique_idx
-  on public.revenue_source_scores(source_id)
-  where tenant_id is null;
-create unique index if not exists revenue_source_scores_tenant_source_unique_idx
-  on public.revenue_source_scores(tenant_id, source_id)
-  where tenant_id is not null;
-
 -- Migration 017 predates tenant ownership. The canonical tenant-aware API now uses
--- PostgresRevenueStore, so its approval ledger must be tenant-owned before that store
--- can be safely exposed to a non-owner runtime login.
+-- PostgresRevenueStore for approval-gated persistence, so its execution ledger must
+-- become tenant-owned before that store can be safely exposed to a non-owner runtime
+-- login. Legacy/system rows remain tenant_id null and are not destructively backfilled.
 alter table public.revenue_execution_actions
   add column if not exists tenant_id uuid references public.tenants(id) on delete restrict;
 alter table public.revenue_followups
@@ -125,13 +110,12 @@ alter table public.revenue_outcome_ledger
   add column if not exists tenant_id uuid references public.tenants(id) on delete restrict;
 
 -- Apply the same tenant default, RLS policies, FORCE boundary, indexes and runtime DML
--- grants that migration 022 applies to tables that existed with tenant_id at that time.
+-- grants that migration 022 applies to tables that already carried tenant_id.
 do $$
 declare
   t text;
 begin
   foreach t in array array[
-    'revenue_source_scores',
     'revenue_execution_actions',
     'revenue_followups',
     'revenue_outcome_ledger'
@@ -209,7 +193,5 @@ before insert or update of tenant_id, action_id
 on public.revenue_outcome_ledger
 for each row execute function public.enforce_revenue_execution_tenant_integrity();
 
-comment on column public.revenue_source_scores.tenant_id is
-  'Tenant-local revenue source reliability state. Legacy/system rows remain tenant_id null.';
 comment on column public.revenue_execution_actions.tenant_id is
   'Tenant owner for approval-gated revenue execution state; stamped from verified tenant context.';
