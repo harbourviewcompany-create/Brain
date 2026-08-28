@@ -41,7 +41,9 @@
     "docs/control/module-build-ready-traceability.infra.md",
     "docs/control/OBSERVATORY_CONSOLIDATION_PROVENANCE.md",
     "docs/control/source-requirement-registry.observatory.json",
-    "docs/control/module-build-ready-traceability.observatory.md"
+    "docs/control/module-build-ready-traceability.observatory.md",
+    "docs/control/source-requirement-registry.zero-cost.json",
+    "docs/control/module-build-ready-traceability.zero-cost.md"
   ],
   "required_templates": [
     ".github/pull_request_template.md",
@@ -118,7 +120,8 @@
       "docs/control/source-requirement-registry.convergence.json",
       "docs/control/source-requirement-registry.infra.json",
       "docs/control/source-requirement-registry.observatory.json",
-      "docs/control/source-requirement-registry.hardening.json"
+      "docs/control/source-requirement-registry.hardening.json",
+      "docs/control/source-requirement-registry.zero-cost.json"
     ],
     "module_build_ready_schema_path": "docs/control/module-build-ready-traceability.schema.json",
     "module_build_ready_matrix_path": "docs/control/module-build-ready-traceability.md",
@@ -126,7 +129,8 @@
       "docs/control/module-build-ready-traceability.pr126.md",
       "docs/control/module-build-ready-traceability.infra.md",
       "docs/control/module-build-ready-traceability.observatory.md",
-      "docs/control/module-build-ready-traceability.hardening.md"
+      "docs/control/module-build-ready-traceability.hardening.md",
+      "docs/control/module-build-ready-traceability.zero-cost.md"
     ],
     "enforced_code_roots": [
       "apps",

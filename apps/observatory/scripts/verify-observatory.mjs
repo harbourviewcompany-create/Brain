@@ -76,11 +76,20 @@ if (livingProjection.includes("MultiSystemMemory.retrieve_episodes(")) {
 }
 
 const upstream = fs.readFileSync("src/lib/brain-upstream.ts", "utf8");
-if (!upstream.includes("getVercelOidcToken") || !upstream.includes("Authorization") && !upstream.includes("authorization")) {
+if (!upstream.includes("getVercelOidcToken") || (!upstream.includes("Authorization") && !upstream.includes("authorization"))) {
   throw new Error("Vercel OIDC BFF authentication contract is missing");
 }
 for (const prefix of ['"evidence"', '"working-memory"', '"learning-events"']) {
   if (!upstream.includes(prefix)) throw new Error(`BFF allowlist is missing ${prefix}`);
+}
+if (upstream.includes("LIVE_RAILWAY_BASE")) {
+  throw new Error("Observatory BFF must not retain a Railway production fallback");
+}
+if (!upstream.includes("brain_runtime_upstream_not_configured")) {
+  throw new Error("Observatory BFF must fail closed when the zero-cost runtime URL is missing");
+}
+if (!upstream.includes('endsWith(".railway.app")') || !upstream.includes('return "";')) {
+  throw new Error("Observatory BFF must reject Railway runtime origins after cutover");
 }
 
 const page = fs.readFileSync("src/app/page.tsx", "utf8");
