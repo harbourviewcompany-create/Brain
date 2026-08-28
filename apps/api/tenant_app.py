@@ -14,10 +14,11 @@ from brain.adapters.learning_store import (
     PostgresPredictionStore,
     PostgresSourceStore,
 )
+from brain.adapters.revenue_store import PostgresRevenueStore
 from brain.cognitive_organism import CognitiveOrganism
 from brain.heartbeat import HeartbeatService
 from brain.learning import LearningService
-from brain.money_spine import MoneySpineService
+from brain.money_spine import MoneySpineService, RevenueExecutionSpine
 from brain.runtime import BrainRuntime
 from brain.tenant_auth import TenantRole
 from brain.tenant_context import TenantScopeViolation
@@ -122,6 +123,31 @@ class TenantAwareCognitiveOrganismStore(PostgresCognitiveOrganismStore):
         return dict(row[0]) if row else None
 
 
+class TenantRevenueStore(PostgresRevenueStore):
+    """Tenant operational persistence without mutating system-global lane state.
+
+    Money-lane templates and the pre-tenant revenue_source_scores table do not have
+    a tenant-safe mutable schema yet. The tenant API therefore uses the canonical
+    in-code lane templates and keeps source-score/lane-priority learning local while
+    persisting the tenant-owned signal/score/offer and approval-ledger surfaces.
+    """
+
+    def load_lanes(self) -> dict[str, Any]:
+        return {}
+
+    def seed_lanes(self, lanes: list[Any]) -> None:
+        return None
+
+    def save_lane_priority(self, lane: Any) -> None:
+        return None
+
+    def load_source_scores(self) -> dict[str, float]:
+        return {}
+
+    def save_source_score(self, source_id: str, score: float) -> None:
+        return None
+
+
 app = base.app
 tenant_security = TenantRequestSecurity.from_env()
 
@@ -159,13 +185,21 @@ if _DATABASE_URL:
         )
         runtime = BrainRuntime(store=store)
         heartbeat = HeartbeatService(event_store=store.event_store, learning=learning)
-        return TenantServiceBundle(
+        revenue_store = TenantRevenueStore(pool=_scoped_pool)
+        money_spine = MoneySpineService(store=revenue_store)
+        revenue_spine = RevenueExecutionSpine(money=money_spine, store=revenue_store)
+        bundle = TenantServiceBundle(
             store=store,
             runtime=runtime,
             learning=learning,
             heartbeat=heartbeat,
-            money_spine=MoneySpineService(),
+            money_spine=money_spine,
         )
+        # TenantServiceBundle predates the approval spine. Preserve its public shape
+        # while exposing the paired tenant-local execution service through the same
+        # registry/proxy boundary.
+        bundle.revenue_spine = revenue_spine
+        return bundle
 
     _service_registry = TenantServiceRegistry(_build_bundle)
     base._brain_store = BundleAttributeProxy(_service_registry, "store")
@@ -173,6 +207,7 @@ if _DATABASE_URL:
     base.learning = BundleAttributeProxy(_service_registry, "learning")
     base.heartbeat = BundleAttributeProxy(_service_registry, "heartbeat")
     base.money_spine = BundleAttributeProxy(_service_registry, "money_spine")
+    base.revenue_spine = BundleAttributeProxy(_service_registry, "revenue_spine")
 
     # Not evictable: CognitiveOrganism is constructed empty and is never
     # hydrated from organism_store, so dropping a tenant's instance would reset
