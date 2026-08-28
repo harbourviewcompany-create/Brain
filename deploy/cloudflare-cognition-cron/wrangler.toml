@@ -1,0 +1,15 @@
+name = "brain-cognition-cron"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# Free Workers plan: up to ~5 cron triggers per account; 100k requests/day.
+# This Worker only performs a short fetch -- all Python work runs on the API.
+# Minimum interval on free is 1 minute.
+[triggers]
+crons = ["* * * * *"]
+
+# Secrets (set with wrangler; never commit):
+#   npx wrangler secret put BRAIN_API_URL
+#   npx wrangler secret put BRAIN_API_KEY
+# Optional:
+#   npx wrangler secret put BRAIN_TICK_PATH   # default /internal/cognition/tick
