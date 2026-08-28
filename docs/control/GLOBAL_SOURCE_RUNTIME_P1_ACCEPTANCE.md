@@ -1,6 +1,6 @@
 # Global Source Runtime P1 — Acceptance Ledger
 
-Status: HOLD pending final exact-head CI synchronization; production migration/deployment remains HOLD.
+Status: CODE/INTEGRATION GO from completed exact-head CI; PR #180 is merged; production migration/deployment remains HOLD.
 
 Build slice: `SLICE-GLOBAL-SOURCE-P1`
 
@@ -27,22 +27,30 @@ Source authority: `SRC-BRAIN-GLOBAL-SOURCE-P1-20260827` in `docs/spec/GLOBAL_SOU
 - [x] capability fallback for pre-024 deployments
 - [x] tenant/RLS policies included in migration 024
 - [x] migration 024 is the unique, contiguous next slot on this branch
-- [x] PR #183 is ordered after this slice as migration 025 and is verified separately as a stacked PR
+- [x] PR #183 is ordered after this slice as migration 025 and is verified separately
 - [x] implementation head immediately before documentation reconciliation passed the full repository suite, lint, production-container persistence, tenant-RLS gate, Brain control policy and Observatory compatibility
-- [x] pull-request acceptance metadata now uses the repository's mandatory control headings
-- [ ] final exact-head synchronization run green after this documentation-only commit
+- [x] pull-request acceptance metadata uses the repository's mandatory control headings
+- [x] final exact-head synchronization run green after the documentation-only synchronization commit
 
 ## Migration ordering
 
-PR #180 owns `024_durable_connector_runtime.sql`. PR #183 owns `025_revenue_signal_source_lane_text_keys.sql` and currently targets this branch while both PRs remain open. After #180 eventually lands under separate operator authorization, #183 must be retargeted to updated `main` and rerun before any merge decision.
+PR #180 owns `024_durable_connector_runtime.sql` and was merged to `main` as squash commit `ae77e18123a7b2275cad79c5e6874ed499762333`. PR #183 owns `025_revenue_signal_source_lane_text_keys.sql` and has been retargeted to `main`. PR #183 must independently satisfy its post-#180 exact-head workflows, migration ordering, mergeability, and review-thread requirements before any merge decision.
 
 ## Verification note
 
-The prior exact-head Brain Control Policy failure was metadata-only: module BUILD-READY traceability and migration integrity both passed, while the PR-body validator rejected missing mandatory section headings. The PR body has now been aligned to those exact headings. This commit intentionally synchronizes that corrected metadata with a fresh pull-request head event so the validator does not reuse a stale event payload.
+PR #180 exact head `b5bcfd600ce4ea29fa05cee5ccbd147a248ccc59` completed the required pull-request verification before merge:
+
+- Brain Control Policy run `33132315400`: SUCCESS.
+- Verify PR126 Observatory Compatibility run `33132315401`: SUCCESS.
+- Standard `test` run `33132315391`: SUCCESS, including the tenant-RLS release gate and production-container persistence jobs.
+
+The standard test run also proved 797 Python tests passing, Ruff PASS, Brain agent-control GO, MOD-008–015 117/117 PASS, Observatory structural/session verification PASS, and the Next.js production build PASS. The earlier HOLD language in this ledger was stale control metadata after those exact-head checks completed; it did not represent a remaining implementation defect.
+
+PR #180 was subsequently merged before this follow-up documentation correction was created. This correction changes only the acceptance ledger so repository control evidence matches the already-completed verification and merge state.
 
 ## External actions
 
-Repository branch and PR metadata writes only. No production database mutation, Railway configuration change, paid provider activation, credential change, service provisioning, merge, deployment, restart, or public release action is part of this build slice.
+This follow-up performs GitHub documentation/PR/CI actions only. PR #180 had already been merged before this correction began. No runtime code, migration, production database, Railway configuration, paid provider, credential, service, deployment, restart, revenue-extraction activation, or production-write action is part of this correction.
 
 ## Memory writes
 
@@ -58,6 +66,6 @@ See `docs/spec/GLOBAL_SOURCE_RUNTIME_P1.md`. Broad source population, historical
 
 ## GO/HOLD
 
-**MERGE/CODE: HOLD pending the fresh exact-head synchronization run.** No implementation defect is known; the preceding implementation head was fully green and this change is documentation/control synchronization only.
+**CODE / INTEGRATION: GO; PR #180: ALREADY MERGED.** The required #180 exact-head Control Policy, Observatory compatibility, repository tests/lint/build, tenant-RLS release gate, and production-container persistence were green before merge. This follow-up only reconciles stale control evidence.
 
 **PRODUCTION MIGRATION / DEPLOYMENT: HOLD.** Production execution remains separately gated and was not authorized here.
