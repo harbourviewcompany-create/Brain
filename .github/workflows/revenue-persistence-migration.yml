@@ -114,7 +114,17 @@ jobs:
           BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
         run: python tools/apply_migrations.py --max-version 23
 
-      - name: Make migration 025 prove FORCE-RLS legacy translation as ordinary owner
+      - name: Apply prerequisite migration 024
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55434/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55434/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: python tools/apply_migrations.py --max-version 24
+
+      - name: Prepare migration 025 ordinary-owner boundary
         run: |
           docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
           alter table public.sources owner to brain_migrator_ci;
@@ -126,10 +136,17 @@ jobs:
           alter table public.revenue_outcome_ledger owner to brain_migrator_ci;
           grant references on table public.tenants to brain_migrator_ci;
           SQL
-          PGPASSWORD=brain-migrator-ci psql \
-            -h 127.0.0.1 -p 55434 -U brain_migrator_ci -d brain \
-            -v ON_ERROR_STOP=1 \
-            -f db/migrations/025_revenue_signal_source_lane_text_keys.sql
+
+      - name: Prove live 024 to 025 tenant upgrade without restart
+        env:
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55434/brain
+          VERIFY_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
+          VERIFY_MIGRATION_DATABASE_URL: postgresql://brain_migrator_ci:brain-migrator-ci@127.0.0.1:55434/brain
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+          BRAIN_TENANT_BUNDLE_LIMIT: '2'
+          BRAIN_API_KEY: ci-only-api-key
+        run: python -m tools.verify_tenant_revenue_live_upgrade
 
       - name: Verify migration 025 preserves legacy data and establishes tenant execution RLS
         run: |
