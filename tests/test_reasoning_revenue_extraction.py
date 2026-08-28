@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import brain.reasoning as reasoning_module
 from brain.reasoning import (
     CortexReasoner,
     HttpLLMReasoner,
@@ -59,6 +60,43 @@ def test_http_llm_reasoner_marks_source_untrusted_and_requires_verbatim_evidence
     assert "verbatim" in prompt
     assert "must NOT invent" in prompt
     assert "value must appear inside the evidence_quote" in prompt
+
+
+def test_http_llm_reasoner_caps_network_timeout_to_request_budget(monkeypatch):
+    seen_timeouts: list[float] = []
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            payload = {
+                "choices": [{"message": {"content": "{}"}}],
+            }
+            return json.dumps(payload).encode()
+
+    def _urlopen(request, timeout):
+        seen_timeouts.append(timeout)
+        return _Response()
+
+    monkeypatch.setattr(reasoning_module.urllib.request, "urlopen", _urlopen)
+    reasoner = HttpLLMReasoner(
+        base_url="https://example.test/v1/chat/completions",
+        api_key="test-key",
+        model="test-model",
+        timeout=30.0,
+    )
+    result = reasoner.reason(ReasonRequest(
+        task_type="revenue_entity_extraction",
+        prompt="No supported facts",
+        context={"raw_text": "No supported facts"},
+        timeout_seconds=2.5,
+    ))
+    assert result.content == "{}"
+    assert seen_timeouts == [2.5]
 
 
 def test_cortex_router_registers_revenue_entity_extraction_task():
