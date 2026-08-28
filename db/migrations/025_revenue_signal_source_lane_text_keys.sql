@@ -110,7 +110,9 @@ alter table public.revenue_outcome_ledger
   add column if not exists tenant_id uuid references public.tenants(id) on delete restrict;
 
 -- Apply the same tenant default, RLS policies, FORCE boundary, indexes and runtime DML
--- grants that migration 022 applies to tables that already carried tenant_id.
+-- grants that migration 022 applies to tables that already carried tenant_id. This is
+-- deliberately limited to table-owner operations; migration 025 does not require a
+-- broader CREATE privilege on the public schema.
 do $$
 declare
   t text;
@@ -155,43 +157,6 @@ begin
     );
   end loop;
 end $$;
-
--- Prevent a tenant-owned child ledger row from referencing an action owned by a
--- different tenant. Legacy system rows (both tenant ids null) remain valid.
-create or replace function public.enforce_revenue_execution_tenant_integrity()
-returns trigger
-language plpgsql
-as $$
-declare
-  action_tenant uuid;
-begin
-  if tg_table_name in ('revenue_followups', 'revenue_outcome_ledger') then
-    select tenant_id into action_tenant
-    from public.revenue_execution_actions
-    where id = new.action_id;
-
-    if not found then
-      raise exception 'revenue action is not visible in the current tenant/service context';
-    end if;
-    if new.tenant_id is distinct from action_tenant then
-      raise exception 'revenue child tenant_id must match action tenant_id';
-    end if;
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists revenue_followups_tenant_integrity on public.revenue_followups;
-create trigger revenue_followups_tenant_integrity
-before insert or update of tenant_id, action_id
-on public.revenue_followups
-for each row execute function public.enforce_revenue_execution_tenant_integrity();
-
-drop trigger if exists revenue_outcome_ledger_tenant_integrity on public.revenue_outcome_ledger;
-create trigger revenue_outcome_ledger_tenant_integrity
-before insert or update of tenant_id, action_id
-on public.revenue_outcome_ledger
-for each row execute function public.enforce_revenue_execution_tenant_integrity();
 
 comment on column public.revenue_execution_actions.tenant_id is
   'Tenant owner for approval-gated revenue execution state; stamped from verified tenant context.';
