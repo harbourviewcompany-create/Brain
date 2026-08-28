@@ -11,7 +11,6 @@ or a dedicated worker already holds the lease, the call returns 200 with
 
 from __future__ import annotations
 
-import os
 from typing import Any, Callable
 
 from fastapi import APIRouter
@@ -22,8 +21,6 @@ from brain.cognition_lease import CognitionLease
 from brain.logging_config import get_logger
 
 log = get_logger("cognition_cron")
-
-router = APIRouter(tags=["cognition-cron"])
 
 
 class ExternalTickRequest(BaseModel):
@@ -41,9 +38,14 @@ def _tick_fn_from_module(api_module: Any) -> Callable[..., Any]:
 
 
 def register_cognition_cron_routes(app: Any, *, api_module: Any) -> None:
-    """Mount lease-aware external tick routes on the given FastAPI app."""
+    """Mount lease-aware external tick routes on the given FastAPI app.
+
+    Builds a fresh APIRouter each call so the tick closure is bound to this
+    ``api_module`` (tests and production both get the handler they registered).
+    """
 
     tick_fn = _tick_fn_from_module(api_module)
+    router = APIRouter(tags=["cognition-cron"])
 
     @router.post("/internal/cognition/tick")
     def external_cognition_tick(body: ExternalTickRequest | None = None) -> dict[str, Any]:
