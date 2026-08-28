@@ -2084,17 +2084,27 @@ def test_a_read_refreshes_the_projection_exactly_once(monkeypatch, path):
 
 
 def test_a_worker_reload_owed_is_not_forgotten_next_pass(monkeypatch):
-    """Returning False without remembering let the debt evaporate.
+    """The debt survives, and permission is withheld until it is paid.
 
-    After one failed reload the generation is already the new one, so the very
-    next check compared equal, skipped the reload it still owed, and granted
-    permission to write from the pre-handover cache.
+    After one failed reload the generation is already the new one, so a check
+    comparing generations alone would compare equal, skip the reload it still
+    owed, and grant permission to write from the pre-handover cache.
+
+    Recovery now runs through reacquisition, because a failed reload also
+    releases the lease -- refusing to write while holding it would stop anyone
+    else writing either. What must not change is the invariant: no permission
+    until a reload has actually succeeded.
     """
 
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
     lease = _ReconnectingLease()
     monkeypatch.setattr(worker, "_cognition_lease", lease)
     monkeypatch.setattr(worker, "_lease_required", True)
     monkeypatch.setattr(worker, "_state_reload_pending", False)
+
+    import brain.cognition_lease as lease_module
+
+    monkeypatch.setattr(lease_module, "CognitionLease", lambda dsn: _ReconnectingLease())
 
     attempts = []
 
@@ -2106,8 +2116,11 @@ def test_a_worker_reload_owed_is_not_forgotten_next_pass(monkeypatch):
     lease.sever()
 
     assert worker._lease_still_held() is False
+    assert lease.released == 1, "a worker that cannot write must not sit on the lock"
+
+    # Still owed, so the next pass tries again and still refuses.
     assert worker._lease_still_held() is False
-    assert len(attempts) == 2, "the reload is still owed, so it must be retried"
+    assert len(attempts) == 2
 
     # And once it can succeed, writing is permitted again.
     monkeypatch.setattr(worker, "_resume_worker_state", lambda: None)
@@ -2412,3 +2425,75 @@ def test_the_request_write_guard_forces_verification():
     eng.revalidate_lease()
 
     assert asked == [True]
+
+
+# --- Codex round nine, against 8e5e596 -------------------------------------
+
+
+def test_a_reconnect_reload_failure_gives_the_lease_up(monkeypatch):
+    """Refusing to write while holding the lease stops everyone writing.
+
+    _reacquire_cognition_lease() already released on this failure; the
+    reconnect path inside _lease_still_held() did not -- and that is the path
+    a transparent reconnect actually takes. The worker sat doing nothing on a
+    lock a healthy process could have used, for as long as whatever broke the
+    reload stayed broken.
+    """
+
+    lease = _ReconnectingLease()
+    monkeypatch.setattr(worker, "_cognition_lease", lease)
+    monkeypatch.setattr(worker, "_lease_required", True)
+    monkeypatch.setattr(worker, "_state_reload_pending", False)
+    monkeypatch.setattr(
+        worker,
+        "_resume_worker_state",
+        lambda: (_ for _ in ()).throw(RuntimeError("pool exhausted")),
+    )
+    lease.sever()
+
+    assert worker._lease_still_held() is False
+    assert lease.released == 1
+    assert worker._cognition_lease is None
+
+
+def test_every_resume_failure_while_holding_the_lease_releases_it():
+    """The sibling check I should have run last round.
+
+    Four paths can fail a resume while owning the lease: the inline loop's
+    on_start, the worker's reconnect reload, the worker's reacquisition
+    reload, and a request tick's borrowed lease. Each must give the lock back
+    -- a process that has decided it cannot write safely must not also be the
+    reason nobody else can.
+    """
+
+    import ast
+    import inspect
+    import textwrap
+
+    def releases_on_failure(source: str, marker: str) -> bool:
+        tree = ast.parse(textwrap.dedent(source))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            body = ast.dump(node)
+            if marker not in body:
+                continue
+            released = any(
+                "release" in ast.dump(handler) for handler in node.handlers
+            ) or any("release" in ast.dump(stmt) for stmt in node.finalbody)
+            if released:
+                return True
+        return False
+
+    assert releases_on_failure(
+        inspect.getsource(worker._lease_still_held), "_resume_worker_state"
+    )
+    assert releases_on_failure(
+        inspect.getsource(worker._reacquire_cognition_lease), "_resume_worker_state"
+    )
+    assert releases_on_failure(
+        inspect.getsource(api.request_tick), "_resume_durable_beliefs"
+    )
+    assert releases_on_failure(
+        inspect.getsource(inline.InlineCognition._step), "_on_start"
+    )

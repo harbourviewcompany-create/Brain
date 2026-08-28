@@ -278,9 +278,31 @@ def _lease_still_held() -> bool:
             # next check see an unchanged generation, skip the reload, and
             # grant permission to write from the stale cache anyway.
             log.exception("durable state could not be reloaded after a lease reconnect")
+            # And give the lock up while owing it. Refusing to write is right;
+            # refusing to write *while holding the lease* is a worker doing
+            # nothing and stopping anyone else from doing it either -- for as
+            # long as whatever broke the reload stays broken, which may be
+            # local to this process. _reacquire_cognition_lease() already
+            # released on the same failure; this path did not, and it is the
+            # one a reconnect actually takes.
+            _release_cognition_lease()
             return False
         _state_reload_pending = False
     return True
+
+
+def _release_cognition_lease() -> None:
+    """Drop the lease so a process that can write is free to take it."""
+
+    global _cognition_lease
+
+    lease, _cognition_lease = _cognition_lease, None
+    if lease is None:
+        return
+    try:
+        lease.release()
+    except Exception:
+        log.exception("cognition lease could not be released")
 
 
 def _reacquire_cognition_lease() -> bool:
