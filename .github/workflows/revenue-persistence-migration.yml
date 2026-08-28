@@ -48,10 +48,10 @@ jobs:
           BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
         run: python tools/apply_migrations.py --max-version 18
 
-      - name: Verify pre-024 scoring safely degrades on legacy UUID layout
+      - name: Verify pre-025 scoring safely degrades on legacy UUID layout
         env:
           DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
-        run: python tools/verify_revenue_persistence_migration.py --expect pre024
+        run: python tools/verify_revenue_persistence_migration.py --expect pre025
 
       - name: Seed legacy UUID and nullable audit rows
         run: |
@@ -114,7 +114,7 @@ jobs:
           BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
         run: python tools/apply_migrations.py --max-version 23
 
-      - name: Make migration 024 prove FORCE-RLS legacy translation as ordinary owner
+      - name: Make migration 025 prove FORCE-RLS legacy translation as ordinary owner
         run: |
           docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
           alter table public.sources owner to brain_migrator_ci;
@@ -125,9 +125,9 @@ jobs:
           PGPASSWORD=brain-migrator-ci psql \
             -h 127.0.0.1 -p 55434 -U brain_migrator_ci -d brain \
             -v ON_ERROR_STOP=1 \
-            -f db/migrations/024_revenue_signal_source_lane_text_keys.sql
+            -f db/migrations/025_revenue_signal_source_lane_text_keys.sql
 
-      - name: Verify migration 024 preserves values, nullability, and FORCE RLS
+      - name: Verify migration 025 preserves values, nullability, and FORCE RLS
         run: |
           docker exec -i brain-revenue-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
           do $$
@@ -191,19 +191,19 @@ jobs:
             end if;
           end $$;
           SQL
-          echo 'MIGRATION024_LEGACY_GO: UUID keys translated under FORCE RLS, nulls preserved, FORCE restored'
+          echo 'MIGRATION025_LEGACY_GO: UUID keys translated under FORCE RLS, nulls preserved, FORCE restored'
 
-      - name: Verify post-024 signal to score to offer persistence
+      - name: Verify post-025 signal to score to offer persistence
         env:
           DATABASE_URL: postgresql://brain:brain@127.0.0.1:55434/brain
-        run: python tools/verify_revenue_persistence_migration.py --expect post024
+        run: python tools/verify_revenue_persistence_migration.py --expect post025
 
-      - name: Prove migration 024 replay is idempotent
+      - name: Prove migration 025 replay is idempotent
         run: |
           PGPASSWORD=brain-migrator-ci psql \
             -h 127.0.0.1 -p 55434 -U brain_migrator_ci -d brain \
             -v ON_ERROR_STOP=1 \
-            -f db/migrations/024_revenue_signal_source_lane_text_keys.sql
+            -f db/migrations/025_revenue_signal_source_lane_text_keys.sql
           text_columns=$(docker exec brain-revenue-postgres psql -At -U brain -d brain -c "
             select count(*) from information_schema.columns
             where table_schema='public' and data_type='text' and (
@@ -220,7 +220,7 @@ jobs:
                 'scored_revenue_opportunities_money_lane_id_fkey'
               );")
           test "${legacy_fks}" = "0"
-          echo 'MIGRATION024_REPLAY_GO: text-key migration is replay-safe'
+          echo 'MIGRATION025_REPLAY_GO: text-key migration is replay-safe'
 
       - name: PostgreSQL logs on failure
         if: failure()
