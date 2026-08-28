@@ -163,7 +163,7 @@ class PostgresEventStore:
                                causation_id, correlation_id, payload, occurred_at
                         from public.brain_events
                         where event_type = %s
-                        order by occurred_at desc, id desc
+                        order by occurred_at desc
                         limit %s
                     """,
                     (event_type, limit),
