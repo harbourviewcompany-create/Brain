@@ -11,6 +11,7 @@ import { flaresFromErrors } from "@/field/flares";
 import { useBrainObservatory } from "@/hooks/useBrainObservatory";
 import { buildCognitiveScene } from "@/lib/observatory";
 import type { CognitiveScene } from "@/types/observatory";
+import styles from "./BrainObservatory.module.css";
 
 const CognitiveField = dynamic(
   () => import("@/components/observatory/CognitiveField").then((mod) => mod.CognitiveField),
@@ -160,12 +161,12 @@ export function BrainObservatory() {
 
       {graphOpen ? (
         <section
-          className="observatory-graph-overlay"
+          className={styles.overlay}
           role="dialog"
           aria-modal="true"
           aria-label="Brain cognitive graph inspector"
         >
-          <header className="observatory-graph-overlay__bar">
+          <header className={styles.bar}>
             <div>
               <strong>COGNITIVE GRAPH</strong>
               <span>{scrubIndex === null ? "LIVE" : "OBSERVED SESSION REPLAY"}</span>
@@ -175,8 +176,8 @@ export function BrainObservatory() {
             </button>
           </header>
 
-          <div className="observatory-graph-overlay__stage">
-            <section className="observatory-field-shell observatory-graph-overlay__field" aria-label="Live cognitive field">
+          <div className={styles.stage}>
+            <section className={`observatory-field-shell ${styles.field}`} aria-label="Live cognitive field">
               <CognitiveField
                 scene={graphScene}
                 diff={diff}
