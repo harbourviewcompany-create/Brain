@@ -123,19 +123,23 @@ jobs:
           path: apps/observatory/evidence/*.png
           if-no-files-found: error
           retention-days: 7
-      - name: Existing production BFF read smoke
+      - name: Existing production BFF diagnostic
+        id: production_baseline
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
-          # This is intentionally last: it remains a release gate, but a failure in
-          # the independently deployed production backend must not suppress visual
-          # evidence for the PR build that was already linted, typed and built above.
+          # PR builds cannot require an already-deployed production backend to
+          # contain the code being proposed by the PR. This remains a visible
+          # diagnostic here. The hard production release assertion lives in
+          # `.github/workflows/postdeploy-observatory-audit.yml`, which fails on
+          # an unhealthy BFF, `/signals`, Railway auth, or live browser errors.
           base="https://brain-seven-puce.vercel.app/api/brain"
-          health_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
+          health_code="$(curl --retry 2 --retry-all-errors --retry-delay 1 --silent --show-error \
             -o /tmp/health.json -w "%{http_code}" "$base/health" || true)"
-          signals_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
+          signals_code="$(curl --retry 2 --retry-all-errors --retry-delay 1 --silent --show-error \
             -o /tmp/signals.json -w "%{http_code}" "$base/signals" || true)"
-          organism_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
+          organism_code="$(curl --retry 2 --retry-all-errors --retry-delay 1 --silent --show-error \
             -o /tmp/organism.json -w "%{http_code}" "$base/organism/cockpit" || true)"
           node - <<NODE
           const fs = require('fs');
@@ -174,3 +178,11 @@ jobs:
             organism: { status: organismCode, keys: organismKeys }
           }, null, 2));
           NODE
+      - name: Record production baseline diagnostic
+        if: always()
+        shell: bash
+        run: |
+          echo "### Existing production baseline" >> "$GITHUB_STEP_SUMMARY"
+          echo "PR verification: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Production diagnostic outcome: ${{ steps.production_baseline.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Hard production verification remains Postdeploy Observatory Audit after deployment." >> "$GITHUB_STEP_SUMMARY"
