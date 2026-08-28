@@ -32,9 +32,14 @@ def validate_policy() -> dict:
     require(providers["railway"]["production_dependency_allowed"] is False, "Railway cannot remain a production dependency")
     require(providers["railway"]["source_mutation_allowed"] is False, "Railway source mutation is forbidden")
     require(providers["railway"]["source_deletion_allowed"] is False, "Railway source deletion is forbidden")
-    require(policy["storage"]["canonical_events_may_be_silently_dropped"] is False, "canonical events cannot be silently dropped")
-    thresholds = policy["storage"]["pressure_thresholds"]
-    require(float(thresholds["refuse_optional"]) == 0.85, "optional-write refusal gate must remain 85%")
+    storage = policy["storage"]
+    require(storage["canonical_events_may_be_silently_dropped"] is False, "canonical events cannot be silently dropped")
+    require(int(storage["logical_budget_bytes"]) == 5 * 1024 * 1024 * 1024, "logical storage budget must remain 5 GiB")
+    thresholds = storage["pressure_thresholds_percent"]
+    require(int(thresholds["observe"]) == 60, "storage observation threshold must remain 60%")
+    require(int(thresholds["compact"]) == 70, "storage compaction threshold must remain 70%")
+    require(int(thresholds["prune_disposable_telemetry"]) == 80, "telemetry pruning threshold must remain 80%")
+    require(int(thresholds["reject_noncanonical_growth"]) == 85, "optional-write refusal gate must remain 85%")
     require(policy["migration"]["workflow_trigger"] == "workflow_dispatch_only", "rescue must remain manual-only")
     require(policy["migration"]["verify_before_import"] is True, "migration verification must precede import")
     return policy
