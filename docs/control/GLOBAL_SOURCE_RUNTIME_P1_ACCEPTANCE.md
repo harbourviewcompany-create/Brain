@@ -8,7 +8,7 @@ Source authority: `SRC-BRAIN-GLOBAL-SOURCE-P1-20260827` in `docs/spec/GLOBAL_SOU
 
 ## Implemented artifacts
 
-- `db/migrations/025_durable_connector_runtime.sql`
+- `db/migrations/024_durable_connector_runtime.sql`
 - `brain/connectors/protocol.py`
 - `brain/connectors/store.py`
 - `brain/connectors/service.py`
@@ -24,8 +24,8 @@ Source authority: `SRC-BRAIN-GLOBAL-SOURCE-P1-20260827` in `docs/spec/GLOBAL_SOU
 - [x] source-scoped dedupe preserves independent corroboration
 - [x] observed and retrieved timestamps preserved
 - [x] credential/header exclusion from durable public config
-- [x] capability fallback for pre-025 deployments
-- [x] tenant/RLS policies included in migration 025
+- [x] capability fallback for pre-024 deployments
+- [x] tenant/RLS policies included in migration 024
 - [x] migration number 024 is not reused by this slice; PR #183 retains the revenue-schema 024 slot
 - [ ] repaired exact-head full repository tests green
 - [ ] repaired exact-head lint green
@@ -51,4 +51,4 @@ See `docs/spec/GLOBAL_SOURCE_RUNTIME_P1.md`. Broad source population, historical
 
 ## Next required action
 
-Run exact-head CI after the migration-025 repair, verify canonical migration uniqueness, repair any real regression, then mark merge/code GO only if all required checks pass. Production migration/Railway execution remains separately gated.
+Run exact-head CI after the migration-024 repair, verify canonical migration uniqueness, repair any real regression, then mark merge/code GO only if all required checks pass. Production migration/Railway execution remains separately gated.
