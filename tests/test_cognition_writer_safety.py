@@ -12,6 +12,7 @@ import threading
 import time
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 import apps.api.inline_cognition as inline
@@ -712,6 +713,7 @@ def test_a_request_tick_rides_the_lease_the_inline_loop_already_holds(monkeypatc
 
     class Holder:
         holds_lease = True
+        ready_to_write = True
 
         def revalidate_lease(self):
             return True
@@ -1024,8 +1026,10 @@ def test_request_tick_revalidates_rather_than_trusting_a_timestamp(monkeypatch):
     borrowed = []
 
     class StaleHolder:
-        # holds_lease is a local timestamp; the connection behind it is gone.
+        # Resumed and owning, as far as this process can tell locally -- but
+        # both are timestamps, and the connection behind them is gone.
         holds_lease = True
+        ready_to_write = True
 
         def revalidate_lease(self):
             return False
@@ -1246,3 +1250,114 @@ def test_prediction_maintenance_distinguishes_idle_from_declined():
     # let the workflow count maintenance that never happened.
     assert '{"skipped": "cognition_lease_unavailable"}' in body
     assert '{"expired": 0}' in body
+
+
+def test_a_request_cannot_tick_between_winning_the_lease_and_resuming():
+    """The window CodeRabbit found on b8238c8.
+
+    _step() took the guard only around lease.acquire() and let it go before
+    setting _held_since and running on_start. That left a moment in which
+    request_tick could take _tick_lock, see holds_lease true, revalidate the
+    advisory lock successfully -- all truthfully -- and tick against the
+    belief cache from before the *previous* lease holder's writes. Which is
+    the exact stale-cache write on_start exists to prevent, arriving through
+    the one door the lease cannot guard.
+    """
+
+    guard = threading.RLock()
+    resuming = threading.Event()
+    finish_resume = threading.Event()
+    taken_during_resume = []
+
+    def on_start():
+        resuming.set()
+        finish_resume.wait(timeout=5)
+
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=_FakeLease(),
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+        on_start=on_start,
+        guard=guard,
+    )
+
+    stepping = threading.Thread(target=eng._step, daemon=True)
+    stepping.start()
+    assert resuming.wait(timeout=5) is True
+
+    # Stand in for a request thread arriving mid-resume. request_tick's very
+    # first act is to take this lock; if it can, it ticks.
+    acquired = guard.acquire(blocking=False)
+    taken_during_resume.append(acquired)
+    if acquired:
+        guard.release()
+
+    finish_resume.set()
+    stepping.join(timeout=5)
+
+    assert taken_during_resume == [False]
+
+
+def test_a_resume_that_fails_is_retried_before_the_next_tick():
+    """_started was set before on_start ran, so a raise consumed the retry.
+
+    The exception reaches run()'s handler, which logs and backs off -- but
+    _started is already true, so the next pass skips the resume entirely and
+    thinks on, permanently, from a cache that was never loaded.
+    """
+
+    calls = []
+
+    def on_start():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("resume blew up")
+
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=_FakeLease(),
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+        on_start=on_start,
+    )
+
+    with pytest.raises(RuntimeError):
+        eng._step()
+    eng._step()
+
+    assert calls == [1, 1]
+
+
+def test_a_request_tick_is_refused_while_the_resume_has_not_succeeded(monkeypatch):
+    """Belt to the guard's braces.
+
+    If on_start raised, the lease is held but the cache behind it was never
+    loaded. Riding that lease would write stale beliefs; refusing sends the
+    operator a 409 they can retry, which is the honest answer.
+    """
+
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(
+        api,
+        "tick_once",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("must not tick")),
+    )
+
+    class Unresumed:
+        holds_lease = True
+        ready_to_write = False
+
+        def revalidate_lease(self):
+            return True
+
+    monkeypatch.setattr(api, "_inline_cognition", Unresumed())
+    # The inline thread holds the advisory lock, so borrowing one fails too.
+    monkeypatch.setattr(api, "CognitionLease", lambda dsn: _FakeLease(granted=False))
+
+    with pytest.raises(HTTPException) as refused:
+        api.request_tick(max_items=1)
+
+    assert refused.value.status_code == 409

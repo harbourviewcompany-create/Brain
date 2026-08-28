@@ -159,6 +159,20 @@ class InlineCognition:
     def holds_lease(self) -> bool:
         return self._held_since is not None
 
+    @property
+    def ready_to_write(self) -> bool:
+        """Holds the lease *and* has loaded the state it is about to write over.
+
+        Ownership alone is not permission. Between winning the lease and
+        finishing ``on_start`` this process is the writer but its belief cache
+        still predates whatever the last holder wrote, so anything reasoning
+        from it would overwrite beliefs it has never seen. If the resume
+        raised, that stays true indefinitely -- so this is what anything
+        outside the loop must ask before writing on this engine's ownership.
+        """
+
+        return self._held_since is not None and self._started
+
     def start(self) -> None:
         if self._thread is not None:
             return
@@ -221,26 +235,37 @@ class InlineCognition:
                 # acquisition must resume before it thinks.
                 self._held_since = None
                 self._started = False
+            else:
+                if self._held_since is None:
+                    self._held_since = self._clock()
+                    log.info("inline cognition acquired the cognition lease")
+
+                if not self._started:
+                    # Once per acquisition, not once per process. Only when
+                    # the lease is held, because resuming durable state is
+                    # preparation for writing and a process that never wins
+                    # the race should not do it -- but also every time it is
+                    # re-won, because whoever held it in between has been
+                    # writing beliefs this cycle cache has never seen.
+                    # Skipping it after a yield means reasoning from, and
+                    # overwriting, versions that are already stale.
+                    #
+                    # Inside the guard, and stamped only on success. Releasing
+                    # it between the acquisition and the resume let a request
+                    # take the same lock, observe ownership truthfully, and
+                    # tick against the pre-handover cache -- the very write
+                    # this hook exists to prevent, arriving through the one
+                    # door the lease cannot guard. And setting the flag first
+                    # meant a resume that raised was never retried: the loop
+                    # logged, backed off, and then thought on forever from a
+                    # cache it had never loaded.
+                    if self._on_start is not None:
+                        self._on_start()
+                    self._started = True
 
         if not acquired:
             self._stop.wait(self._retry_seconds)
             return
-
-        if self._held_since is None:
-            self._held_since = self._clock()
-            log.info("inline cognition acquired the cognition lease")
-
-        if not self._started:
-            # Once per acquisition, not once per process. Only when the lease
-            # is held, because resuming durable state is preparation for
-            # writing and a process that never wins the race should not do it
-            # -- but also every time it is re-won, because whoever held it in
-            # between has been writing beliefs this cycle cache has never
-            # seen. Skipping it after a yield means reasoning from, and
-            # overwriting, versions that are already stale.
-            self._started = True
-            if self._on_start is not None:
-                self._on_start()
 
         if (
             self._yield_seconds > 0

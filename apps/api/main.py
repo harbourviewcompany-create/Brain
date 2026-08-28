@@ -100,8 +100,15 @@ def request_tick(*, max_items: int = 1) -> dict[str, Any]:
     # a request is inside here.
     with _tick_lock:
         engine = _inline_cognition
-        if engine is not None and engine.holds_lease and engine.revalidate_lease():
-            # revalidate_lease, not holds_lease alone: that is a local
+        if engine is not None and engine.ready_to_write and engine.revalidate_lease():
+            # ready_to_write, not holds_lease: ownership alone is not
+            # permission. If the inline loop won the lease but its resume
+            # raised, it holds the lock over a belief cache that predates
+            # whatever the last holder wrote, and riding that lease would
+            # overwrite beliefs nobody here has seen. Refusing sends a 409 the
+            # operator can retry once the resume succeeds, which is true.
+            #
+            # And revalidate_lease, not the local flag alone: that is a
             # timestamp, and says nothing about whether the advisory-lock
             # connection behind it is still alive.
             return tick_once(max_items=max_items)
