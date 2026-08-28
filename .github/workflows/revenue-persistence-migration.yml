@@ -310,7 +310,7 @@ jobs:
           BRAIN_TENANT_MODE: required
           BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
           BRAIN_API_KEY: ci-only-api-key
-        run: python tools/verify_tenant_revenue_http.py
+        run: python -m tools.verify_tenant_revenue_http
 
       - name: PostgreSQL logs on failure
         if: failure()
