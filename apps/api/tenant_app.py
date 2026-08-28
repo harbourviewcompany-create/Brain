@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+from dataclasses import replace
 from typing import Any
 
 from fastapi.responses import JSONResponse
@@ -18,7 +19,7 @@ from brain.adapters.revenue_store import PostgresRevenueStore
 from brain.cognitive_organism import CognitiveOrganism
 from brain.heartbeat import HeartbeatService
 from brain.learning import LearningService
-from brain.money_spine import MoneySpineService, RevenueExecutionSpine
+from brain.money_spine import MoneySpineService, RevenueExecutionSpine, default_money_lanes
 from brain.runtime import BrainRuntime
 from brain.tenant_auth import TenantRole
 from brain.tenant_context import TenantScopeViolation
@@ -124,28 +125,135 @@ class TenantAwareCognitiveOrganismStore(PostgresCognitiveOrganismStore):
 
 
 class TenantRevenueStore(PostgresRevenueStore):
-    """Tenant operational persistence without mutating system-global lane state.
+    """Tenant revenue persistence with pre-025 compatibility and durable learning.
 
-    Money-lane templates and the pre-tenant revenue_source_scores table do not have
-    a tenant-safe mutable schema yet. The tenant API therefore uses the canonical
-    in-code lane templates and keeps source-score/lane-priority learning local while
-    persisting the tenant-owned signal/score/offer and approval-ledger surfaces.
+    The canonical tenant API can be deployed before migration 025. Execution-ledger
+    access is therefore capability-gated until 025 adds tenant ownership/RLS/grants.
+    Once 025 is present, the outcome ledger is the durable learning source: bundle
+    reconstruction replays tenant-owned outcomes into the in-code money-lane templates
+    and source reliability scores. Global lane templates and the pre-tenant
+    ``revenue_source_scores`` table remain outside tenant mutation paths.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._tenant_execution_schema_ready: bool | None = None
+
+    def _tenant_execution_schema_is_ready(self) -> bool:
+        """Return true once migration 025 exposes the tenant execution ledger.
+
+        Only a positive result is cached. A process started below migration 025 must
+        begin using durable execution persistence immediately after the migration lands,
+        without requiring a restart.
+        """
+        if self._tenant_execution_schema_ready is True:
+            return True
+        with self.pool.connection() as conn:
+            row = conn.execute(
+                """
+                select
+                  (
+                    select count(*) = 3
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name in (
+                        'revenue_execution_actions',
+                        'revenue_followups',
+                        'revenue_outcome_ledger'
+                      )
+                      and column_name = 'tenant_id'
+                  )
+                  and has_table_privilege(
+                    current_user, 'public.revenue_execution_actions', 'SELECT'
+                  )
+                  and has_table_privilege(
+                    current_user, 'public.revenue_followups', 'SELECT'
+                  )
+                  and has_table_privilege(
+                    current_user, 'public.revenue_outcome_ledger', 'SELECT'
+                  )
+                """
+            ).fetchone()
+        ready = bool(row and row[0])
+        if ready:
+            self._tenant_execution_schema_ready = True
+        return ready
+
+    @staticmethod
+    def _learning_delta(lane: Any, outcome: Any) -> float:
+        reward = min(0.15, outcome.revenue / max(lane.price_high, 1.0) * 0.10)
+        reply_reward = 0.03 if outcome.reply else -0.02
+        cost_penalty = min(0.08, outcome.operator_hours * 0.01)
+        risk_penalty = min(0.20, outcome.legal_risk * 0.15)
+        return reward + reply_reward - cost_penalty - risk_penalty
+
+    def _durable_learning_outcomes(self) -> list[Any]:
+        if not self._tenant_execution_schema_is_ready():
+            return []
+        outcomes = super().load_outcomes().values()
+        return sorted(outcomes, key=lambda item: (item.created_at, str(item.id)))
+
     def load_lanes(self) -> dict[str, Any]:
-        return {}
+        if not self._tenant_execution_schema_is_ready():
+            return {}
+        lanes = {lane.lane_id: lane for lane in default_money_lanes()}
+        for outcome in self._durable_learning_outcomes():
+            lane = lanes.get(outcome.lane_id)
+            if lane is None:
+                continue
+            delta = self._learning_delta(lane, outcome)
+            priority = round(max(0.0, min(1.0, lane.priority_score + delta)), 4)
+            lanes[outcome.lane_id] = replace(lane, priority_score=priority)
+        return lanes
 
     def seed_lanes(self, lanes: list[Any]) -> None:
         return None
 
     def save_lane_priority(self, lane: Any) -> None:
+        # ``record_outcome`` persists the causal outcome first. Rebuilds replay those
+        # tenant-owned outcomes deterministically instead of mutating global templates.
         return None
 
     def load_source_scores(self) -> dict[str, float]:
-        return {}
+        if not self._tenant_execution_schema_is_ready():
+            return {}
+        lanes = {lane.lane_id: lane for lane in default_money_lanes()}
+        scores: dict[str, float] = {}
+        for outcome in self._durable_learning_outcomes():
+            lane = lanes.get(outcome.lane_id)
+            if lane is None:
+                continue
+            delta = self._learning_delta(lane, outcome)
+            previous = scores.get(outcome.source_id, 0.5)
+            scores[outcome.source_id] = round(
+                max(0.0, min(1.0, previous + delta)), 4
+            )
+        return scores
 
     def save_source_score(self, source_id: str, score: float) -> None:
+        # Source learning is reconstructed from tenant-owned outcome rows on rebuild.
         return None
+
+    def load_actions(self) -> dict[Any, Any]:
+        return super().load_actions() if self._tenant_execution_schema_is_ready() else {}
+
+    def save_action(self, action: Any) -> None:
+        if self._tenant_execution_schema_is_ready():
+            super().save_action(action)
+
+    def load_followups(self) -> dict[Any, Any]:
+        return super().load_followups() if self._tenant_execution_schema_is_ready() else {}
+
+    def save_followup(self, followup: Any) -> None:
+        if self._tenant_execution_schema_is_ready():
+            super().save_followup(followup)
+
+    def load_outcomes(self) -> dict[Any, Any]:
+        return super().load_outcomes() if self._tenant_execution_schema_is_ready() else {}
+
+    def save_outcome(self, entry: Any) -> None:
+        if self._tenant_execution_schema_is_ready():
+            super().save_outcome(entry)
 
 
 app = base.app
