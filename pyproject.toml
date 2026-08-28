@@ -8,6 +8,7 @@ dependencies = [
   "uvicorn[standard]>=0.35,<1",
   "pydantic>=2.11,<3",
   "psycopg[binary,pool]>=3.2,<4",
+  "libsql>=0.1.11,<1",
   "neo4j>=5.28,<7",
   "temporalio>=1.15,<2",
   "httpx>=0.28,<1",
@@ -36,3 +37,4 @@ select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 "apps/api/main.py" = ["E402"]
+"api/index.py" = ["E402"]
