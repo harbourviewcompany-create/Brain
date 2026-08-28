@@ -12,12 +12,13 @@
 -- intentionally allowed these key columns to be null, so this migration preserves
 -- that nullability instead of inventing a destructive/backfill policy for legacy nulls.
 --
--- Migrations 020-022 FORCE RLS on these tables. The migration runner executes each
--- migration transactionally as the schema migrator/table owner. Temporarily removing
--- FORCE (while leaving RLS enabled) lets the owner translate pre-tenant system rows
--- whose tenant_id is null; FORCE is restored before this transaction commits. Other
--- roles remain subject to RLS throughout.
+-- Migrations 020-022 FORCE RLS on sources and the tenant-owned revenue audit tables.
+-- The migration runner executes each migration transactionally as the schema
+-- migrator/table owner. Temporarily removing FORCE (while leaving RLS enabled) lets
+-- that owner translate pre-tenant system rows whose tenant_id is null; FORCE is
+-- restored before this transaction commits. Other roles remain subject to RLS.
 
+alter table public.sources no force row level security;
 alter table public.revenue_signals no force row level security;
 alter table public.scored_revenue_opportunities no force row level security;
 
@@ -56,5 +57,6 @@ from public.money_lanes ml
 where sro.money_lane_id is not null
   and sro.money_lane_id = ml.id::text;
 
+alter table public.sources force row level security;
 alter table public.revenue_signals force row level security;
 alter table public.scored_revenue_opportunities force row level security;
