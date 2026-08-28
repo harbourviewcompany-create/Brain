@@ -38,15 +38,43 @@ def credential_candidates(headers: Mapping[str, str]) -> list[str]:
     return candidates
 
 
+def normalize_api_key(value: str | None) -> str:
+    """Strip whitespace and optional surrounding quotes from an API key value."""
+
+    if not value:
+        return ""
+    key = value.strip().strip("\ufeff")
+    if len(key) >= 2 and key[0] == key[-1] and key[0] in {'"', "'"}:
+        key = key[1:-1].strip()
+    return key
+
+
+def api_key_fingerprint(value: str | None) -> dict[str, object]:
+    """Non-secret summary of a configured key for /health diagnostics."""
+
+    key = normalize_api_key(value)
+    if not key:
+        return {"configured": False, "length": 0, "fingerprint": None}
+    if len(key) <= 4:
+        fp = "*" * len(key)
+    else:
+        fp = f"{key[:2]}…{key[-2:]}"
+    return {"configured": True, "length": len(key), "fingerprint": fp}
+
+
 def presented_credentials(headers: Mapping[str, str], expected: str) -> bool:
     """Return true when any credential the request presents matches ``expected``."""
 
-    if not expected:
+    expected_n = normalize_api_key(expected)
+    if not expected_n:
         return False
-    return any(
-        hmac.compare_digest(candidate, expected)
-        for candidate in credential_candidates(headers)
-    )
+    for candidate in credential_candidates(headers):
+        cand = normalize_api_key(candidate)
+        if not cand or len(cand) != len(expected_n):
+            continue
+        if hmac.compare_digest(cand, expected_n):
+            return True
+    return False
 
 
 @dataclass(frozen=True, slots=True)
