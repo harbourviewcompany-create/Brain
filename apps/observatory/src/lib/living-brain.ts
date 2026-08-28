@@ -57,6 +57,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function numberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -75,6 +76,10 @@ function signalContent(signal: Signal): string {
 function commandMode(signal: Signal): string {
   const raw = text(signal.metadata?.command_mode);
   return raw?.replaceAll("_", " ") ?? "command";
+}
+
+function isCommandSignal(signal: Signal): boolean {
+  return signal.metadata?.operator_command === true || Boolean(text(signal.metadata?.command_mode));
 }
 
 function terms(value: string | null): Set<string> {
@@ -175,7 +180,7 @@ export function buildLivingBrainModel(snapshot: ObservatorySnapshot | null, scen
   }
 
   const commandHistory = snapshot.signals
-    .filter((signal) => signal.source_id === "operator" || signal.metadata?.source_key === "operator")
+    .filter(isCommandSignal)
     .map((signal) => ({
       id: signal.id,
       content: signalContent(signal),
@@ -190,6 +195,10 @@ export function buildLivingBrainModel(snapshot: ObservatorySnapshot | null, scen
   const focus = text(snapshot.selfState?.current_focus_summary) ?? commandHistory[0]?.content ?? (attentionSignal ? signalContent(attentionSignal) : null);
   const query = terms(commandHistory[0]?.content ?? focus);
 
+  // This is intentionally an Observatory projection over persisted evidence,
+  // not a claim that MultiSystemMemory.retrieve_episodes is wired to production.
+  // The score is fully disclosed so operators can distinguish UI ranking from
+  // Brain-native memory retrieval: 70% lexical overlap + 30% source reliability.
   const retrieval = snapshot.evidence
     .map((evidence) => {
       const lexical = lexicalScore(query, evidence.claim);
@@ -209,11 +218,19 @@ export function buildLivingBrainModel(snapshot: ObservatorySnapshot | null, scen
   const hypotheses = snapshot.beliefs
     .filter((belief) => ["hypothesis", "provisional", "contested", "rejected"].includes(belief.state))
     .map((belief) => {
+      const linkedEvidence = snapshot.evidence.filter((item) => item.belief_ids.includes(belief.id));
       const contradiction = snapshot.contradictions.find((item) => item.belief_ids.includes(belief.id));
       return {
         belief,
-        supporting: contradiction?.supporting_evidence_ids.length ?? belief.evidence_ids?.length ?? 0,
-        contradicting: contradiction?.contradicting_evidence_ids.length ?? 0,
+        supporting:
+          linkedEvidence.filter((item) => item.supports === true).length ||
+          contradiction?.supporting_evidence_ids.length ||
+          belief.evidence_ids?.length ||
+          0,
+        contradicting:
+          linkedEvidence.filter((item) => item.supports === false).length ||
+          contradiction?.contradicting_evidence_ids.length ||
+          0,
       };
     })
     .sort((a, b) => b.belief.confidence - a.belief.confidence);
@@ -256,8 +273,11 @@ export function buildLivingBrainModel(snapshot: ObservatorySnapshot | null, scen
     );
   });
 
-  const workingMemorySize = numberOrNull(snapshot.runner?.working_memory_size) ?? numberOrNull(snapshot.health?.heartbeat?.working_memory_size);
-  const workingMemoryCapacity = scene.organism.workspaceCapacity > 0 ? scene.organism.workspaceCapacity : null;
+  const workingMemorySize =
+    numberOrNull(snapshot.workingMemory?.size) ??
+    numberOrNull(snapshot.runner?.working_memory_size) ??
+    numberOrNull(snapshot.health?.heartbeat?.working_memory_size);
+  const workingMemoryCapacity = numberOrNull(snapshot.workingMemory?.capacity);
   const workingMemoryPressure = numberOrNull(snapshot.selfState?.memory_pressure);
   const goal = goalData(snapshot);
 
@@ -276,6 +296,7 @@ export function buildLivingBrainModel(snapshot: ObservatorySnapshot | null, scen
     { label: "Cycles", value: String(snapshot.runner?.ticks ?? snapshot.health?.heartbeat?.ticks ?? 0) },
     { label: "Processed", value: String(snapshot.runner?.total_processed ?? snapshot.health?.heartbeat?.total_processed ?? 0) },
     { label: "Beliefs", value: String(snapshot.beliefs.length) },
+    { label: "Evidence", value: String(snapshot.evidence.length) },
   ];
 
   return {
