@@ -23,7 +23,7 @@ class FakeLease:
         self.released = 0
         self.held = False
 
-    def acquire(self, *, blocking=False):
+    def acquire(self, *, blocking=False, verify=False):
         self.acquired += 1
         self.held = self.granted
         return self.granted
@@ -94,11 +94,36 @@ def test_the_lease_is_taken_in_the_database_this_process_writes_to(monkeypatch):
     assert cognition_dsn() == "postgres:///shared"
 
 
-def test_the_worker_dsn_is_used_only_when_there_is_nothing_else(monkeypatch):
+def test_the_worker_dsn_is_never_used_for_the_inline_lease(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("BRAIN_WORKER_DATABASE_URL", "postgres:///worker")
 
-    assert cognition_dsn() == "postgres:///worker"
+    # Without DATABASE_URL the API's store is InMemoryBrainStore. Taking the
+    # worker database's lock would protect ephemeral, unreadable cognition
+    # while locking the real worker out of its own database.
+    assert cognition_dsn() == ""
+    assert inline_cognition_requested() is False
+
+
+@pytest.mark.parametrize("mode", ["required", "REQUIRED", " required "])
+def test_inline_cognition_stays_off_in_a_tenant_partitioned_deployment(monkeypatch, mode):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.delenv("BRAIN_INLINE_COGNITION", raising=False)
+    monkeypatch.setenv("BRAIN_TENANT_MODE", mode)
+
+    # A background thread has no request, so it has no tenant context; the
+    # enforced insert policy would reject every write while the thread kept
+    # the lease and blocked a real worker from taking over.
+    assert inline_cognition_requested() is False
+
+
+@pytest.mark.parametrize("mode", ["disabled", "optional", ""])
+def test_inline_cognition_runs_when_tenants_are_not_enforced(monkeypatch, mode):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.delenv("BRAIN_INLINE_COGNITION", raising=False)
+    monkeypatch.setenv("BRAIN_TENANT_MODE", mode)
+
+    assert inline_cognition_requested() is True
 
 
 def test_a_step_with_the_lease_ticks_the_brain():
@@ -288,7 +313,7 @@ def test_serving_the_app_starts_and_stops_cognition(monkeypatch):
     recorder = Recorder()
     started = []
 
-    def fake_start(tick):
+    def fake_start(tick, *, on_start=None, guard=None):
         started.append(tick)
         return recorder
 
@@ -307,7 +332,7 @@ def test_the_lifespan_ticks_the_api_heartbeat(monkeypatch):
 
     captured = {}
 
-    def capture(tick):
+    def capture(tick, *, on_start=None, guard=None):
         captured["tick"] = tick
         return None
 
