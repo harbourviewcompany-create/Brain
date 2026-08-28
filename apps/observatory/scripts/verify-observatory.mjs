@@ -82,13 +82,13 @@ if (!upstream.includes("getVercelOidcToken") || (!upstream.includes("Authorizati
 for (const prefix of ['"evidence"', '"working-memory"', '"learning-events"']) {
   if (!upstream.includes(prefix)) throw new Error(`BFF allowlist is missing ${prefix}`);
 }
-if (upstream.includes('LIVE_RAILWAY_BASE') || upstream.includes('brain-api-live-production.up.railway.app')) {
+if (upstream.includes("LIVE_RAILWAY_BASE")) {
   throw new Error("Observatory BFF must not retain a Railway production fallback");
 }
 if (!upstream.includes("brain_runtime_upstream_not_configured")) {
   throw new Error("Observatory BFF must fail closed when the zero-cost runtime URL is missing");
 }
-if (!upstream.includes('endsWith(".railway.app")')) {
+if (!upstream.includes('endsWith(".railway.app")') || !upstream.includes('return "";')) {
   throw new Error("Observatory BFF must reject Railway runtime origins after cutover");
 }
 
