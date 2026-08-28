@@ -1,6 +1,6 @@
 # Global Source Runtime P1 — Acceptance Ledger
 
-Status: HOLD pending repaired exact-head CI.
+Status: GO for merge/code on the verified branch; HOLD for production migration/deployment.
 
 Build slice: `SLICE-GLOBAL-SOURCE-P1`
 
@@ -26,16 +26,23 @@ Source authority: `SRC-BRAIN-GLOBAL-SOURCE-P1-20260827` in `docs/spec/GLOBAL_SOU
 - [x] credential/header exclusion from durable public config
 - [x] capability fallback for pre-024 deployments
 - [x] tenant/RLS policies included in migration 024
-- [x] migration number 024 is not reused by this slice; PR #183 retains the revenue-schema 024 slot
-- [ ] repaired exact-head full repository tests green
-- [ ] repaired exact-head lint green
-- [ ] repaired exact-head production-container persistence green
-- [ ] repaired exact-head tenant-RLS release gate green
-- [ ] repaired exact-head Brain control-policy check green
+- [x] migration 024 is the unique, contiguous next slot on this branch
+- [x] PR #183 is ordered after this slice as migration 025 and is verified separately as a stacked PR
+- [x] exact-head full repository tests green on the implementation head before this documentation-only correction
+- [x] exact-head lint green on the implementation head before this documentation-only correction
+- [x] exact-head production-container persistence green on the implementation head before this documentation-only correction
+- [x] exact-head tenant-RLS release gate green on the implementation head before this documentation-only correction
+- [x] exact-head Brain control-policy check green on the implementation head before this documentation-only correction
+
+The documentation-only correction that removes the prior contradictory #183/024 statement must receive its own exact-head CI before the PR body is relabeled to the new head.
+
+## Migration ordering
+
+PR #180 owns `024_durable_connector_runtime.sql`. PR #183 owns `025_revenue_signal_source_lane_text_keys.sql` and currently targets this branch while both PRs remain open. After #180 eventually lands under separate operator authorization, #183 must be retargeted to updated `main` and rerun before any merge decision.
 
 ## External actions
 
-Repository branch writes only. No production database mutation, Railway configuration change, paid provider activation, credential change, service provisioning, or public release action is part of this build slice.
+Repository branch writes only. No production database mutation, Railway configuration change, paid provider activation, credential change, service provisioning, merge, or public release action is part of this build slice.
 
 ## Memory writes
 
@@ -49,6 +56,8 @@ The P1 specification points to the preserved full always-on objective in `docs/s
 
 See `docs/spec/GLOBAL_SOURCE_RUNTIME_P1.md`. Broad source population, historical backfill, normalization into MOD-017, provider credential abstraction, temporal world modeling, prediction calibration, self-improvement and Observatory coverage remain explicit follow-up surfaces.
 
-## Next required action
+## GO/HOLD
 
-Run exact-head CI after the migration-024 repair, verify canonical migration uniqueness, repair any real regression, then mark merge/code GO only if all required checks pass. Production migration/Railway execution remains separately gated.
+**MERGE/CODE: GO pending exact-head rerun for this documentation-only correction.** The implementation head immediately before this edit was fully green; the new head must revalidate before final GO is recorded.
+
+**PRODUCTION MIGRATION / DEPLOYMENT: HOLD.** Production execution remains separately gated and was not authorized here.
