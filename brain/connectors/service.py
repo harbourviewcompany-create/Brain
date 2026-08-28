@@ -1,5 +1,7 @@
 """Ingest service — fetch due sources and enqueue sensory inbox."""
 from __future__ import annotations
+import json
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -69,7 +71,10 @@ class IngestService:
                  connectors: list[SourceConnector] | None = None, *,
                  max_sources_per_tick: int = 10, max_enqueue_per_source: int = 25,
                  default_source_reliability: float = 0.65,
-                 revenue: Any | None = None) -> None:
+                 revenue: Any | None = None,
+                 entity_extractor: Any | None = None,
+                 max_extractions_per_batch: int = 20,
+                 max_extraction_seconds_per_operation: float = 10.0) -> None:
         self.registry = registry or InMemoryConnectorRegistry()
         self.inbox = inbox
         self.event_store = event_store
@@ -77,11 +82,13 @@ class IngestService:
         self.max_sources_per_tick = max(1, max_sources_per_tick)
         self.max_enqueue_per_source = max(1, max_enqueue_per_source)
         self.default_source_reliability = default_source_reliability
-        # Optional RevenueExecutionSpine. When set, every ingested item is
-        # also run through the revenue adapter; a queued action is always
-        # created in APPROVAL_REQUIRED state — ingestion can propose a
-        # candidate revenue action, it can never approve or execute one.
         self.revenue = revenue
+        self.entity_extractor = entity_extractor
+        self.max_extractions_per_batch = max(0, max_extractions_per_batch)
+        self.max_extraction_seconds_per_operation = max(0.0, float(max_extraction_seconds_per_operation))
+        self._extractions_this_batch = 0
+        self._extraction_deadline: float | None = None
+        self._reset_extraction_budget()
         self._runs: list[IngestBatchResult] = []
 
     def register_source(self, source: ConnectorSource) -> ConnectorSource:
@@ -114,8 +121,21 @@ class IngestService:
                 return c
         return None
 
+    def _reset_extraction_budget(self) -> None:
+        """Start a fresh count and wall-clock budget for one ingest operation."""
+        self._extractions_this_batch = 0
+        if (
+            self.entity_extractor is None
+            or self.max_extractions_per_batch <= 0
+            or self.max_extraction_seconds_per_operation <= 0
+        ):
+            self._extraction_deadline = None
+            return
+        self._extraction_deadline = time.monotonic() + self.max_extraction_seconds_per_operation
+
     def ingest_due_sources(self, *, now: datetime | None = None) -> IngestBatchResult:
         started = now or utcnow()
+        self._reset_extraction_budget()
         due = self.registry.due_sources(started)[: self.max_sources_per_tick]
         batch = IngestBatchResult(started_at=started, finished_at=started, sources_due=len(due),
             sources_fetched=0, observations_enqueued=0, observations_deduped=0, failures=0)
@@ -133,6 +153,7 @@ class IngestService:
         return batch
 
     def ingest_source(self, source_key: str) -> IngestSourceResult:
+        self._reset_extraction_budget()
         source = self.registry.get(source_key)
         if source is None:
             return IngestSourceResult(source_key=source_key, status=FetchStatus.SKIPPED.value, error="source_not_found")
@@ -202,19 +223,7 @@ class IngestService:
                 content_hash=item.content_hash, enqueued=False, deduped=False)
 
     def _maybe_queue_revenue_action(self, source: ConnectorSource, item: RawObservationItem) -> str | None:
-        """Best-effort: classify the item and queue a draft revenue action.
-
-        Never raises — a classification/queueing failure must not break
-        ingestion of the underlying observation. Always lands the action
-        in APPROVAL_REQUIRED state; nothing here can approve or execute.
-
-        When a lane is inferred but the signal fails NoFantasyFilter (the
-        common case for unenriched automated feeds — no named buyer,
-        seller, or contact channel), no action is queued, but a
-        `revenue.signal_scored` event is emitted with the rejection
-        reasons so the candidate is visible to an operator for
-        enrichment instead of silently disappearing.
-        """
+        """Best-effort classification, evidence-grounded enrichment, and action queueing."""
         if self.revenue is None:
             return None
         try:
@@ -223,23 +232,114 @@ class IngestService:
                 return None
             scored = self.revenue.money.score_signal(signal)
             if not scored.actionable:
-                self._emit_scored_signal_event(source, item, scored)
+                signal, scored = self._maybe_extract_and_rescore(source, item, signal, scored)
+            if not scored.actionable:
+                self._emit_scored_signal_event(source, item, scored, signal=signal)
                 return None
             offer = self.revenue.money.package_offer(signal, scored)
+            # Attach provenance before queue_action_from_scored performs its first
+            # store insert. This makes the approval evidence durable immediately,
+            # including with PostgresRevenueStore's conflict-update semantics.
+            self._attach_extraction_review_evidence(offer, signal)
             action = self.revenue.queue_action_from_scored(signal, scored, offer)
             return str(action.id)
         except Exception:
             return None
 
-    def _emit_scored_signal_event(self, source: ConnectorSource, item: RawObservationItem, scored: Any) -> None:
+    def _maybe_extract_and_rescore(
+        self, source: ConnectorSource, item: RawObservationItem, signal: Any, scored: Any,
+    ) -> tuple[Any, Any]:
+        if self.entity_extractor is None:
+            return signal, scored
+        if self._extractions_this_batch >= self.max_extractions_per_batch:
+            return signal, scored
+        if self._extraction_deadline is None:
+            return signal, scored
+        remaining_seconds = self._extraction_deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            return signal, scored
+        self._extractions_this_batch += 1
+        try:
+            from .entity_extractor import EXTRACTABLE_FIELDS, extract_revenue_entities
+
+            extraction = extract_revenue_entities(
+                item,
+                reasoner=self.entity_extractor,
+                request_timeout_seconds=remaining_seconds,
+            )
+        except Exception:
+            return signal, scored
+
+        confidences = extraction.pop("extraction_confidence", {})
+        provenance = extraction.pop("extraction_provenance", {})
+        enrichment = {
+            field: value
+            for field, value in extraction.items()
+            if field in EXTRACTABLE_FIELDS
+            and not (isinstance(item.metadata.get(field), str) and item.metadata[field].strip())
+        }
+        if not enrichment:
+            return signal, scored
+
+        used_provenance = {
+            field: provenance[field]
+            for field in enrichment
+            if isinstance(provenance.get(field), dict)
+        }
+        used_confidences = {
+            field: confidences[field]
+            for field in enrichment
+            if field in confidences
+        }
+        enriched_item = RawObservationItem(
+            title=item.title, content=item.content, claim=item.claim,
+            source_url=item.source_url, item_id=item.item_id, content_hash=item.content_hash,
+            observed_at=item.observed_at, confidence=item.confidence,
+            signal_hints=list(item.signal_hints), entities=list(item.entities),
+            metadata={**item.metadata, **enrichment},
+        )
+        re_signal = revenue_signal_from_observation(
+            enriched_item,
+            source_id=source.source_key,
+            extra_metadata={
+                "extraction_grounded": True,
+                "extraction_confidence": used_confidences,
+                "extraction_provenance": used_provenance,
+            },
+        )
+        if re_signal is None:
+            return signal, scored
+        re_scored = self.revenue.money.score_signal(re_signal)
+        return re_signal, re_scored
+
+    @staticmethod
+    def _attach_extraction_review_evidence(evidence_holder: Any, signal: Any) -> None:
+        """Serialize extraction provenance into persisted approval evidence refs."""
+        provenance = signal.metadata.get("extraction_provenance") if hasattr(signal, "metadata") else None
+        if not isinstance(provenance, dict) or not provenance:
+            return
+        review_ref = "extraction_provenance:" + json.dumps(
+            provenance, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+        )
+        if review_ref not in evidence_holder.evidence_refs:
+            evidence_holder.evidence_refs.append(review_ref)
+
+    def _emit_scored_signal_event(
+        self, source: ConnectorSource, item: RawObservationItem, scored: Any, *, signal: Any | None = None,
+    ) -> None:
         if self.event_store is None or not hasattr(self.event_store, "append"):
             return
         try:
-            self.event_store.append(BrainEvent("revenue.signal_scored", "connector", source.id, {
+            payload: dict[str, Any] = {
                 "source_key": source.source_key, "item_id": item.item_id,
                 "money_lane_id": scored.lane_id, "score": scored.score,
                 "actionable": scored.actionable, "rejection_reasons": list(scored.rejection_reasons),
-            }))
+            }
+            if signal is not None and isinstance(getattr(signal, "metadata", None), dict):
+                provenance = signal.metadata.get("extraction_provenance")
+                if isinstance(provenance, dict) and provenance:
+                    payload["extraction_provenance"] = provenance
+            self.event_store.append(BrainEvent("revenue.signal_scored", "connector", source.id, payload))
         except Exception:
             pass
 
