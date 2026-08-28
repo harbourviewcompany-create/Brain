@@ -20,11 +20,13 @@ from brain.money_spine import (
     MoneyLane,
     MoneySpineService,
     OpportunityClass,
+    PackagedOffer,
     RevenueActionState,
     RevenueExecutionAction,
     RevenueExecutionSpine,
     RevenueOutcomeType,
     RevenueSignal,
+    ScoredOpportunity,
 )
 
 
@@ -79,6 +81,49 @@ def test_save_source_score_degrades_gracefully_when_table_missing():
     store.pool = _FakePoolMissingSourceScoresTable()
     # Must not raise.
     store.save_source_score("demo-source", 0.7)
+
+
+def test_save_signal_degrades_gracefully_when_table_missing():
+    store = PostgresRevenueStore.__new__(PostgresRevenueStore)
+    store.pool = _FakePoolMissingSourceScoresTable()
+    store.save_signal(_SIGNAL)  # must not raise
+
+
+def test_save_scored_opportunity_degrades_gracefully_when_table_missing():
+    store = PostgresRevenueStore.__new__(PostgresRevenueStore)
+    store.pool = _FakePoolMissingSourceScoresTable()
+    scored = ScoredOpportunity(
+        signal_id=uuid4(), lane_id="high_intent_lead_pack", score=10.0,
+        actionable=True, rejection_reasons=[],
+    )
+    store.save_scored_opportunity(scored)  # must not raise
+
+
+def test_save_offer_degrades_gracefully_when_table_missing():
+    store = PostgresRevenueStore.__new__(PostgresRevenueStore)
+    store.pool = _FakePoolMissingSourceScoresTable()
+    offer = PackagedOffer(
+        opportunity_id=uuid4(), title="t", offer_name="o", buyer_type="b",
+        target_contact="c", price_low=1.0, price_high=2.0, evidence_refs=[],
+        outreach_script="s", follow_up_script="f",
+    )
+    store.save_offer(offer)  # must not raise
+
+
+def test_money_spine_score_signal_writes_through_signal_and_scored_opportunity():
+    store = FakeRevenueStore()
+    service = MoneySpineService(store=store)
+    scored = service.score_signal(_SIGNAL)
+    assert _SIGNAL.id in store.signals
+    assert scored.id in store.scored_opportunities
+
+
+def test_money_spine_package_offer_writes_through():
+    store = FakeRevenueStore()
+    service = MoneySpineService(store=store)
+    scored = service.score_signal(_SIGNAL)
+    offer = service.package_offer(_SIGNAL, scored)
+    assert offer.id in store.offers
 
 
 # --- row <-> object translation -----------------------------------------
@@ -189,6 +234,9 @@ class FakeRevenueStore:
         self.actions: dict = {}
         self.followups: dict = {}
         self.outcomes: dict = {}
+        self.signals: dict = {}
+        self.scored_opportunities: dict = {}
+        self.offers: dict = {}
         self.seed_calls = 0
         self.save_lane_priority_calls: list[MoneyLane] = []
         self.save_source_score_calls: list[tuple[str, float]] = []
@@ -228,6 +276,15 @@ class FakeRevenueStore:
 
     def save_outcome(self, entry):
         self.outcomes[entry.id] = entry
+
+    def save_signal(self, signal):
+        self.signals[signal.id] = signal
+
+    def save_scored_opportunity(self, scored):
+        self.scored_opportunities[scored.id] = scored
+
+    def save_offer(self, offer):
+        self.offers[offer.id] = offer
 
 
 def test_money_spine_seeds_store_when_empty():
@@ -309,6 +366,9 @@ def test_revenue_execution_spine_writes_through_full_lifecycle():
 
     _, _, action = spine.queue_action_from_signal(_SIGNAL)
     assert action.id in money_store.actions
+    assert len(money_store.signals) == 1
+    assert len(money_store.scored_opportunities) == 1
+    assert len(money_store.offers) == 1
 
     spine.approve_action(action.id, approved_by="tyler")
     assert money_store.actions[action.id].state == RevenueActionState.APPROVED
