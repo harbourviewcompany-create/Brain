@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "policy_id": "brain-zero-cost-runtime-v1",
+  "monthly_paid_budget_usd": 0,
+  "paid_overage_allowed": false,
+  "resource_creation": "existing_free_resources_only",
+  "providers": {
+    "vercel": {
+      "required_plan": "hobby",
+      "production_role": "stateless_api_and_observatory",
+      "automatic_git_deployments": "main_relevant_only"
+    },
+    "turso": {
+      "required_plan": "free",
+      "production_role": "canonical_persistence",
+      "create_resources_from_ci": false,
+      "paid_overage_allowed": false
+    },
+    "github_actions": {
+      "required_runner": "github-hosted-standard",
+      "production_role": "bounded_maintenance_and_manual_migration",
+      "self_hosted_paid_runner_allowed": false
+    },
+    "railway": {
+      "production_dependency_allowed": false,
+      "role": "read_only_migration_source_only",
+      "source_mutation_allowed": false,
+      "source_deletion_allowed": false
+    }
+  },
+  "storage": {
+    "logical_budget_bytes": 5368709120,
+    "pressure_thresholds_percent": {
+      "observe": 60,
+      "compact": 70,
+      "prune_disposable_telemetry": 80,
+      "reject_noncanonical_growth": 85
+    },
+    "canonical_events_may_be_silently_dropped": false,
+    "archive_format": "gzip_ndjson_immutable_sha256"
+  },
+  "runtime": {
+    "continuous_daemon_required": false,
+    "request_cycles_bounded": true,
+    "scheduled_maintenance_idempotent": true,
+    "tenant_rls_emulation_on_turso_allowed": false
+  },
+  "migration": {
+    "workflow_trigger": "workflow_dispatch_only",
+    "source_volume_access": "read_only_download",
+    "postgres_recovery_location": "runner_local_copy_only",
+    "verify_before_import": true,
+    "source_destination_counts_required": true,
+    "sha256_manifest_required": true
+  }
+}
