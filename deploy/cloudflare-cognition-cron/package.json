@@ -1,0 +1,12 @@
+{
+  "name": "brain-cognition-cron",
+  "private": true,
+  "description": "Free Cloudflare Worker cron that ticks Brain cognition via the API",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
