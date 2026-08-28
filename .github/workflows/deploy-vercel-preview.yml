@@ -1,0 +1,59 @@
+name: Deploy Vercel Preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Branch, tag, or commit SHA to stage as a deliberate Vercel preview
+        required: true
+        default: main
+        type: string
+      preview_name:
+        description: Single-segment preview name (letters, numbers, dot, underscore, hyphen)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  stage-preview:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout requested source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Validate preview name
+        env:
+          PREVIEW_NAME: ${{ inputs.preview_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${PREVIEW_NAME}" =~ ^[a-z0-9][a-z0-9._-]{0,62}$ ]]; then
+            echo "preview_name must be one lowercase path segment using letters, numbers, dot, underscore, or hyphen" >&2
+            exit 1
+          fi
+
+      - name: Publish deliberate preview branch
+        env:
+          PREVIEW_NAME: ${{ inputs.preview_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREVIEW_BRANCH="preview/${PREVIEW_NAME}"
+          SOURCE_SHA="$(git rev-parse HEAD)"
+
+          if git fetch origin "refs/heads/${PREVIEW_BRANCH}:refs/remotes/origin/${PREVIEW_BRANCH}" 2>/dev/null; then
+            EXPECTED_SHA="$(git rev-parse "refs/remotes/origin/${PREVIEW_BRANCH}")"
+            git push origin "HEAD:refs/heads/${PREVIEW_BRANCH}" \
+              --force-with-lease="refs/heads/${PREVIEW_BRANCH}:${EXPECTED_SHA}"
+          else
+            git push origin "HEAD:refs/heads/${PREVIEW_BRANCH}"
+          fi
+
+          echo "Staged ${SOURCE_SHA} on ${PREVIEW_BRANCH}. Vercel Git integration will create the preview deployment."
