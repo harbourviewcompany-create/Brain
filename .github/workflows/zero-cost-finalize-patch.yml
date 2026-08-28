@@ -1,0 +1,173 @@
+name: Zero Cost Finalize Patch
+
+on:
+  push:
+    branches:
+      - feat/zero-cost-runtime
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/zero-cost-runtime
+          fetch-depth: 0
+      - name: Apply exact migration hardening
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tools/railway_turso_migration.py')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = []
+          replacements.append((
+              'from typing import Any, Iterable, Iterator, Sequence',
+              'from typing import Any, Iterator, Sequence',
+          ))
+          replacements.append((
+          '''def normalize(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (float, Decimal)):
+        return float(value)
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat()
+    if isinstance(value, (date, time)):
+        return value.isoformat()
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value)
+    if isinstance(value, (ipaddress.IPv4Address, ipaddress.IPv6Address, ipaddress.IPv4Network, ipaddress.IPv6Network)):
+        return str(value)
+    if isinstance(value, dict):
+        return json.dumps(_jsonable(value), sort_keys=True, separators=(",", ":"))
+    if isinstance(value, (list, tuple, set)):
+        items = sorted(value, key=str) if isinstance(value, set) else list(value)
+        return json.dumps(_jsonable(items), sort_keys=True, separators=(",", ":"))
+    return str(value)
+
+
+def _jsonable(value: Any) -> Any:
+    normalized = normalize(value)
+    if isinstance(normalized, bytes):
+        return {"__bytes_sha256__": hashlib.sha256(normalized).hexdigest(), "length": len(normalized)}
+    return normalized
+''',
+          '''def _jsonable(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value
+    if isinstance(value, (float, Decimal)):
+        return float(value)
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat()
+    if isinstance(value, (date, time)):
+        return value.isoformat()
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        payload = bytes(value)
+        return {"__bytes_sha256__": hashlib.sha256(payload).hexdigest(), "length": len(payload)}
+    if isinstance(value, (ipaddress.IPv4Address, ipaddress.IPv6Address, ipaddress.IPv4Network, ipaddress.IPv6Network)):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, set):
+        return [_jsonable(item) for item in sorted(value, key=str)]
+    return str(value)
+
+
+def normalize(value: Any) -> Any:
+    if isinstance(value, dict):
+        return json.dumps(_jsonable(value), sort_keys=True, separators=(",", ":"))
+    if isinstance(value, (list, tuple, set)):
+        items = sorted(value, key=str) if isinstance(value, set) else list(value)
+        return json.dumps(_jsonable(items), sort_keys=True, separators=(",", ":"))
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value)
+    return _jsonable(value)
+'''))
+          replacements.append((
+          '''def ensure_runtime_schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(TURSO_SCHEMA)
+    connection.commit()
+    existing = set(sqlite_tables(connection))
+    for table, required in REQUIRED_RUNTIME_COLUMNS.items():
+        if table not in existing:
+            raise RuntimeError(f"required runtime table missing after bootstrap: {table}")
+        actual = set(sqlite_columns(connection, table))
+        missing = sorted(required - actual)
+        if missing:
+            raise RuntimeError(f"runtime table {table} missing required columns: {missing}")
+''',
+          '''def ensure_runtime_schema(connection: sqlite3.Connection) -> None:
+    existing_before = set(sqlite_tables(connection))
+    for table, required in REQUIRED_RUNTIME_COLUMNS.items():
+        if table not in existing_before:
+            continue
+        actual = set(sqlite_columns(connection, table))
+        missing = sorted(required - actual)
+        if missing:
+            raise RuntimeError(f"runtime table {table} missing required columns: {missing}")
+
+    connection.executescript(TURSO_SCHEMA)
+    connection.commit()
+    existing = set(sqlite_tables(connection))
+    for table, required in REQUIRED_RUNTIME_COLUMNS.items():
+        if table not in existing:
+            raise RuntimeError(f"required runtime table missing after bootstrap: {table}")
+        actual = set(sqlite_columns(connection, table))
+        missing = sorted(required - actual)
+        if missing:
+            raise RuntimeError(f"runtime table {table} missing required columns: {missing}")
+'''))
+          replacements.append((
+          '''    with psycopg.connect(postgres_dsn) as source:
+        source.execute("SET default_transaction_read_only = on")
+        source.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        tables = pg_tables(source)
+''',
+          '''    with psycopg.connect(postgres_dsn) as source:
+        source.read_only = True
+        source.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
+        tables = pg_tables(source)
+'''))
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one replacement target, found {count}: {old[:80]!r}')
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Remove one-shot patch workflow from resulting tree
+        run: rm .github/workflows/zero-cost-finalize-patch.yml
+      - name: Commit hardened source
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/railway_turso_migration.py .github/workflows/zero-cost-finalize-patch.yml
+          git commit -m 'fix(zero-cost): harden migration normalization and source reads'
+          git push origin HEAD:feat/zero-cost-runtime
