@@ -124,6 +124,7 @@ jobs:
           alter table public.revenue_execution_actions owner to brain_migrator_ci;
           alter table public.revenue_followups owner to brain_migrator_ci;
           alter table public.revenue_outcome_ledger owner to brain_migrator_ci;
+          grant references on table public.tenants to brain_migrator_ci;
           SQL
           PGPASSWORD=brain-migrator-ci psql \
             -h 127.0.0.1 -p 55434 -U brain_migrator_ci -d brain \
