@@ -7,7 +7,8 @@ import { getVercelOidcToken } from "@vercel/oidc";
  * The zero-dollar runtime has no Railway fallback. Production must explicitly
  * point BRAIN_API_URL at the stateless Vercel-hosted Turso runtime. A missing,
  * non-HTTPS, or legacy Railway URL fails closed instead of silently restoring a
- * paid/runtime dependency that the migration is removing.
+ * paid/runtime dependency that the migration is removing. Railway origins are
+ * unsupported upstreams in the zero-cost runtime and are rejected explicitly.
  */
 
 const LEGACY_RAILWAY_HOSTS = new Set([
