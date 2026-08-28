@@ -1,5 +1,11 @@
 # PR #183 — Revenue Persistence Repair Evidence
 
+## Source authority
+
+- SOURCE: protected repository migration 006/017/020/022 contracts and existing revenue-domain/runtime behavior.
+- APPROVED: PR #183 revenue persistence repair and its source-requirement traceability record.
+- Dependency: PR #180 owns the prerequisite contiguous migration 024; this PR owns migration 025.
+
 ## Scope
 
 Repair the migration-025 and pre-migration-ceiling persistence defects on `fix/revenue-signal-schema` without merging, deploying, applying production migrations, or changing production configuration. PR #183 is ordered after PR #180, whose durable connector runtime owns migration 024.
@@ -34,7 +40,7 @@ The executable verifier is `tools/verify_revenue_persistence_migration.py`.
 
 The strengthened replay already passed the pre-025 capability gate, tenant/RLS migrations, ordinary-owner FORCE-RLS application of migration 025, UUID-to-stable-key translation, legacy-null preservation and FORCE restoration. It then failed while constructing `MoneySpineService` because the verification fixture had seeded `money_lanes.opportunity_class='lead'`, which is not a valid domain `OpportunityClass`. The fixture is corrected to `high_intent_lead`; no migration or runtime logic change was required for that failure.
 
-This documentation commit intentionally follows the PR-body control-schema correction so the next pull-request synchronization event validates the current metadata rather than the stale pre-correction body.
+The subsequent control-policy run checked the finalized stacked merge tree and passed module BUILD-READY traceability plus migration integrity; it failed only because the PR body lacked the literal authority terms `SOURCE` and `APPROVED`. Those terms and all mandatory control sections are now present in the PR body. This evidence-only commit creates the fresh synchronization event used for final validation.
 
 ## Tenant / RLS boundary
 
@@ -44,4 +50,4 @@ Migration 025 remains above the tenant-release boundary and must still be applie
 
 ## Ordering
 
-PR #180 is the prerequisite migration-024 change. PR #183 must be verified against `feat/global-source-runtime-p1` while both are open. After PR #180 eventually lands under separate operator authorization, PR #183 should be retargeted to updated `main` and exact-head CI rerun before any merge decision.
+PR #180 is the prerequisite migration-024 change. PR #183 is verified against `feat/global-source-runtime-p1` while both are open. After PR #180 eventually lands under separate operator authorization, PR #183 must be retargeted to updated `main` and exact-head CI rerun before any merge decision.
