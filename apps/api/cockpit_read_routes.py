@@ -1,15 +1,7 @@
 """Cockpit read-model routes for the canonical Brain API image.
 
-These GET routes previously existed only in ``tools/live_cockpit_routes.py``,
-which is served by ``Dockerfile.railway`` -- the image its own first line calls
-the "Legacy Railway cockpit compatibility image". The repository default
-(``railway.toml``) and both Docker CI jobs build ``Dockerfile`` instead, which
-runs ``apps.api.tenant_app`` over ``apps/api/main.py`` and registered none of
-them. The Observatory's client calls all nine, so CI was proving out an image
-the cockpit would 404 against while the deprecated image carried the real read
-surface.
-
-Registering them here puts one route set behind one canonical image.
+These GET routes project existing durable Brain state for operator interfaces.
+They do not introduce a second cognitive store or change write semantics.
 
 ``api_module`` attributes are resolved per request rather than captured at
 import time, because ``apps.api.tenant_app`` rebinds ``runtime``, ``learning``
@@ -25,6 +17,20 @@ from uuid import NAMESPACE_URL, uuid5
 from brain.attention import AttentionMarket, AttentionSignal
 
 _attention_market = AttentionMarket()
+
+_LEARNING_EVENT_TYPES = {
+    "learning.attribution_recorded",
+    "graph.edge_rewired",
+    "prediction.resolved",
+    "outcome.recorded",
+    "belief.created",
+    "belief.updated",
+    "memory.working_stored",
+    "memory.working_evicted",
+    "attention.scored",
+    "cycle.completed",
+    "dream.night_phase",
+}
 
 
 def _list_response(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -48,6 +54,26 @@ def _number(payload: dict[str, Any], key: str, default: float = 0.0) -> float:
         return float(payload.get(key, default) or default)
     except (TypeError, ValueError):
         return default
+
+
+def _event_store(api_module: Any) -> Any:
+    """Resolve the canonical durable event store behind the active runtime.
+
+    PostgresBrainStore keeps disposable projections in memory and exposes its
+    durable append-only stream through ``event_store``. In-memory/test stores
+    expose ``read_all`` directly. Tenant proxies can resolve either shape.
+    """
+    store = api_module.runtime.store
+    candidate = getattr(store, "event_store", None)
+    return candidate if candidate is not None and hasattr(candidate, "read_all") else store
+
+
+def _read_events(api_module: Any) -> list[Any]:
+    store = _event_store(api_module)
+    reader = getattr(store, "read_all", None)
+    if not callable(reader):
+        return []
+    return list(reader())
 
 
 def _signal_item_from_event(event: Any) -> dict[str, Any]:
@@ -112,8 +138,43 @@ def _edge_item(edge: Any) -> dict[str, Any]:
         "relation": str(edge.relation),
         "weight": float(edge.weight),
         "confidence": float(edge.confidence),
+        "evidence_ids": [str(value) for value in getattr(edge, "evidence_ids", set())],
         "created_at": _iso(updated_at),
         "updated_at": _iso(updated_at),
+    }
+
+
+def _outcome_item_from_event(event: Any) -> dict[str, Any]:
+    payload = dict(getattr(event, "payload", {}) or {})
+    occurred_at = getattr(event, "occurred_at", None)
+    return {
+        "id": str(getattr(event, "aggregate_id")),
+        "created_at": _iso(occurred_at),
+        "updated_at": _iso(occurred_at),
+        "action_id": str(payload.get("action_id") or ""),
+        "value_created": _number(payload, "value_created"),
+        "prediction_accuracy": _number(payload, "prediction_accuracy"),
+        "operator_time_cost": _number(payload, "operator_time_cost"),
+        "trust_impact": _number(payload, "trust_impact"),
+        "legal_risk": _number(payload, "legal_risk"),
+        "prediction_id": str(payload["prediction_id"]) if payload.get("prediction_id") else None,
+        "metadata": {
+            "edge_ids": [str(value) for value in payload.get("edge_ids", []) or []],
+            "source_keys": [str(value) for value in payload.get("source_keys", []) or []],
+            "correlation_id": str(getattr(event, "correlation_id", "") or "") or None,
+        },
+    }
+
+
+def _learning_event_item(event: Any) -> dict[str, Any]:
+    return {
+        "id": str(getattr(event, "id")),
+        "event_type": str(getattr(event, "event_type", "unknown")),
+        "aggregate_type": str(getattr(event, "aggregate_type", "unknown")),
+        "aggregate_id": str(getattr(event, "aggregate_id", "")),
+        "occurred_at": _iso(getattr(event, "occurred_at", None)),
+        "correlation_id": str(getattr(event, "correlation_id", "") or "") or None,
+        "payload": dict(getattr(event, "payload", {}) or {}),
     }
 
 
@@ -125,21 +186,59 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
         """Read signals from the canonical durable signal.enqueued event stream."""
         items = [
             _signal_item_from_event(event)
-            for event in api_module.runtime.store.read_all()
+            for event in _read_events(api_module)
             if getattr(event, "event_type", None) == "signal.enqueued"
         ]
         items.sort(key=lambda item: item["created_at"], reverse=True)
         return _list_response(items)
 
+    @app.get("/evidence")
+    def list_evidence():
+        """Expose persisted evidence and its real belief relationships."""
+        store = api_module.runtime.store
+        relationships: dict[str, dict[str, Any]] = {}
+        for belief in store.beliefs.values():
+            for evidence_id in getattr(belief, "supporting_evidence", set()):
+                entry = relationships.setdefault(str(evidence_id), {"supports": set(), "contradicts": set()})
+                entry["supports"].add(str(belief.id))
+            for evidence_id in getattr(belief, "contradicting_evidence", set()):
+                entry = relationships.setdefault(str(evidence_id), {"supports": set(), "contradicts": set()})
+                entry["contradicts"].add(str(belief.id))
+
+        items: list[dict[str, Any]] = []
+        for evidence in store.evidence.values():
+            relation = relationships.get(str(evidence.id), {"supports": set(), "contradicts": set()})
+            supporting = sorted(relation["supports"])
+            contradicting = sorted(relation["contradicts"])
+            supports: bool | None = None
+            if supporting and not contradicting:
+                supports = True
+            elif contradicting and not supporting:
+                supports = False
+            items.append(
+                {
+                    "id": str(evidence.id),
+                    "created_at": _iso(getattr(evidence, "created_at", None)),
+                    "updated_at": _iso(getattr(evidence, "created_at", None)),
+                    "claim": str(getattr(evidence, "claim", "")),
+                    "source_id": str(getattr(evidence, "source_id", "unknown")),
+                    "reliability": float(getattr(evidence, "reliability", 0.0) or 0.0),
+                    "observation_id": str(evidence.observation_id) if getattr(evidence, "observation_id", None) else None,
+                    "supports": supports,
+                    "belief_ids": sorted(set(supporting + contradicting)),
+                    "metadata": {
+                        **dict(getattr(evidence, "metadata", {}) or {}),
+                        "supporting_belief_ids": supporting,
+                        "contradicting_belief_ids": contradicting,
+                    },
+                }
+            )
+        items.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
+        return _list_response(items)
+
     @app.get("/edges")
     def list_edges():
-        """Read graph edges from the configured learning edge store.
-
-        Production resolves ``learning.edges`` to ``PostgresEdgeStore`` so this
-        reads ``public.graph_edges`` durably. Local and test mode use the
-        matching in-memory implementation. The POST /edges contract is owned by
-        apps.api.main and is unchanged.
-        """
+        """Read graph edges from the configured learning edge store."""
         edge_store = api_module.learning.edges or api_module._learning_store
         items = [_edge_item(edge) for edge in edge_store.list_edges()]
         return _list_response(items)
@@ -215,6 +314,67 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
             )
         return _list_response(items)
 
+    @app.get("/outcomes")
+    def list_outcomes():
+        """Project real outcome.recorded events into the Observatory Outcome contract."""
+        items = [
+            _outcome_item_from_event(event)
+            for event in _read_events(api_module)
+            if getattr(event, "event_type", None) == "outcome.recorded"
+        ]
+        items.sort(key=lambda item: item["created_at"], reverse=True)
+        return _list_response(items)
+
+    @app.get("/learning-events")
+    def list_learning_events():
+        """Expose the bounded durable cognitive evolution history used by the UI."""
+        items = [
+            _learning_event_item(event)
+            for event in _read_events(api_module)
+            if getattr(event, "event_type", None) in _LEARNING_EVENT_TYPES
+        ]
+        items.sort(key=lambda item: (item["occurred_at"], item["id"]), reverse=True)
+        return _list_response(items[:200])
+
+    @app.get("/working-memory")
+    def get_working_memory():
+        """Report the latest durable observation of active working-memory size.
+
+        This is an observation from completed cognition, not a claim that the API
+        process owns the worker's in-memory buffer. Capacity is taken only from a
+        real memory.working_stored event when available.
+        """
+        events = _read_events(api_module)
+        completed = next(
+            (event for event in reversed(events) if getattr(event, "event_type", None) == "cycle.completed"),
+            None,
+        )
+        stored = next(
+            (event for event in reversed(events) if getattr(event, "event_type", None) == "memory.working_stored"),
+            None,
+        )
+        if completed is None:
+            return {
+                "observed_at": None,
+                "size": None,
+                "capacity": None,
+                "cycle_id": None,
+                "source": "unobserved",
+                "evicted_count": 0,
+                "last_slot_id": None,
+            }
+        payload = dict(getattr(completed, "payload", {}) or {})
+        stored_payload = dict(getattr(stored, "payload", {}) or {}) if stored is not None else {}
+        return {
+            "observed_at": _iso(getattr(completed, "occurred_at", None)),
+            "size": int(payload["working_memory_size"]) if payload.get("working_memory_size") is not None else None,
+            "capacity": int(stored_payload["capacity"]) if stored_payload.get("capacity") is not None else None,
+            "cycle_id": str(getattr(completed, "correlation_id", "") or getattr(completed, "aggregate_id", "") or "") or None,
+            "source": "cycle.completed",
+            "evicted_count": int(payload.get("evicted_count") or 0),
+            "last_slot_id": str(stored_payload.get("slot_id") or "") or None,
+        }
+
     # Surfaces the Observatory queries but the runtime does not yet populate.
     # They answer with an empty collection rather than 404 so the cockpit can
     # render its real empty state instead of an error.
@@ -224,10 +384,6 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
 
     @app.get("/opportunities")
     def list_opportunities():
-        return _list_response([])
-
-    @app.get("/outcomes")
-    def list_outcomes():
         return _list_response([])
 
     @app.get("/formula-runs")
