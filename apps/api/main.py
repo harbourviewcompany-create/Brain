@@ -11,12 +11,18 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from apps.api.cockpit_read_routes import register_cockpit_read_routes
-from apps.api.inline_cognition import InlineCognition, start_inline_cognition
+from apps.api.inline_cognition import (
+    InlineCognition,
+    cognition_dsn,
+    start_inline_cognition,
+)
+from brain.cognition_lease import CognitionLease
 from brain.logging_config import get_logger
 from apps.api.cognitive_organism_routes import register_cognitive_organism_routes
 from brain.adapters.learning_store import InMemoryLearningStore
@@ -56,6 +62,45 @@ def tick_once(*, max_items: int = 1) -> dict[str, Any]:
         return heartbeat.tick(max_items=max_items)
 
 
+def request_tick(*, max_items: int = 1) -> dict[str, Any]:
+    """A tick asked for by a request, run only if this process may write.
+
+    _tick_lock serialises threads inside this process and says nothing about
+    the one next to it. A worker holding the database lease is a second writer
+    on the same inbox, cycle and belief projection, so an operator's POST
+    /tick would race belief versions and duplicate cycle events against it.
+
+    Ownership can come from either side: the inline loop already holds the
+    lease, or -- when inline cognition is switched off -- this call takes it
+    for the duration of the tick and gives it straight back. An operator tick
+    is a short-lived writer, which the lease models perfectly well. If neither
+    is possible, somebody else owns cognition and the request is refused
+    rather than quietly making a mess.
+    """
+
+    if not cognition_dsn():
+        # No database, nothing shared, nobody to race.
+        return tick_once(max_items=max_items)
+
+    engine = _inline_cognition
+    if engine is not None and engine.holds_lease:
+        return tick_once(max_items=max_items)
+
+    lease = CognitionLease(cognition_dsn())
+    if not lease.acquire():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "cognition_lease_held_elsewhere: another process is running "
+                "cognition against this database; retry once it yields"
+            ),
+        )
+    try:
+        return tick_once(max_items=max_items)
+    finally:
+        lease.release()
+
+
 def _resume_durable_beliefs() -> None:
     """Load what the Brain already believes into the cycle it will think with.
 
@@ -71,12 +116,21 @@ def _resume_durable_beliefs() -> None:
     register = getattr(cycle, "register_belief", None)
     if register is None:
         return
+    # See what the other writer left behind, not the snapshot this process
+    # booted with -- resuming is only worth doing against current state.
+    _refresh_reads()
     beliefs = getattr(_brain_store, "beliefs", {}) or {}
-    for belief in list(beliefs.values()):
-        try:
-            register(belief)
-        except Exception:
-            log.exception("durable belief could not be resumed", extra={"belief_id": str(belief.id)})
+    # Under the same lock as ticking: register_belief mutates the cycle's
+    # belief cache, and a request tick can be running in the thread pool.
+    with _tick_lock:
+        for belief in list(beliefs.values()):
+            try:
+                register(belief)
+            except Exception:
+                log.exception(
+                    "durable belief could not be resumed",
+                    extra={"belief_id": str(belief.id)},
+                )
     log.info("inline cognition resumed durable beliefs", extra={"beliefs": len(beliefs)})
 
 
@@ -143,7 +197,12 @@ async def refresh_projection_reads(request: Request, call_next):
     # waiting on a read they already know will not work. /health refreshes
     # itself once readiness passes.
     if request.method in {"GET", "HEAD"} and request.url.path not in _PROJECTION_EXEMPT_PATHS:
-        _refresh_reads()
+        # In a worker thread, not inline: _refresh_reads() is synchronous and
+        # can hold a pooled connection while it reads PostgreSQL. Awaiting it
+        # on the event loop would stall every other request in this process
+        # for the length of one slow refresh -- including the health checks
+        # this middleware deliberately exempts.
+        await run_in_threadpool(_refresh_reads)
     return await call_next(request)
 
 
@@ -433,9 +492,13 @@ def _read_refresh_seconds() -> float:
     # fails every age comparison and hydrates on every single request, while
     # Infinity makes the boot snapshot fresh forever -- restoring exactly the
     # stale-read bug the TTL exists to fix.
-    if not isfinite(parsed):
+    # Negative counts as invalid too, not just non-finite: refresh_if_stale
+    # refuses a negative TTL outright, so the projection would keep serving
+    # the boot snapshot forever -- the exact bug the TTL exists to fix, in the
+    # disguise of a tuning knob.
+    if not isfinite(parsed) or parsed < 0:
         log.warning(
-            "ignoring non-finite BRAIN_READ_REFRESH_SECONDS", extra={"value": raw}
+            "ignoring invalid BRAIN_READ_REFRESH_SECONDS", extra={"value": raw}
         )
         return 5.0
     return parsed
@@ -563,7 +626,7 @@ def enqueue_signal(body: PerceiveRequest):
         operator_burden=body.operator_burden,
         metadata=body.metadata,
     )
-    tick_result = tick_once(max_items=1) if body.process_now else None
+    tick_result = request_tick(max_items=1) if body.process_now else None
     return {
         "id": str(item.id),
         "source_key": item.source_key,
@@ -577,7 +640,7 @@ def enqueue_signal(body: PerceiveRequest):
 @app.post("/tick")
 def run_heartbeat_tick(body: TickRequest | None = None):
     max_items = body.max_items if body is not None else 1
-    return tick_once(max_items=max_items)
+    return request_tick(max_items=max_items)
 
 
 @app.get("/runner/status")

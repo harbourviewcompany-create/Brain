@@ -191,7 +191,11 @@ class InlineCognition:
 
     def _step(self) -> None:
         if not self._lease.acquire():
+            # Losing the lease is losing currency too: whoever holds it now is
+            # writing beliefs this cycle has not seen, so the next acquisition
+            # must resume before it thinks.
             self._held_since = None
+            self._started = False
             self._stop.wait(self._retry_seconds)
             return
 
@@ -200,9 +204,13 @@ class InlineCognition:
             log.info("inline cognition acquired the cognition lease")
 
         if not self._started:
-            # Only once the lease is actually held: resuming durable state is
-            # preparation for writing, and a process that never wins the race
-            # should not do it.
+            # Once per acquisition, not once per process. Only when the lease
+            # is held, because resuming durable state is preparation for
+            # writing and a process that never wins the race should not do it
+            # -- but also every time it is re-won, because whoever held it in
+            # between has been writing beliefs this cycle cache has never
+            # seen. Skipping it after a yield means reasoning from, and
+            # overwriting, versions that are already stale.
             self._started = True
             if self._on_start is not None:
                 self._on_start()
@@ -225,6 +233,7 @@ class InlineCognition:
 
     def _release(self) -> None:
         self._held_since = None
+        self._started = False
         try:
             self._lease.release()
         except Exception:

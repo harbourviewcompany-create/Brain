@@ -16,9 +16,13 @@ except ImportError:  # pragma: no cover - infrastructure dependency guard
     ConnectionPool = Any  # type: ignore[misc,assignment]
 
 from ..beliefs import rebuild_fingerprints
+from ..logging_config import get_logger
 from ..domain import Belief, BeliefState, Edge, Evidence, Node, RewireEvent, RewireOperation
 from ..memory import InMemoryBrainStore
 from .postgres import PostgresEventStore
+
+
+log = get_logger("brain_store")
 
 
 def _json(value: Any) -> Any:
@@ -51,6 +55,10 @@ class PostgresBrainStore(InMemoryBrainStore):
         self._refresh_lock = threading.Lock()
         self._counters_lock = threading.Lock()
         self._counters: tuple[float, dict[str, int] | None] = (0.0, None)
+        # Deliberately not _refresh_lock: that one is held across the whole
+        # hydrate, and a write must never block waiting for a read to finish.
+        self._inflight_lock = threading.Lock()
+        self._inflight: dict[str, dict] | None = None
         self.hydrate()
         # The constructor's hydrate is the first refresh; without stamping it
         # here the first refresh_if_stale would immediately hydrate again.
@@ -92,12 +100,46 @@ class PostgresBrainStore(InMemoryBrainStore):
         refresh always lands mid-iteration somewhere.
         """
 
-        beliefs, evidence, nodes, edges, rewires = self._load_projection()
+        with self._inflight_lock:
+            self._inflight = {"beliefs": {}, "evidence": {}, "nodes": {}, "edges": {}}
+        try:
+            beliefs, evidence, nodes, edges, rewires = self._load_projection()
+        finally:
+            with self._inflight_lock:
+                pending, self._inflight = self._inflight, None
+
+        # A load is a series of queries, not an instant. Now that this process
+        # writes cognition of its own, a belief can be committed after the
+        # belief query has already run and before the swap -- and swapping the
+        # older snapshot in would drop it from every read until some later
+        # refresh happened to pick it up. Writes that landed during the load
+        # win, because they are newer than what was read.
+        beliefs.update(pending["beliefs"])
+        evidence.update(pending["evidence"])
+        nodes.update(pending["nodes"])
+        edges.update(pending["edges"])
+
         self.beliefs = beliefs
         self.evidence = evidence
         self.nodes = nodes
         self.edges = edges
         self.rewires = rewires
+
+    def _record_inflight(self, item: Any) -> None:
+        """Remember a write that lands while a projection load is running."""
+
+        with self._inflight_lock:
+            pending = self._inflight
+            if pending is None:
+                return
+            if isinstance(item, Belief):
+                pending["beliefs"][item.id] = item
+            elif isinstance(item, Evidence):
+                pending["evidence"][item.id] = item
+            elif isinstance(item, Node):
+                pending["nodes"][item.id] = item
+            elif isinstance(item, Edge):
+                pending["edges"][item.id] = item
 
     def _load_projection(
         self,
@@ -116,6 +158,7 @@ class PostgresBrainStore(InMemoryBrainStore):
         with self.pool.connection(timeout=self.READ_TIMEOUT_SECONDS) as conn, conn.cursor(
             row_factory=dict_row
         ) as cur:
+            self._bound_statements(cur)
             cur.execute(
                 """
                 select id, statement, confidence, state, unknowns, version, updated_at
@@ -248,18 +291,40 @@ class PostgresBrainStore(InMemoryBrainStore):
         many readers or routes ask.
         """
 
-        if isfinite(max_age_seconds) and max_age_seconds > 0:
-            with self._counters_lock:
+        # The whole thing under the lock, miss included. Releasing it before
+        # the query let concurrent /health and /runner/status polls each see
+        # the same stale entry and run the count independently -- defeating
+        # the one-query-per-interval bound on precisely the parallel polling
+        # it exists to bound.
+        with self._counters_lock:
+            if isfinite(max_age_seconds) and max_age_seconds > 0:
                 counted_at, cached = self._counters
                 if cached is not None and time.monotonic() - counted_at < max_age_seconds:
                     return dict(cached)
-        counts = self._count_cognition_events()
-        with self._counters_lock:
+            counts = self._count_cognition_events()
             self._counters = (time.monotonic(), counts)
-        return dict(counts)
+            return dict(counts)
+
+    def _bound_statements(self, cur: Any) -> None:
+        """Cap how long the server will spend on this connection's reads.
+
+        pool.connection(timeout=...) bounds only *checking out* a connection.
+        Once psycopg has one, the query itself runs with no client-side
+        deadline at all, so a lock or a slow plan can hold a read far past
+        READ_TIMEOUT_SECONDS. PostgreSQL's own statement_timeout is the only
+        thing that actually bounds execution.
+        """
+
+        try:
+            cur.execute("set statement_timeout = %s", (int(self.READ_TIMEOUT_SECONDS * 1000),))
+        except Exception:
+            # A store pointed at something that does not understand the
+            # setting should still be readable; the checkout bound remains.
+            log.debug("statement_timeout could not be set", exc_info=True)
 
     def _count_cognition_events(self) -> dict[str, int]:
         with self.pool.connection(timeout=self.READ_TIMEOUT_SECONDS) as conn, conn.cursor() as cur:
+            self._bound_statements(cur)
             cur.execute(
                 """
                 select event_type, count(*)
@@ -381,8 +446,11 @@ class PostgresBrainStore(InMemoryBrainStore):
                 )
                 conn.commit()
         else:
-            return super().save(item)
+            super().save(item)
+            self._record_inflight(item)
+            return
         super().save(item)
+        self._record_inflight(item)
 
     def upsert_node(self, node: Node) -> None:
         with self.pool.connection() as conn:
@@ -399,6 +467,7 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().upsert_node(node)
+        self._record_inflight(node)
 
     def upsert_edge(self, edge: Edge) -> None:
         with self.pool.connection() as conn:
@@ -429,6 +498,7 @@ class PostgresBrainStore(InMemoryBrainStore):
             )
             conn.commit()
         super().upsert_edge(edge)
+        self._record_inflight(edge)
 
     def log_rewire(self, event: RewireEvent) -> None:
         with self.pool.connection() as conn:

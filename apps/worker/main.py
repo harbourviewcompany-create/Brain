@@ -34,6 +34,11 @@ except ImportError:
 
 _verified_worker_dsn: str | None = None
 _cognition_lease: Any | None = None
+#: Whether a database was configured, and so whether writing requires the
+#: lease. Kept apart from _cognition_lease because "no lease" has two
+#: opposite meanings: nobody to race (write freely) and lost the lock (do not
+#: write at all). Conflating them is how a lease fails open.
+_lease_required: bool = False
 
 
 def worker_database_url() -> str:
@@ -222,15 +227,18 @@ def _ingest_singleton() -> Any:
 def _lease_still_held() -> bool:
     """Whether this process may still write cognition.
 
-    True when no lease was ever taken -- an in-memory worker with no database
-    shares nothing and needs no permission. Otherwise re-asks the lease, which
+    True only for a worker with no database at all -- it shares nothing and so
+    needs nobody's permission. Otherwise re-asks the lease, which
     revalidates its connection on its own interval and re-acquires when the
     lock has been lost.
     """
 
     lease = _cognition_lease
     if lease is None:
-        return True
+        # Only a deployment with no database may write unowned. A configured
+        # one that has no lease has lost it, or never got it, and must not
+        # write until it does.
+        return not _lease_required
     try:
         return bool(lease.acquire())
     except Exception:
@@ -256,7 +264,7 @@ def run_forever_with_maintenance(
             # until it is back.
             time.sleep(max(tick_sleep, 1.0))
             continue
-        if ingest_every > 0 and n % ingest_every == 0:
+        if ingest_every > 0 and n % ingest_every == 0 and _lease_still_held():
             try:
                 ingest.ingest_due_sources()
             except Exception:
@@ -276,7 +284,10 @@ def run_forever_with_maintenance(
         else:
             idle_ticks += 1
             time.sleep(tick_sleep)
-        if maintenance_every > 0 and idle_ticks >= maintenance_every:
+        if maintenance_every > 0 and idle_ticks >= maintenance_every and _lease_still_held():
+            # Rechecked here rather than trusted from the top of the pass:
+            # ingest and a cognition cycle have run in between, and the lock
+            # can be dropped at any point in that window.
             try:
                 if learning is not None and hasattr(learning, "expire_due_predictions"):
                     learning.expire_due_predictions()
@@ -342,12 +353,35 @@ if _HAS_TEMPORAL:
             )
             raise RuntimeError("continue_as_new_returned_unexpectedly")
 
+    def _tick_under_lease() -> bool:
+        """One cognition cycle, reporting whether it processed a real signal.
+
+        Two things the raw run_once() result could not say. It cannot say
+        whether this process still owns the lease -- Temporal keeps its worker
+        connected across a Postgres restart, so the activity pool would happily
+        go on writing under a lock an API replica had already taken. And it
+        cannot distinguish a processed signal from endogenous self-reflection,
+        which is nearly always true, so the workflow scheduled the next
+        activity immediately, never slept, and never advanced its idle counter
+        -- the same hot loop the in-process worker just had fixed.
+        """
+
+        if not _lease_still_held():
+            return False
+        runner = _runner_singleton()
+        idle_before = getattr(runner, "_idle_cycles", 0)
+        processed = runner.run_once()
+        endogenous = getattr(runner, "_idle_cycles", 0) != idle_before
+        return bool(processed) and not endogenous
+
     @activity.defn(name="brain.cognition_tick")
     async def cognition_tick_activity() -> bool:
-        return await asyncio.to_thread(_runner_singleton().run_once)
+        return await asyncio.to_thread(_tick_under_lease)
 
     @activity.defn(name="brain.prediction_maintenance")
     async def prediction_maintenance_activity() -> int:
+        if not _lease_still_held():
+            return 0
         learning = _learning_singleton()
         if learning is None or not hasattr(learning, "expire_due_predictions"):
             return 0
@@ -356,6 +390,8 @@ if _HAS_TEMPORAL:
 
     @activity.defn(name="brain.ingest_due_sources")
     async def ingest_due_sources_activity() -> dict[str, Any]:
+        if not _lease_still_held():
+            return {"skipped": "cognition_lease_unavailable"}
         svc = _ingest_singleton()
         batch = await asyncio.to_thread(svc.ingest_due_sources)
         return batch.as_dict() if hasattr(batch, "as_dict") else {"ok": True}
@@ -440,19 +476,32 @@ def acquire_cognition_lease() -> Any | None:
     running API takes over on its own, without either being restarted.
     """
 
+    global _cognition_lease, _lease_required
+
     dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not dsn:
         # In-memory cognition is nobody else's business: there is no shared
         # store to double-write, and no database to hold a lock in.
+        _lease_required = False
         return None
+
+    _lease_required = True
+    if _cognition_lease is not None:
+        # Already ours. Asking again would open a second connection and block
+        # on pg_advisory_lock forever, waiting for a lock this same process
+        # holds on the first one -- which is exactly what the Temporal
+        # fallback did on its way to the in-process loop.
+        return _cognition_lease
 
     from brain.cognition_lease import CognitionLease
 
-    global _cognition_lease
     lease = CognitionLease(dsn)
     log.info("waiting for the cognition lease")
     if not lease.acquire(blocking=True):
-        log.error("cognition lease unavailable; thinking anyway to avoid a silent Brain")
+        # Fails closed. Returning None here would be indistinguishable from
+        # "no database configured", and the loop would read that as permission
+        # to write without owning the lock.
+        log.error("cognition lease could not be acquired; refusing to write")
         return None
     log.info("cognition lease acquired; this worker is the single writer")
     # Module-level, not a local: the lease lives in its connection, and a
@@ -499,7 +548,11 @@ def main() -> None:
             # without taking it here a Temporal worker and an API replica
             # running inline cognition would both write cycles to the same
             # event store, each believing it was the only one.
-            acquire_cognition_lease()
+            if acquire_cognition_lease() is None and _lease_required:
+                log.error(
+                    "refusing to start the temporal worker without the cognition lease"
+                )
+                return
             asyncio.run(run_temporal_worker())
             return
         except Exception:

@@ -196,9 +196,11 @@ def test_every_tick_entry_point_goes_through_the_serialised_helper():
     for route in (api.run_heartbeat_tick, api.enqueue_signal):
         source = inspect.getsource(route)
         assert "heartbeat.tick(" not in source, (
-            f"{route.__name__} must tick through tick_once, not directly"
+            f"{route.__name__} must not tick the heartbeat directly"
         )
-        assert "tick_once(" in source
+        # request_tick, not tick_once: a request must also check the
+        # cross-process lease, which the in-process lock knows nothing about.
+        assert "request_tick(" in source
 
 
 def test_the_inline_loop_ticks_through_the_serialised_helper():
@@ -336,6 +338,8 @@ def _detached_store() -> PostgresBrainStore:
     store._refresh_lock = threading.Lock()
     store._counters_lock = threading.Lock()
     store._counters = (0.0, None)
+    store._inflight_lock = threading.Lock()
+    store._inflight = None
     store.beliefs = {"kept": "belief"}
     store.evidence = {}
     store.nodes = {}
@@ -568,3 +572,335 @@ def test_projection_reads_are_bounded_so_a_dead_database_fails_fast():
         # psycopg_pool defaults to 30s; the cockpit polls eighteen routes at
         # once, so an unbounded wait multiplies into a stalled dashboard.
         assert "timeout=self.READ_TIMEOUT_SECONDS" in source
+
+
+# --- the lease must fail closed, and never deadlock on itself -------------
+
+
+def test_the_temporal_fallback_reuses_the_lease_it_already_holds(monkeypatch):
+    """The deadlock: a second lease blocks forever on the first one."""
+
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    built = []
+
+    class CountingLease:
+        def __init__(self, dsn):
+            built.append(dsn)
+
+        def acquire(self, *, blocking=False):
+            return True
+
+    monkeypatch.setattr("brain.cognition_lease.CognitionLease", CountingLease)
+    monkeypatch.setattr(worker, "_cognition_lease", None, raising=False)
+    monkeypatch.setattr(worker, "_lease_required", False, raising=False)
+
+    first = worker.acquire_cognition_lease()
+    second = worker.acquire_cognition_lease()
+
+    # pg_advisory_lock on a second connection waits for the lock the first one
+    # holds, in the same process, forever -- so the advertised in-process
+    # fallback after a Temporal failure would never start.
+    assert second is first
+    assert len(built) == 1
+
+
+def test_a_configured_worker_that_cannot_take_the_lease_refuses_to_write(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+
+    class RefusingLease:
+        def __init__(self, dsn):
+            pass
+
+        def acquire(self, *, blocking=False):
+            return False
+
+    monkeypatch.setattr("brain.cognition_lease.CognitionLease", RefusingLease)
+    monkeypatch.setattr(worker, "_cognition_lease", None, raising=False)
+    monkeypatch.setattr(worker, "_lease_required", False, raising=False)
+
+    assert worker.acquire_cognition_lease() is None
+    # None means two opposite things -- "nobody to race" and "lost the lock".
+    # Reading a failed acquisition as the former is how a lease fails open.
+    assert worker._lease_required is True
+    assert worker._lease_still_held() is False
+
+
+def test_a_worker_with_no_database_still_writes_freely(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("BRAIN_WORKER_DATABASE_URL", raising=False)
+    monkeypatch.setattr(worker, "_cognition_lease", None, raising=False)
+    monkeypatch.setattr(worker, "_lease_required", True, raising=False)
+
+    assert worker.acquire_cognition_lease() is None
+    assert worker._lease_required is False
+    assert worker._lease_still_held() is True
+
+
+def test_ingest_and_maintenance_recheck_the_lease(monkeypatch):
+    import inspect
+
+    source = inspect.getsource(worker.run_forever_with_maintenance)
+    # A cognition cycle runs between the top-of-pass check and these two, and
+    # the lock can be dropped anywhere in that window.
+    assert source.count("_lease_still_held()") >= 3
+
+
+def test_the_temporal_worker_does_not_start_without_the_lease():
+    import inspect
+
+    source = inspect.getsource(worker.main)
+    assert "acquire_cognition_lease() is None and _lease_required" in source
+
+
+# --- request-driven ticks answer to the lease too --------------------------
+
+
+def test_a_request_tick_is_refused_while_another_process_owns_cognition(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(api, "_inline_cognition", None)
+    ticked = []
+    monkeypatch.setattr(api, "tick_once", lambda **kwargs: ticked.append(1))
+
+    class HeldElsewhere:
+        def __init__(self, dsn):
+            pass
+
+        def acquire(self, *, blocking=False):
+            return False
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr(api, "CognitionLease", HeldElsewhere)
+
+    with pytest.raises(Exception) as excinfo:
+        api.request_tick(max_items=1)
+
+    # _tick_lock only serialises threads here. A worker holding the database
+    # lease is a second writer on the same inbox and belief projection.
+    assert getattr(excinfo.value, "status_code", None) == 409
+    assert ticked == []
+
+
+def test_a_request_tick_borrows_the_lease_when_nothing_else_holds_it(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(api, "_inline_cognition", None)
+    monkeypatch.setattr(api, "tick_once", lambda **kwargs: {"ticked": True})
+    released = []
+
+    class Available:
+        def __init__(self, dsn):
+            pass
+
+        def acquire(self, *, blocking=False):
+            return True
+
+        def release(self):
+            released.append(1)
+
+    monkeypatch.setattr(api, "CognitionLease", Available)
+
+    assert api.request_tick(max_items=1) == {"ticked": True}
+    # An operator tick is a short-lived writer; holding the lease afterwards
+    # would lock out the process that actually runs cognition.
+    assert released == [1]
+
+
+def test_a_request_tick_rides_the_lease_the_inline_loop_already_holds(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(api, "tick_once", lambda **kwargs: {"ticked": True})
+
+    class Holder:
+        holds_lease = True
+
+    monkeypatch.setattr(api, "_inline_cognition", Holder())
+    monkeypatch.setattr(
+        api,
+        "CognitionLease",
+        lambda dsn: (_ for _ in ()).throw(AssertionError("must not take a second lease")),
+    )
+
+    assert api.request_tick(max_items=1) == {"ticked": True}
+
+
+def test_a_request_tick_needs_no_lease_without_a_database(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(api, "tick_once", lambda **kwargs: {"ticked": True})
+    monkeypatch.setattr(
+        api,
+        "CognitionLease",
+        lambda dsn: (_ for _ in ()).throw(AssertionError("must not take a lease")),
+    )
+
+    assert api.request_tick(max_items=1) == {"ticked": True}
+
+
+# --- resuming beliefs on every acquisition, not once ----------------------
+
+
+def test_resume_runs_again_after_the_lease_is_yielded_and_retaken():
+    started = []
+    lease = _FakeLease()
+    clock = FakeClock()
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=lease,
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=300,
+        yield_pause_seconds=0,
+        clock=clock,
+        on_start=lambda: started.append(1),
+    )
+
+    eng._step()
+    assert started == [1]
+    clock.advance(300)
+    eng._step()
+    eng._step()
+
+    # Whoever held it in between has been writing beliefs this cycle cache has
+    # never seen; reasoning on from the pre-handoff cache overwrites them.
+    assert started == [1, 1]
+
+
+def test_losing_the_lease_also_arms_the_next_resume():
+    started = []
+    lease = _FakeLease()
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=lease,
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+        on_start=lambda: started.append(1),
+    )
+    eng._step()
+    lease.granted = False
+    eng._step()
+    lease.granted = True
+    eng._step()
+
+    assert started == [1, 1]
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+# --- reads that cannot outlive their bound, or lose a concurrent write ----
+
+
+def test_reads_carry_a_server_side_statement_timeout():
+    import inspect
+
+    # pool.connection(timeout=...) bounds only checking a connection out; the
+    # query itself then runs with no client-side deadline at all.
+    for method in (
+        PostgresBrainStore._load_projection,
+        PostgresBrainStore._count_cognition_events,
+    ):
+        assert "self._bound_statements(cur)" in inspect.getsource(method)
+    assert "statement_timeout" in inspect.getsource(PostgresBrainStore._bound_statements)
+
+
+def test_a_belief_written_during_a_load_survives_the_swap(monkeypatch):
+    from brain.domain import Belief
+
+    store = _detached_store()
+    written = Belief(statement="written mid load", confidence=0.5)
+
+    def load_and_write(self):
+        # Commits after the belief query has already run, which is the window
+        # that made the swap lose it.
+        self._record_inflight(written)
+        return ({"from-database": "belief"}, {}, {}, {}, [])
+
+    monkeypatch.setattr(PostgresBrainStore, "_load_projection", load_and_write)
+
+    store.hydrate()
+
+    assert store.beliefs["from-database"] == "belief"
+    assert store.beliefs[written.id] is written
+
+
+def test_a_failed_load_does_not_leave_write_recording_armed(monkeypatch):
+    store = _detached_store()
+    monkeypatch.setattr(
+        PostgresBrainStore,
+        "_load_projection",
+        lambda self: (_ for _ in ()).throw(RuntimeError("database went away")),
+    )
+
+    with pytest.raises(RuntimeError):
+        store.hydrate()
+
+    # Left armed, every later write would accumulate in a buffer nothing ever
+    # drains.
+    assert store._inflight is None
+
+
+def test_counter_cache_misses_are_single_flighted(monkeypatch):
+    store = _detached_store()
+    counts = []
+
+    def slow_count(self):
+        counts.append(1)
+        time.sleep(0.02)
+        return {"cycle.completed": len(counts)}
+
+    monkeypatch.setattr(PostgresBrainStore, "_count_cognition_events", slow_count)
+
+    threads = [
+        threading.Thread(target=lambda: store.cognition_counters(60)) for _ in range(4)
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    # Releasing the lock before the query let parallel /health and
+    # /runner/status polls each run the full lifetime count.
+    assert len(counts) == 1
+
+
+# --- the refresh must not stall the event loop ----------------------------
+
+
+def test_the_read_boundary_refreshes_off_the_event_loop():
+    import inspect
+
+    source = inspect.getsource(api.refresh_projection_reads)
+    # refresh_if_stale is synchronous and can hold a pooled connection while
+    # it reads; awaiting it inline would stall every other request.
+    assert "run_in_threadpool(_refresh_reads)" in source
+
+
+@pytest.mark.parametrize("raw", ["-1", "-0.5"])
+def test_negative_read_refresh_falls_back(monkeypatch, raw):
+    monkeypatch.setenv("BRAIN_READ_REFRESH_SECONDS", raw)
+
+    # refresh_if_stale refuses a negative TTL outright, so the projection
+    # would serve the boot snapshot forever -- the original bug, wearing a
+    # tuning knob as a disguise.
+    assert api._read_refresh_seconds() == 5.0
+
+
+def test_resuming_beliefs_holds_the_tick_lock():
+    import inspect
+
+    assert "with _tick_lock:" in inspect.getsource(api._resume_durable_beliefs)
+
+
+def test_resuming_beliefs_reads_current_state_first():
+    import inspect
+
+    source = inspect.getsource(api._resume_durable_beliefs)
+    assert source.index("_refresh_reads()") < source.index("with _tick_lock:")
