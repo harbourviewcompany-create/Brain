@@ -312,10 +312,15 @@ class PostgresRevenueStore:
         UndefinedTable cannot distinguish a pre-025 deployment from the fixed
         schema. Inspecting the actual column types fails closed on the legacy
         UUID layout and prevents scoring from crashing below the migration ceiling.
+
+        Only a positive capability result is cached. A long-lived process may
+        observe the pre-025 UUID layout and then remain running while migration 025
+        is applied; negative results must therefore be rechecked so audit
+        persistence activates without requiring a process restart.
         """
         cached = getattr(self, "_signal_audit_schema_ready", None)
-        if cached is not None:
-            return cached
+        if cached is True:
+            return True
         try:
             with self.pool.connection() as conn:
                 row = conn.execute(
@@ -333,7 +338,8 @@ class PostgresRevenueStore:
             ready = bool(row and int(row[0]) == 3)
         except _UndefinedTable:
             ready = False
-        self._signal_audit_schema_ready = ready
+        if ready:
+            self._signal_audit_schema_ready = True
         return ready
 
     def save_signal(self, signal: RevenueSignal) -> None:
