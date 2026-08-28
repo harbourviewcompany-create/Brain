@@ -1,6 +1,7 @@
 """Ingest service — fetch due sources and enqueue sensory inbox."""
 from __future__ import annotations
 import json
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -72,7 +73,8 @@ class IngestService:
                  default_source_reliability: float = 0.65,
                  revenue: Any | None = None,
                  entity_extractor: Any | None = None,
-                 max_extractions_per_batch: int = 20) -> None:
+                 max_extractions_per_batch: int = 20,
+                 max_extraction_seconds_per_operation: float = 10.0) -> None:
         self.registry = registry or InMemoryConnectorRegistry()
         self.inbox = inbox
         self.event_store = event_store
@@ -83,7 +85,10 @@ class IngestService:
         self.revenue = revenue
         self.entity_extractor = entity_extractor
         self.max_extractions_per_batch = max(0, max_extractions_per_batch)
+        self.max_extraction_seconds_per_operation = max(0.0, float(max_extraction_seconds_per_operation))
         self._extractions_this_batch = 0
+        self._extraction_deadline: float | None = None
+        self._reset_extraction_budget()
         self._runs: list[IngestBatchResult] = []
 
     def register_source(self, source: ConnectorSource) -> ConnectorSource:
@@ -116,9 +121,21 @@ class IngestService:
                 return c
         return None
 
+    def _reset_extraction_budget(self) -> None:
+        """Start a fresh count and wall-clock budget for one ingest operation."""
+        self._extractions_this_batch = 0
+        if (
+            self.entity_extractor is None
+            or self.max_extractions_per_batch <= 0
+            or self.max_extraction_seconds_per_operation <= 0
+        ):
+            self._extraction_deadline = None
+            return
+        self._extraction_deadline = time.monotonic() + self.max_extraction_seconds_per_operation
+
     def ingest_due_sources(self, *, now: datetime | None = None) -> IngestBatchResult:
         started = now or utcnow()
-        self._extractions_this_batch = 0
+        self._reset_extraction_budget()
         due = self.registry.due_sources(started)[: self.max_sources_per_tick]
         batch = IngestBatchResult(started_at=started, finished_at=started, sources_due=len(due),
             sources_fetched=0, observations_enqueued=0, observations_deduped=0, failures=0)
@@ -136,7 +153,7 @@ class IngestService:
         return batch
 
     def ingest_source(self, source_key: str) -> IngestSourceResult:
-        self._extractions_this_batch = 0
+        self._reset_extraction_budget()
         source = self.registry.get(source_key)
         if source is None:
             return IngestSourceResult(source_key=source_key, status=FetchStatus.SKIPPED.value, error="source_not_found")
@@ -236,11 +253,20 @@ class IngestService:
             return signal, scored
         if self._extractions_this_batch >= self.max_extractions_per_batch:
             return signal, scored
+        if self._extraction_deadline is None:
+            return signal, scored
+        remaining_seconds = self._extraction_deadline - time.monotonic()
+        if remaining_seconds <= 0:
+            return signal, scored
         self._extractions_this_batch += 1
         try:
             from .entity_extractor import EXTRACTABLE_FIELDS, extract_revenue_entities
 
-            extraction = extract_revenue_entities(item, reasoner=self.entity_extractor)
+            extraction = extract_revenue_entities(
+                item,
+                reasoner=self.entity_extractor,
+                request_timeout_seconds=remaining_seconds,
+            )
         except Exception:
             return signal, scored
 
