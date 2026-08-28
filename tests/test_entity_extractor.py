@@ -141,6 +141,20 @@ def test_extract_rejects_non_finite_or_out_of_range_confidence(confidence):
     assert "named_buyer" not in result["extraction_confidence"]
 
 
+@pytest.mark.parametrize("confidence", [True, False])
+def test_extract_rejects_boolean_confidence(confidence):
+    reasoner = _FakeReasoner(json.dumps({
+        "named_buyer": {
+            "value": "City Procurement Office",
+            "confidence": confidence,
+            "evidence_quote": "City Procurement Office issued a request for proposal",
+        },
+    }))
+    result = extract_revenue_entities(_item(), reasoner=reasoner)
+    assert "named_buyer" not in result
+    assert "named_buyer" not in result["extraction_confidence"]
+
+
 def test_extract_ignores_unknown_fields():
     reasoner = _FakeReasoner(json.dumps({
         "made_up_field": {"value": "x", "confidence": 0.99, "evidence_quote": "City"},
