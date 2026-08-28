@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from brain.adapters.neo4j_projection import Neo4jConfig, Neo4jProjection
-from brain.domain import Edge, Evidence, Node
+from brain.domain import Edge, Evidence
 
 
 TENANT_A = UUID("11111111-1111-1111-1111-111111111111")
