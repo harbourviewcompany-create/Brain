@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import brain.connectors.service as service_module
 from brain.connectors.protocol import (
     ConnectorKind,
     FetchResult,
@@ -37,9 +38,11 @@ class _FakeReasoner:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.timeouts: list[float | None] = []
 
     def reason(self, request):
         self.calls += 1
+        self.timeouts.append(request.timeout_seconds)
         payload = {
             "named_buyer": {
                 "value": "City Procurement Office",
@@ -157,6 +160,28 @@ def test_entity_extraction_respects_one_operation_budget():
     source = svc.register_rss(source_key="demo", url="https://example.com/feed.xml")
     assert svc._maybe_queue_revenue_action(source, _rfp_item()) is not None
     assert reasoner.calls == 1
+
+    second_item = _rfp_item(item_id="i2", content_hash="h2")
+    assert svc._maybe_queue_revenue_action(source, second_item) is None
+    assert reasoner.calls == 1
+
+
+def test_operation_wall_clock_budget_caps_request_and_skips_after_deadline(monkeypatch):
+    clock = iter([100.0, 105.0, 111.0])
+    monkeypatch.setattr(service_module.time, "monotonic", lambda: next(clock))
+
+    revenue = RevenueExecutionSpine()
+    reasoner = _FakeReasoner()
+    svc = IngestService(
+        connectors=[RssConnector()], revenue=revenue, entity_extractor=reasoner,
+        max_extractions_per_batch=20,
+        max_extraction_seconds_per_operation=10.0,
+    )
+    source = svc.register_rss(source_key="demo", url="https://example.com/feed.xml")
+
+    assert svc._maybe_queue_revenue_action(source, _rfp_item()) is not None
+    assert reasoner.calls == 1
+    assert reasoner.timeouts == [5.0]
 
     second_item = _rfp_item(item_id="i2", content_hash="h2")
     assert svc._maybe_queue_revenue_action(source, second_item) is None
