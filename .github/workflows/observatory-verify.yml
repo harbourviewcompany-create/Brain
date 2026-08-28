@@ -134,12 +134,14 @@ jobs:
           # diagnostic here. The hard production release assertion lives in
           # `.github/workflows/postdeploy-observatory-audit.yml`, which fails on
           # an unhealthy BFF, `/signals`, Railway auth, or live browser errors.
+          # Bound every diagnostic request so an unhealthy live service cannot
+          # consume the PR job's full timeout while still preserving visibility.
           base="https://brain-seven-puce.vercel.app/api/brain"
-          health_code="$(curl --retry 2 --retry-all-errors --retry-delay 1 --silent --show-error \
+          health_code="$(curl --connect-timeout 3 --max-time 10 --retry 1 --retry-all-errors --retry-delay 1 --retry-max-time 12 --silent --show-error \
             -o /tmp/health.json -w "%{http_code}" "$base/health" || true)"
-          signals_code="$(curl --retry 2 --retry-all-errors --retry-delay 1 --silent --show-error \
+          signals_code="$(curl --connect-timeout 3 --max-time 10 --retry 1 --retry-all-errors --retry-delay 1 --retry-max-time 12 --silent --show-error \
             -o /tmp/signals.json -w "%{http_code}" "$base/signals" || true)"
-          organism_code="$(curl --retry 2 --retry-all-errors --retry-delay 1 --silent --show-error \
+          organism_code="$(curl --connect-timeout 3 --max-time 10 --retry 1 --retry-all-errors --retry-delay 1 --retry-max-time 12 --silent --show-error \
             -o /tmp/organism.json -w "%{http_code}" "$base/organism/cockpit" || true)"
           node - <<NODE
           const fs = require('fs');
