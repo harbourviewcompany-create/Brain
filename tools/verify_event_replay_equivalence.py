@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import sqlite3
 from datetime import date, datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -121,8 +120,8 @@ def verify(postgres_dsn: str, sqlite_path: Path, output: Path) -> dict[str, Any]
         raise RuntimeError("psycopg dependencies are required") from exc
 
     with psycopg.connect(postgres_dsn) as source:
-        source.execute("SET default_transaction_read_only = on")
-        source.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        source.read_only = True
+        source.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
         source_result = digest_payloads(postgres_payloads(source))
 
     database = TursoDatabase(str(sqlite_path))
