@@ -31,7 +31,12 @@ from brain.money_spine import (
 )
 from brain.prediction import PredictionEngine
 from brain.runtime import BrainRuntime
-from brain.security import SecurityConfig, presented_credentials
+from brain.security import (
+    SecurityConfig,
+    api_key_fingerprint,
+    normalize_api_key,
+    presented_credentials,
+)
 
 _security = SecurityConfig.from_env()
 
@@ -60,7 +65,7 @@ async def _lifespan(_app: FastAPI):
             engine.stop()
 
 
-app = FastAPI(title="Brain Runtime API", version="0.8.1", lifespan=_lifespan)
+app = FastAPI(title="Brain Runtime API", version="0.8.2", lifespan=_lifespan)
 
 _origins = _security.allowed_origins()
 app.add_middleware(
@@ -88,7 +93,7 @@ async def brain_authentication(request: Request, call_next):
     if request.url.path in _PUBLIC_PATHS:
         return await call_next(request)
 
-    configured_key = os.environ.get(_API_KEY_ENV_VAR)
+    configured_key = normalize_api_key(os.environ.get(_API_KEY_ENV_VAR))
     if not configured_key:
         return JSONResponse(
             status_code=503,
@@ -423,11 +428,12 @@ def health():
     hb = _cognition_status()
     payload = {
         "status": "ok" if database_ok else "degraded",
-        "version": "0.8.1",
+        "version": "0.8.2",
         "database": database_status,
         "persistence": "postgres" if os.environ.get("DATABASE_URL") else "in_memory",
         "beliefs": len(runtime.store.beliefs),
         "money_lanes": len(money_spine.lanes),
+        "auth": api_key_fingerprint(os.environ.get("BRAIN_API_KEY")),
         "heartbeat": {
             "ticks": hb.get("ticks", 0),
             "total_processed": hb.get("total_processed", 0),
@@ -734,7 +740,7 @@ def list_revenue_actions():
 @app.get("/revenue-actions/{action_id}")
 def get_revenue_action(action_id: UUID):
     try:
-        return asdict(revenue_spine.actions[action_id])
+        return asdict(revenue_spine.get_action(action_id))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="revenue_action_not_found") from exc
 

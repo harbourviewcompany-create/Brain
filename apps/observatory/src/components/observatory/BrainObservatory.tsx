@@ -3,8 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CognitionTimeline } from "@/components/observatory/CognitionTimeline";
-import { ObservatoryDock } from "@/components/observatory/ObservatoryDock";
-import { SystemPulse } from "@/components/observatory/SystemPulse";
+import { LivingCognitiveMachine } from "@/components/observatory/LivingCognitiveMachine";
 import { ThoughtInspector } from "@/components/observatory/ThoughtInspector";
 import { applyDiffToBirths, createBirthMap, type BirthMap } from "@/field/births";
 import { diffScene, type FieldDiff } from "@/field/diffScene";
@@ -12,6 +11,7 @@ import { flaresFromErrors } from "@/field/flares";
 import { useBrainObservatory } from "@/hooks/useBrainObservatory";
 import { buildCognitiveScene } from "@/lib/observatory";
 import type { CognitiveScene } from "@/types/observatory";
+import styles from "./BrainObservatory.module.css";
 
 const CognitiveField = dynamic(
   () => import("@/components/observatory/CognitiveField").then((mod) => mod.CognitiveField),
@@ -89,6 +89,7 @@ const EMPTY_DIFF: FieldDiff = {
 
 export function BrainObservatory() {
   const { snapshot, history, loading } = useBrainObservatory();
+  const [graphOpen, setGraphOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [scrubIndex, setScrubIndex] = useState<number | null>(null);
   const [births, setBirths] = useState<BirthMap>(() => createBirthMap());
@@ -96,10 +97,14 @@ export function BrainObservatory() {
   const previousSceneRef = useRef<CognitiveScene | null>(null);
   const scrubBoundaryRef = useRef<number | null>(null);
 
-  const displayedSnapshot = scrubIndex === null ? snapshot : history[scrubIndex] ?? snapshot;
-  const scene = useMemo(
-    () => (displayedSnapshot ? buildCognitiveScene(displayedSnapshot) : EMPTY_SCENE),
-    [displayedSnapshot],
+  const liveScene = useMemo(
+    () => (snapshot ? buildCognitiveScene(snapshot) : EMPTY_SCENE),
+    [snapshot],
+  );
+  const graphSnapshot = scrubIndex === null ? snapshot : history[scrubIndex] ?? snapshot;
+  const graphScene = useMemo(
+    () => (graphSnapshot ? buildCognitiveScene(graphSnapshot) : EMPTY_SCENE),
+    [graphSnapshot],
   );
 
   useEffect(() => {
@@ -107,65 +112,103 @@ export function BrainObservatory() {
     if (scrubBoundary) {
       scrubBoundaryRef.current = scrubIndex;
       if (scrubIndex !== null) {
-        const replayDiff = diffScene(null, scene);
+        const replayDiff = diffScene(null, graphScene);
         setDiff(replayDiff);
         setBirths(applyDiffToBirths(createBirthMap(), replayDiff));
-        previousSceneRef.current = scene;
+        previousSceneRef.current = graphScene;
         return;
       }
     }
 
-    const nextDiff = diffScene(previousSceneRef.current, scene);
+    const nextDiff = diffScene(previousSceneRef.current, graphScene);
     setDiff(nextDiff);
     setBirths((current) => applyDiffToBirths(current, nextDiff));
-    previousSceneRef.current = scene;
-  }, [scene, scrubIndex]);
+    previousSceneRef.current = graphScene;
+  }, [graphScene, scrubIndex]);
 
   const flares = useMemo(
-    () => flaresFromErrors(displayedSnapshot?.errors ?? []),
-    [displayedSnapshot?.errors],
+    () => flaresFromErrors(graphSnapshot?.errors ?? []),
+    [graphSnapshot?.errors],
   );
 
   const selectedNode = useMemo(
-    () => scene.nodes.find((node) => node.id === selectedId) ?? null,
-    [scene.nodes, selectedId],
+    () => graphScene.nodes.find((node) => node.id === selectedId) ?? null,
+    [graphScene.nodes, selectedId],
   );
 
   useEffect(() => {
-    if (selectedId && !scene.nodes.some((node) => node.id === selectedId)) setSelectedId(null);
-  }, [scene.nodes, selectedId]);
+    if (selectedId && !graphScene.nodes.some((node) => node.id === selectedId)) setSelectedId(null);
+  }, [graphScene.nodes, selectedId]);
+
+  useEffect(() => {
+    if (!graphOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setGraphOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [graphOpen]);
 
   return (
-    <div className="observatory-root">
-      <SystemPulse snapshot={displayedSnapshot} scene={scene} loading={loading} isLive={scrubIndex === null} />
-      <ObservatoryDock />
+    <>
+      <LivingCognitiveMachine
+        snapshot={snapshot}
+        history={history}
+        scene={liveScene}
+        loading={loading}
+        onOpenGraph={() => setGraphOpen(true)}
+      />
 
-      <main className="observatory-stage">
-        <section className="observatory-field-shell" aria-label="Live cognitive field">
-          <CognitiveField
-            scene={scene}
-            diff={diff}
-            births={births}
-            flares={flares}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
+      {graphOpen ? (
+        <section
+          className={styles.overlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Brain cognitive graph inspector"
+        >
+          <header className={styles.bar}>
+            <div>
+              <strong>COGNITIVE GRAPH</strong>
+              <span>{scrubIndex === null ? "LIVE" : "OBSERVED SESSION REPLAY"}</span>
+            </div>
+            <button type="button" onClick={() => setGraphOpen(false)} aria-label="Close cognitive graph inspector">
+              Close
+            </button>
+          </header>
 
-          <div className="field-readout field-readout--left" aria-label="Cognitive field object counts">
-            <span>COGNITIVE</span>
-            <strong>{scene.cognitiveCount}</strong>
-            <span className="field-readout__diagnostic">DIAGNOSTIC</span>
-            <strong>{scene.diagnosticCount}</strong>
-          </div>
-          <div className="field-readout field-readout--right" aria-label="Mapped relation count">
-            <span>MAPPED RELATIONS</span>
-            <strong>{scene.edges.length}</strong>
+          <div className={styles.stage}>
+            <section className={`observatory-field-shell ${styles.field}`} aria-label="Live cognitive field">
+              <CognitiveField
+                scene={graphScene}
+                diff={diff}
+                births={births}
+                flares={flares}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+              />
+
+              <div className="field-readout field-readout--left" aria-label="Cognitive field object counts">
+                <span>COGNITIVE</span>
+                <strong>{graphScene.cognitiveCount}</strong>
+                <span className="field-readout__diagnostic">DIAGNOSTIC</span>
+                <strong>{graphScene.diagnosticCount}</strong>
+              </div>
+              <div className="field-readout field-readout--right" aria-label="Mapped relation count">
+                <span>MAPPED RELATIONS</span>
+                <strong>{graphScene.edges.length}</strong>
+              </div>
+            </section>
+
+            <ThoughtInspector node={selectedNode} scene={graphScene} onClose={() => setSelectedId(null)} />
+            <CognitionTimeline
+              history={history}
+              selectedIndex={scrubIndex}
+              scene={graphScene}
+              onScrub={setScrubIndex}
+            />
           </div>
         </section>
-
-        <ThoughtInspector node={selectedNode} scene={scene} onClose={() => setSelectedId(null)} />
-        <CognitionTimeline history={history} selectedIndex={scrubIndex} scene={scene} onScrub={setScrubIndex} />
-      </main>
-    </div>
+      ) : null}
+    </>
   );
 }

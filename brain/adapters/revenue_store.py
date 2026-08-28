@@ -1,29 +1,10 @@
 """Durable persistence for MoneySpineService and RevenueExecutionSpine.
 
-Both services previously ran entirely in memory in apps/api/main.py —
-every deploy silently erased the learned lane priorities, source
-reliability scores, and the entire revenue-action/outcome audit trail.
-That's a correctness bug for a system whose central claim is that it
-gets better with time: nothing can compound across restarts if nothing
-survives a restart.
-
-This adapter persists the state that actually needs to compound:
-  - money_lanes.priority_score      (the lane-learning signal)
-  - revenue_source_scores           (per-source reliability learning)
-  - revenue_execution_actions / revenue_followups / revenue_outcome_ledger
-    (the approval-gated action audit trail — the evidence that the loop
-    actually ran, not just that it could)
-
-Deliberately NOT persisted here: revenue_signals, scored_revenue_opportunities,
-and packaged_offers. The `revenue_signals.source_id` column in
-db/migrations/006_money_spine.sql is declared `uuid references sources(id)`,
-but the domain code (MoneySpineService, the connector layer) addresses
-sources by their string `source_key` throughout — never by
-`sources.id`. Persisting those three tables as-is would either violate
-that foreign key or require silently resolving source_key -> sources.id
-at every write, which is a real schema decision, not a plumbing detail.
-Left for a follow-up migration once that's decided; see the PR/ticket
-that introduced this file for the flagged discrepancy.
+The store persists learned lane/source state, the approval-gated execution
+ledger, and (once migration 025 is present) the signal/scoring/offer audit
+trail. Signal-audit writes are capability-gated so code can run safely on a
+deployment whose migration ceiling is still below 025 even though migration
+006 already created those tables with the legacy UUID key layout.
 """
 from __future__ import annotations
 
@@ -48,24 +29,23 @@ from ..money_spine import (
     AutomationReadiness,
     MoneyLane,
     OpportunityClass,
+    PackagedOffer,
     RevenueActionState,
     RevenueExecutionAction,
     RevenueFollowUp,
     RevenueOutcomeLedgerEntry,
     RevenueOutcomeType,
+    RevenueSignal,
+    ScoredOpportunity,
 )
 
-# Used to catch "relation does not exist" specifically (not swallowing
-# other DB errors) when a table hasn't reached this deploy target's
-# migration ceiling yet. An empty tuple if psycopg isn't installed means
-# the except clause below simply never matches, which is correct.
 _UndefinedTable: tuple[type[BaseException], ...] = (
     (psycopg_errors.UndefinedTable,) if psycopg_errors is not None else ()
 )
 
 
 class PostgresRevenueStore:
-    """Load/save adapter over the money_spine + revenue_execution_spine tables."""
+    """Load/save adapter over the money-spine and revenue-execution tables."""
 
     def __init__(self, dsn: str | None = None, *, pool: ConnectionPool | None = None) -> None:
         if pool is None and ConnectionPool is Any:
@@ -74,6 +54,7 @@ class PostgresRevenueStore:
             raise ValueError("dsn_or_pool_required")
         self._owns_pool = pool is None
         self.pool = pool or ConnectionPool(conninfo=dsn, min_size=1, max_size=10, open=True)
+        self._signal_audit_schema_ready: bool | None = None
 
     def close(self) -> None:
         if self._owns_pool:
@@ -117,9 +98,6 @@ class PostgresRevenueStore:
         )
 
     def seed_lanes(self, lanes: list[MoneyLane]) -> None:
-        """Upsert the default lane set. Safe to call on every boot: a
-        lane's learned priority_score is only ever updated separately
-        via save_lane_priority, never overwritten by re-seeding."""
         with self.pool.connection() as conn:
             for lane in lanes:
                 conn.execute(
@@ -159,15 +137,6 @@ class PostgresRevenueStore:
             conn.commit()
 
     # --- source reliability scores ----------------------------------------
-    #
-    # revenue_source_scores ships in db/migrations/023_revenue_source_scores.sql,
-    # which is *above* the production migration ceiling some deploy targets
-    # pin (see railway.brain-api-live.toml, --max-version). Rather than make
-    # every deploy of this adapter depend on that ceiling being raised, these
-    # two methods degrade to a no-op when the table doesn't exist yet: the
-    # rest of persistence (lanes, actions, followups, outcomes — all from
-    # migrations already within any current baseline) keeps working, and
-    # source-score learning silently resumes once the migration lands.
 
     def load_source_scores(self) -> dict[str, float]:
         try:
@@ -193,6 +162,10 @@ class PostgresRevenueStore:
             pass
 
     # --- revenue execution actions -----------------------------------------
+
+    def execution_persistence_ready(self) -> bool:
+        """Base PostgreSQL execution tables are expected to be available."""
+        return True
 
     def load_actions(self) -> dict[UUID, RevenueExecutionAction]:
         with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
@@ -225,6 +198,21 @@ class PostgresRevenueStore:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    def get_action(self, action_id: UUID) -> RevenueExecutionAction | None:
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                select id, opportunity_id, offer_id, lane_id, source_id, action_type,
+                       target_contact, proposal, evidence_refs, approval_required, state,
+                       approved_by, manual_proof_ref, created_at, updated_at
+                from public.revenue_execution_actions
+                where id = %s
+                """,
+                (action_id,),
+            )
+            row = cur.fetchone()
+        return self._row_to_action(row) if row else None
 
     def save_action(self, action: RevenueExecutionAction) -> None:
         with self.pool.connection() as conn:
@@ -330,6 +318,158 @@ class PostgresRevenueStore:
                     entry.id, entry.action_id, entry.lane_id, entry.source_id, entry.outcome_type.value,
                     entry.revenue, entry.reply, entry.meeting_booked, entry.paid_conversion,
                     entry.legal_risk, entry.operator_hours, entry.lesson, entry.created_at,
+                ),
+            )
+            conn.commit()
+
+    # --- signal scoring audit trail -----------------------------------------
+
+    def _signal_audit_schema_is_ready(self) -> bool:
+        """Return true only for migration-025-compatible text-key columns.
+
+        Migration 006 already creates all three audit tables, so catching
+        UndefinedTable cannot distinguish a pre-025 deployment from the fixed
+        schema. Inspecting the actual column types fails closed on the legacy
+        UUID layout and prevents scoring from crashing below the migration ceiling.
+
+        Only a positive capability result is cached. A long-lived process may
+        observe the pre-025 UUID layout and then remain running while migration 025
+        is applied; negative results must therefore be rechecked so audit
+        persistence activates without requiring a process restart.
+        """
+        cached = getattr(self, "_signal_audit_schema_ready", None)
+        if cached is True:
+            return True
+        try:
+            with self.pool.connection() as conn:
+                row = conn.execute(
+                    """
+                    select count(*)
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and data_type = 'text'
+                      and (
+                        (table_name = 'revenue_signals' and column_name in ('source_id', 'money_lane_id'))
+                        or (table_name = 'scored_revenue_opportunities' and column_name = 'money_lane_id')
+                      )
+                    """
+                ).fetchone()
+            ready = bool(row and int(row[0]) == 3)
+        except _UndefinedTable:
+            ready = False
+        if ready:
+            self._signal_audit_schema_ready = True
+        return ready
+
+    def save_signal_and_score(
+        self, signal: RevenueSignal, scored: ScoredOpportunity
+    ) -> None:
+        """Persist the signal and its score atomically on one PostgreSQL transaction."""
+        if not self._signal_audit_schema_is_ready():
+            return
+        with self.pool.connection() as conn:
+            try:
+                conn.execute(
+                    """
+                    insert into public.revenue_signals (
+                        id, money_lane_id, source_id, raw_signal, named_buyer, named_seller,
+                        decision_maker, visible_pain, urgency_reason, payment_path, contact_channel,
+                        evidence_refs, commercial_value, confidence, urgency, contactability,
+                        execution_difficulty, legal_access_risk, time_delay, metadata
+                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do nothing
+                    """,
+                    (
+                        signal.id, signal.money_lane_id, signal.source_id, signal.raw_signal,
+                        signal.named_buyer, signal.named_seller, signal.decision_maker,
+                        signal.visible_pain, signal.urgency_reason, signal.payment_path,
+                        signal.contact_channel, Jsonb(list(signal.evidence_refs)),
+                        signal.commercial_value, signal.confidence, signal.urgency,
+                        signal.contactability, signal.execution_difficulty, signal.legal_access_risk,
+                        signal.time_delay, Jsonb(dict(signal.metadata)),
+                    ),
+                )
+                conn.execute(
+                    """
+                    insert into public.scored_revenue_opportunities (
+                        id, revenue_signal_id, money_lane_id, score, actionable,
+                        rejection_reasons, next_action
+                    ) values (%s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do nothing
+                    """,
+                    (
+                        scored.id, scored.signal_id, scored.lane_id, scored.score, scored.actionable,
+                        Jsonb(list(scored.rejection_reasons)), scored.next_action,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
+    def save_signal(self, signal: RevenueSignal) -> None:
+        if not self._signal_audit_schema_is_ready():
+            return
+        with self.pool.connection() as conn:
+            conn.execute(
+                """
+                insert into public.revenue_signals (
+                    id, money_lane_id, source_id, raw_signal, named_buyer, named_seller,
+                    decision_maker, visible_pain, urgency_reason, payment_path, contact_channel,
+                    evidence_refs, commercial_value, confidence, urgency, contactability,
+                    execution_difficulty, legal_access_risk, time_delay, metadata
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (id) do nothing
+                """,
+                (
+                    signal.id, signal.money_lane_id, signal.source_id, signal.raw_signal,
+                    signal.named_buyer, signal.named_seller, signal.decision_maker,
+                    signal.visible_pain, signal.urgency_reason, signal.payment_path,
+                    signal.contact_channel, Jsonb(list(signal.evidence_refs)),
+                    signal.commercial_value, signal.confidence, signal.urgency,
+                    signal.contactability, signal.execution_difficulty, signal.legal_access_risk,
+                    signal.time_delay, Jsonb(dict(signal.metadata)),
+                ),
+            )
+            conn.commit()
+
+    def save_scored_opportunity(self, scored: ScoredOpportunity) -> None:
+        if not self._signal_audit_schema_is_ready():
+            return
+        with self.pool.connection() as conn:
+            conn.execute(
+                """
+                insert into public.scored_revenue_opportunities (
+                    id, revenue_signal_id, money_lane_id, score, actionable,
+                    rejection_reasons, next_action
+                ) values (%s, %s, %s, %s, %s, %s, %s)
+                on conflict (id) do nothing
+                """,
+                (
+                    scored.id, scored.signal_id, scored.lane_id, scored.score, scored.actionable,
+                    Jsonb(list(scored.rejection_reasons)), scored.next_action,
+                ),
+            )
+            conn.commit()
+
+    def save_offer(self, offer: PackagedOffer) -> None:
+        if not self._signal_audit_schema_is_ready():
+            return
+        with self.pool.connection() as conn:
+            conn.execute(
+                """
+                insert into public.packaged_offers (
+                    id, scored_opportunity_id, title, offer_name, buyer_type, target_contact,
+                    price_low, price_high, evidence_refs, outreach_script, follow_up_script,
+                    approval_required
+                ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                on conflict (id) do nothing
+                """,
+                (
+                    offer.id, offer.opportunity_id, offer.title, offer.offer_name, offer.buyer_type,
+                    offer.target_contact, offer.price_low, offer.price_high,
+                    Jsonb(list(offer.evidence_refs)), offer.outreach_script, offer.follow_up_script,
+                    offer.approval_required,
                 ),
             )
             conn.commit()
