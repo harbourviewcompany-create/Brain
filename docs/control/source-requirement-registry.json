@@ -1,5 +1,1 @@
-{
-  "registry_id": "brain-source-requirement-registry-v1",
-  "status": "RESTORED_PLACEHOLDER_SEE_PR",
-  "note": "Full registry restore pending - do not merge until replaced with complete source-requirement-registry.json from main + TRACE-BRAIN-APPS paths for cognition_cron_routes"
-}
+@/home/workdir/artifacts/reg_final.json
