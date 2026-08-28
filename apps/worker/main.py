@@ -756,6 +756,23 @@ def main() -> None:
             run_cognition_loop()
             return
         try:
+            # Topology first, lease second. Under enforced tenant RLS a
+            # deployment carrying DATABASE_URL but no BRAIN_WORKER_DATABASE_URL
+            # would take the lease on the API role here and only discover the
+            # misconfiguration when the first activity built its runner. The
+            # activity fails, but the Temporal worker stays up holding a
+            # process-lifetime advisory lock -- so a corrected worker deployed
+            # alongside it can never acquire the lease, and cognition stays
+            # down until somebody kills the broken process by hand. Failing
+            # before taking the lock leaves it free for whoever is configured
+            # correctly.
+            #
+            # Only when a database is actually configured: an in-memory
+            # Temporal worker shares nothing, needs no lease, and must not be
+            # refused for lacking a DSN it was never meant to have.
+            if os.environ.get("BRAIN_WORKER_DATABASE_URL") or os.environ.get("DATABASE_URL"):
+                worker_database_url()
+
             # The lease guards writes, not a code path. The Temporal activity
             # drives the same _runner_singleton() as the in-process loop, so
             # without taking it here a Temporal worker and an API replica

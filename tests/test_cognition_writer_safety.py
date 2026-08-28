@@ -372,6 +372,7 @@ def _detached_store() -> PostgresBrainStore:
     store._inflight_lock = threading.Lock()
     store._inflight = None
     store._refresh_attempts = 0
+    store._refresh_error = None
     store.beliefs = {"kept": "belief"}
     store.evidence = {}
     store.nodes = {}
@@ -2158,3 +2159,131 @@ def test_waiters_behind_one_failed_refresh_do_not_each_retry():
     # A request arriving afterwards still gets to try for itself.
     refresh()
     assert len(attempts) == 2
+
+
+# --- Codex round seven, against 0e03a23 ------------------------------------
+
+
+def test_a_shared_refresh_failure_reaches_a_forced_resume():
+    """Coalescing must share the outcome, not just the cost.
+
+    The previous round stopped waiters from each re-running a doomed hydrate.
+    But both resume paths call refresh(0.0) and learn of failure only by
+    exception, so returning False silently let a lease handover mark itself
+    ready and reason from the pre-handover cache -- undoing the forced-hydrate
+    guarantee two rounds earlier.
+    """
+
+    store = _detached_store()
+    attempts = []
+    first_in = threading.Event()
+    let_it_fail = threading.Event()
+    waiter_outcome = []
+
+    def failing_load(self):
+        attempts.append(1)
+        first_in.set()
+        let_it_fail.wait(timeout=5)
+        raise RuntimeError("database went away")
+
+    store._load_projection = failing_load.__get__(store)
+
+    first = threading.Thread(
+        target=lambda: waiter_outcome.append(_call_capturing(store)), daemon=True
+    )
+    first.start()
+    assert first_in.wait(timeout=5) is True
+
+    second = threading.Thread(
+        target=lambda: waiter_outcome.append(_call_capturing(store)), daemon=True
+    )
+    second.start()
+    time.sleep(0.1)
+
+    let_it_fail.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    # One database attempt between them, and both told it failed.
+    assert len(attempts) == 1
+    assert len(waiter_outcome) == 2
+    assert all(isinstance(outcome, RuntimeError) for outcome in waiter_outcome), waiter_outcome
+
+
+def _call_capturing(store):
+    try:
+        store.refresh_if_stale(0.0)
+    except BaseException as exc:  # noqa: BLE001 - the outcome is the assertion
+        return exc
+    return None
+
+
+def test_a_shared_success_is_not_reported_as_a_failure():
+    """The stored outcome must be cleared by a successful attempt."""
+
+    store = _detached_store()
+    store._refresh_error = RuntimeError("an older failure")
+    store._load_projection = (lambda self: ({}, {}, {}, {}, [])).__get__(store)
+
+    assert store.refresh_if_stale(0.0) is True
+    assert store._refresh_error is None
+
+
+def test_the_temporal_worker_validates_its_topology_before_taking_the_lease(monkeypatch):
+    """A lease taken by a misconfigured worker is held for its whole life.
+
+    Under enforced tenant RLS, DATABASE_URL without BRAIN_WORKER_DATABASE_URL
+    used to acquire on the API role and only fail when the first activity
+    built its runner -- leaving the Temporal worker up, holding the advisory
+    lock, so a corrected worker could never take it.
+    """
+
+    monkeypatch.setenv("BRAIN_WORKER_MODE", "temporal")
+    monkeypatch.setenv("TEMPORAL_ADDRESS", "temporal.internal:7233")
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+
+    order = []
+
+    def refusing_topology():
+        order.append("topology")
+        raise RuntimeError("BRAIN_WORKER_DATABASE_URL is required when tenant RLS is enforced")
+
+    monkeypatch.setattr(worker, "worker_database_url", refusing_topology)
+    monkeypatch.setattr(
+        worker,
+        "acquire_cognition_lease",
+        lambda: order.append("lease"),
+    )
+    monkeypatch.setattr(worker, "run_cognition_loop", lambda: order.append("fallback"))
+
+    worker.main()
+
+    # The topology is checked, it refuses, and no lease was ever taken.
+    assert "lease" not in order
+    assert order[0] == "topology"
+
+
+def test_an_in_memory_temporal_worker_is_not_refused_for_lacking_a_dsn(monkeypatch):
+    """A worker with no database shares nothing and needs no topology."""
+
+    monkeypatch.setenv("BRAIN_WORKER_MODE", "temporal")
+    monkeypatch.setenv("TEMPORAL_ADDRESS", "temporal.internal:7233")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("BRAIN_WORKER_DATABASE_URL", raising=False)
+
+    checked = []
+    monkeypatch.setattr(worker, "worker_database_url", lambda: checked.append(1))
+
+    ran = []
+
+    async def fake_worker():
+        ran.append("temporal")
+
+    monkeypatch.setattr(worker, "run_temporal_worker", fake_worker)
+    monkeypatch.setattr(worker, "acquire_cognition_lease", lambda: None)
+    monkeypatch.setattr(worker, "_lease_required", False)
+
+    worker.main()
+
+    assert ran == ["temporal"]
+    assert checked == []

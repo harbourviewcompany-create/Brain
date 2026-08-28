@@ -63,6 +63,10 @@ class PostgresBrainStore(InMemoryBrainStore):
         #: caller can tell "an attempt finished while I queued" from "nobody
         #: has tried yet".
         self._refresh_attempts = 0
+        #: The exception from the most recently completed attempt, or None if
+        #: it succeeded. Sharing an attempt means sharing its outcome, and for
+        #: a forced resume the outcome is the whole point.
+        self._refresh_error: BaseException | None = None
         self.hydrate()
         # The constructor's hydrate is the first refresh; without stamping it
         # here the first refresh_if_stale would immediately hydrate again.
@@ -418,9 +422,24 @@ class PostgresBrainStore(InMemoryBrainStore):
                 # a perfectly good last-known projection sat ready to serve.
                 # A request arriving later still retries; only the queue that
                 # was already waiting on this attempt shares its answer.
+                error = self._refresh_error
+                if error is not None:
+                    # Sharing the attempt means sharing its failure, not just
+                    # its cost. A read route catches this and serves the last
+                    # good projection, which is right. A forced resume
+                    # (max_age 0, from a lease handover) must not: it is about
+                    # to write, and returning False silently would let it mark
+                    # itself ready and reason from the pre-handover cache --
+                    # undoing the very guarantee the forced hydrate exists for.
+                    raise error
                 return False
             try:
                 self.hydrate()
+            except BaseException as exc:
+                self._refresh_error = exc
+                raise
+            else:
+                self._refresh_error = None
             finally:
                 self._refresh_attempts += 1
             # The whole refresh happens under the lock, not just the decision
