@@ -77,17 +77,25 @@ class CognitionLease:
 
         return self._generation
 
-    def acquire(self, *, blocking: bool = False) -> bool:
+    def acquire(self, *, blocking: bool = False, verify: bool = False) -> bool:
         """Take the lease, or report that another process holds it.
 
         When the lease is already held this revalidates the connection at most
         every ``verify_interval_seconds``: a connection can be severed without
         either side noticing, and a holder that keeps thinking on a dead
         connection has silently become a second writer.
+
+        ``verify`` skips that interval and probes the socket now. Callers about
+        to write must pass it: inside the interval a dead connection still
+        answers True from cache, while Postgres dropped the advisory lock the
+        moment the backend went away -- so another process can hold the lock,
+        legitimately, for up to verify_interval_seconds while this one goes on
+        writing under a lock it no longer has. The probe is a `select 1` on an
+        already-open connection, which is nothing beside the cycle it guards.
         """
 
         if self._conn is not None:
-            if self._still_connected():
+            if self._still_connected(force=verify):
                 return True
             log.warning("cognition lease connection lost; re-acquiring")
             self._drop()
@@ -138,14 +146,14 @@ class CognitionLease:
             log.warning("cognition lease unlock failed; closing to release")
         self._close(conn)
 
-    def _still_connected(self) -> bool:
+    def _still_connected(self, *, force: bool = False) -> bool:
         conn = self._conn
         if conn is None:
             return False
         if getattr(conn, "closed", False):
             return False
         now = time.monotonic()
-        if now - self._verified_at < self._verify_interval:
+        if not force and now - self._verified_at < self._verify_interval:
             return True
         try:
             conn.execute("select 1")

@@ -149,7 +149,7 @@ class _FakeLease:
         self.granted = granted
         self.released = 0
 
-    def acquire(self, *, blocking=False):
+    def acquire(self, *, blocking=False, verify=False):
         return self.granted
 
     def release(self):
@@ -463,7 +463,7 @@ def test_out_of_range_refresh_ttls_do_not_hydrate(monkeypatch, ttl):
 
 def test_the_worker_stops_writing_when_it_loses_the_lease(monkeypatch):
     class Lost:
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return False
 
     monkeypatch.setattr(worker, "_cognition_lease", Lost())
@@ -478,7 +478,7 @@ def test_an_in_memory_worker_needs_no_lease(monkeypatch):
 
 def test_a_lease_that_cannot_be_checked_stops_writes(monkeypatch):
     class Broken:
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             raise RuntimeError("connection reset")
 
     monkeypatch.setattr(worker, "_cognition_lease", Broken())
@@ -620,7 +620,7 @@ def test_the_temporal_fallback_reuses_the_lease_it_already_holds(monkeypatch):
         def __init__(self, dsn):
             built.append(dsn)
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return True
 
     monkeypatch.setattr("brain.cognition_lease.CognitionLease", CountingLease)
@@ -644,7 +644,7 @@ def test_a_configured_worker_that_cannot_take_the_lease_refuses_to_write(monkeyp
         def __init__(self, dsn):
             pass
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return False
 
     monkeypatch.setattr("brain.cognition_lease.CognitionLease", RefusingLease)
@@ -698,7 +698,7 @@ def test_a_request_tick_is_refused_while_another_process_owns_cognition(monkeypa
         def __init__(self, dsn):
             pass
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return False
 
         def release(self):
@@ -725,7 +725,7 @@ def test_a_request_tick_borrows_the_lease_when_nothing_else_holds_it(monkeypatch
         def __init__(self, dsn):
             pass
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return True
 
         def release(self):
@@ -1072,7 +1072,7 @@ def test_request_tick_revalidates_rather_than_trusting_a_timestamp(monkeypatch):
         def __init__(self, dsn):
             borrowed.append(dsn)
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return True
 
         def release(self):
@@ -1215,7 +1215,7 @@ def test_a_worker_that_lost_the_lease_tries_to_get_it_back(monkeypatch):
         def __init__(self, dsn):
             attempts.append(dsn)
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             # Non-blocking: the loop paces its own retries, and blocking here
             # would hold it in a call it cannot pace or log.
             assert blocking is False
@@ -1237,7 +1237,7 @@ def test_a_still_unavailable_lease_keeps_the_worker_quiet(monkeypatch):
         def __init__(self, dsn):
             pass
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return False
 
     monkeypatch.setattr("brain.cognition_lease.CognitionLease", StillDown)
@@ -1741,7 +1741,7 @@ class _ReconnectingLease:
         self.released = 0
         self._severed = False
 
-    def acquire(self, *, blocking=False):
+    def acquire(self, *, blocking=False, verify=False):
         # The reconnect happens *inside* acquire(), as it does in the real
         # lease: _still_connected() fails, the connection is dropped, a new one
         # opens, the lock is retaken, True comes back. The caller sees only the
@@ -2287,3 +2287,128 @@ def test_an_in_memory_temporal_worker_is_not_refused_for_lacking_a_dsn(monkeypat
 
     assert ran == ["temporal"]
     assert checked == []
+
+
+# --- Codex round eight, against d5bff3c ------------------------------------
+
+
+def test_a_resume_that_keeps_failing_gives_the_lease_up():
+    """Holding the lock while unable to write locks out whoever can.
+
+    A resume failing on something local to this process -- an exhausted pool,
+    a role that cannot read the projection -- left run() logging and backing
+    off with the lease still held, and the periodic yield further down _step()
+    was never reached. A healthy worker could never take over.
+    """
+
+    lease = _FakeLease()
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=lease,
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+        on_start=lambda: (_ for _ in ()).throw(RuntimeError("cannot read the projection")),
+    )
+
+    with pytest.raises(RuntimeError):
+        eng._step()
+
+    assert lease.released == 1
+    assert eng.holds_lease is False
+    assert eng.ready_to_write is False
+
+
+def test_a_write_guard_probes_the_connection_rather_than_trusting_the_interval():
+    """Inside verify_interval_seconds a dead connection still answers True.
+
+    Postgres drops the advisory lock the moment the backend goes away, so for
+    up to the whole interval another process can hold that lock legitimately
+    while this one goes on writing under one it no longer has.
+    """
+
+    from brain.cognition_lease import CognitionLease
+
+    probes = []
+
+    class Conn:
+        closed = False
+
+        def execute(self, *args):
+            probes.append(args[0] if args else "")
+            if self.closed:
+                raise RuntimeError("connection is gone")
+            return self
+
+        def fetchone(self):
+            return (True,)
+
+        def close(self):
+            self.closed = True
+
+    conns = []
+
+    def connect(dsn, autocommit=False):
+        conn = Conn()
+        conns.append(conn)
+        return conn
+
+    lease = CognitionLease(
+        "postgres:///brain", verify_interval_seconds=3600, connect=connect
+    )
+    assert lease.acquire() is True
+    probes.clear()
+
+    # Cached: well inside the interval, no probe, True.
+    assert lease.acquire() is True
+    assert probes == []
+
+    # Forced: probes the socket even though the interval has not elapsed.
+    assert lease.acquire(verify=True) is True
+    assert any("select 1" in str(p) for p in probes)
+
+
+def test_the_worker_write_guard_forces_verification(monkeypatch):
+    asked = []
+
+    class Lease:
+        generation = 1
+
+        def acquire(self, *, blocking=False, verify=False):
+            asked.append(verify)
+            return True
+
+    monkeypatch.setattr(worker, "_cognition_lease", Lease())
+    monkeypatch.setattr(worker, "_lease_required", True)
+    monkeypatch.setattr(worker, "_state_reload_pending", False)
+
+    assert worker._lease_still_held() is True
+    assert asked == [True], "a check that gates a write must not trust the cache"
+
+
+def test_the_request_write_guard_forces_verification():
+    asked = []
+
+    class Lease:
+        generation = 1
+
+        def acquire(self, *, blocking=False, verify=False):
+            asked.append(verify)
+            return True
+
+        def release(self):
+            pass
+
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=Lease(),
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+    )
+    eng._step()
+    asked.clear()
+
+    eng.revalidate_lease()
+
+    assert asked == [True]

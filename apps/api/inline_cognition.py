@@ -221,7 +221,7 @@ class InlineCognition:
         """
 
         try:
-            held = bool(self._lease.acquire())
+            held = bool(self._lease.acquire(verify=True))
         except Exception:
             log.exception("cognition lease could not be revalidated")
             return False
@@ -250,7 +250,7 @@ class InlineCognition:
         # can check ownership, and this thread can give it away, in that
         # order, with both believing they are the only writer.
         with self._guard:
-            acquired = self._lease.acquire()
+            acquired = self._lease.acquire(verify=True)
             generation = getattr(self._lease, "generation", None)
             if not acquired:
                 # Losing the lease is losing currency too: whoever holds it
@@ -293,8 +293,21 @@ class InlineCognition:
                     # meant a resume that raised was never retried: the loop
                     # logged, backed off, and then thought on forever from a
                     # cache it had never loaded.
-                    if self._on_start is not None:
-                        self._on_start()
+                    try:
+                        if self._on_start is not None:
+                            self._on_start()
+                    except BaseException:
+                        # Hold the lock and this process is the writer; fail
+                        # the resume and it is a writer that cannot safely
+                        # write. run() only logs and backs off, and the
+                        # periodic yield is further down this method and never
+                        # reached -- so a resume failing on something local to
+                        # this process (an exhausted pool, a role that cannot
+                        # read the projection) kept the lease indefinitely and
+                        # locked out a healthy worker that could have taken
+                        # over. Give it up; the next pass asks again.
+                        self._release()
+                        raise
                     self._started = True
 
         if not acquired:

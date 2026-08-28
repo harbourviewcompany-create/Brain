@@ -23,7 +23,7 @@ class FakeLease:
         self.released = 0
         self.held = False
 
-    def acquire(self, *, blocking=False):
+    def acquire(self, *, blocking=False, verify=False):
         self.acquired += 1
         self.held = self.granted
         return self.granted

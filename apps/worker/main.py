@@ -253,7 +253,7 @@ def _lease_still_held() -> bool:
         return _reacquire_cognition_lease()
     before = getattr(lease, "generation", None)
     try:
-        held = bool(lease.acquire())
+        held = bool(lease.acquire(verify=True))
     except Exception:
         log.exception("cognition lease could not be revalidated")
         return False
