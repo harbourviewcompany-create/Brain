@@ -323,17 +323,46 @@ if _DATABASE_URL:
     base.money_spine = BundleAttributeProxy(_service_registry, "money_spine")
     base.revenue_spine = BundleAttributeProxy(_service_registry, "revenue_spine")
 
+    organism_routes.organism_store = TenantAwareCognitiveOrganismStore(pool=_scoped_pool)
+
+    def _build_organism() -> CognitiveOrganism:
+        instance = CognitiveOrganism()
+        # Build under TenantPartitionedFactory.current(), where the verified tenant
+        # context is already active. The tenant-aware store therefore checkpoints
+        # the baseline into the same partition that will serve /organism/* routes.
+        organism_routes.seed_observatory_organism_baseline(
+            target=instance,
+            store=organism_routes.organism_store,
+        )
+        return instance
+
     # Not evictable: CognitiveOrganism is constructed empty and is never
     # hydrated from organism_store, so dropping a tenant's instance would reset
     # its workspace, agency actions and curiosity tasks rather than reload them.
-    organism_routes.organism = TenantPartitionedFactory(CognitiveOrganism, evictable=False)
-    organism_routes.organism_store = TenantAwareCognitiveOrganismStore(pool=_scoped_pool)
+    organism_routes.organism = TenantPartitionedFactory(_build_organism, evictable=False)
     organism_routes.startup_checkpoint = None
+
+
+def _expire_predictions_before_read() -> None:
+    """Persist prediction horizon expiry before exposing prediction read models."""
+
+    try:
+        base.learning.expire_due_predictions()
+    except Exception:
+        # Prediction reads remain available if maintenance encounters an unrelated
+        # persistence fault, while the failure is still visible in production logs.
+        base.log.exception("prediction expiry failed before read")
 
 
 @app.middleware("http")
 async def tenant_membership_boundary(request, call_next):
-    if request.url.path in {"/health", "/ready"} or tenant_security.mode == "disabled":
+    path = request.url.path
+    if path in {"/health", "/ready"}:
+        return await call_next(request)
+
+    if tenant_security.mode == "disabled":
+        if path == "/predictions" or path.startswith("/predictions/"):
+            _expire_predictions_before_read()
         return await call_next(request)
 
     try:
@@ -342,6 +371,8 @@ async def tenant_membership_boundary(request, call_next):
         return JSONResponse(status_code=401, content={"detail": str(exc)})
 
     if identity_context is None:
+        if path == "/predictions" or path.startswith("/predictions/"):
+            _expire_predictions_before_read()
         return await call_next(request)
     if _membership_resolver is None:
         return JSONResponse(
@@ -359,4 +390,6 @@ async def tenant_membership_boundary(request, call_next):
         return JSONResponse(status_code=503, content={"detail": "tenant_membership_lookup_failed"})
 
     with tenant_context_scope(verified):
+        if path == "/predictions" or path.startswith("/predictions/"):
+            _expire_predictions_before_read()
         return await call_next(request)

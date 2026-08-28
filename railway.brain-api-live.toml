@@ -8,12 +8,16 @@
 # The image, runtime entrypoint, readiness path and restart policy remain aligned
 # with railway.toml. After the tenant release is complete, remove --max-version
 # 18 so this service resumes the canonical all-migrations deployment contract.
+#
+# The Observatory seed command is inert unless BRAIN_OBSERVATORY_SEED_PACK is
+# explicitly set to observatory-production-seed-v1. The seed is deterministic,
+# idempotent, and contains internal system baseline data only.
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-preDeployCommand = ["python tools/apply_migrations.py --max-version 18"]
+preDeployCommand = ["python tools/apply_migrations.py --max-version 18", "python tools/seed_observatory_production.py"]
 healthcheckPath = "/ready"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
