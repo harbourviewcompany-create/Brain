@@ -237,13 +237,46 @@ def _lease_still_held() -> bool:
     if lease is None:
         # Only a deployment with no database may write unowned. A configured
         # one that has no lease has lost it, or never got it, and must not
-        # write until it does.
-        return not _lease_required
+        # write until it does -- but "until it does" has to be reachable.
+        # Failing closed without ever retrying leaves the worker asleep
+        # forever after a transient outage, which is its own kind of silent
+        # Brain: correct, permissionless, and permanently idle.
+        if not _lease_required:
+            return True
+        return _reacquire_cognition_lease()
     try:
         return bool(lease.acquire())
     except Exception:
         log.exception("cognition lease could not be revalidated")
         return False
+
+
+def _reacquire_cognition_lease() -> bool:
+    """Try once, without blocking, to take a lease this process has lost.
+
+    Non-blocking on purpose: this runs from inside the cognition loop, which
+    already paces its own retries. Blocking here would hold the loop in a
+    call that cannot be paced or logged.
+    """
+
+    global _cognition_lease
+
+    dsn = os.environ.get("BRAIN_WORKER_DATABASE_URL") or os.environ.get("DATABASE_URL")
+    if not dsn:
+        return False
+
+    from brain.cognition_lease import CognitionLease
+
+    lease = CognitionLease(dsn)
+    try:
+        if not lease.acquire():
+            return False
+    except Exception:
+        log.exception("cognition lease could not be re-acquired")
+        return False
+    log.info("cognition lease re-acquired; resuming cognition")
+    _cognition_lease = lease
+    return True
 
 
 def run_forever_with_maintenance(
@@ -315,11 +348,16 @@ if _HAS_TEMPORAL:
             for i in range(max_iterations):
                 if ingest_every > 0 and i > 0 and i % ingest_every == 0:
                     try:
-                        await workflow.execute_activity(
+                        batch = await workflow.execute_activity(
                             "brain.ingest_due_sources",
                             start_to_close_timeout=timedelta(minutes=2),
                         )
-                        ingest_runs += 1
+                        # An activity that declined for want of the lease
+                        # completed without doing anything. Counting it would
+                        # report ingest runs that never ingested -- the same
+                        # class of untruth this PR exists to remove.
+                        if not (isinstance(batch, dict) and batch.get("skipped")):
+                            ingest_runs += 1
                     except Exception:
                         # workflow.logger, not the module logger: workflow code
                         # must stay deterministic and replay-safe.
@@ -334,11 +372,12 @@ if _HAS_TEMPORAL:
                     idle_ticks += 1
                     await workflow.sleep(idle_seconds)
                 if idle_ticks >= maintenance_every:
-                    await workflow.execute_activity(
+                    outcome = await workflow.execute_activity(
                         "brain.prediction_maintenance",
                         start_to_close_timeout=timedelta(minutes=2),
                     )
-                    maintenance_runs += 1
+                    if not (isinstance(outcome, dict) and outcome.get("skipped")):
+                        maintenance_runs += 1
                     idle_ticks = 0
 
             if remaining_runs == 1:
@@ -379,14 +418,17 @@ if _HAS_TEMPORAL:
         return await asyncio.to_thread(_tick_under_lease)
 
     @activity.defn(name="brain.prediction_maintenance")
-    async def prediction_maintenance_activity() -> int:
+    async def prediction_maintenance_activity() -> dict[str, Any]:
+        # A dict rather than a bare count, so the workflow can tell "ran and
+        # expired nothing" from "declined for want of the lease". Returning 0
+        # for both let the workflow count maintenance that never happened.
         if not _lease_still_held():
-            return 0
+            return {"skipped": "cognition_lease_unavailable"}
         learning = _learning_singleton()
         if learning is None or not hasattr(learning, "expire_due_predictions"):
-            return 0
+            return {"expired": 0}
         expired = await asyncio.to_thread(learning.expire_due_predictions)
-        return len(expired or [])
+        return {"expired": len(expired or [])}
 
     @activity.defn(name="brain.ingest_due_sources")
     async def ingest_due_sources_activity() -> dict[str, Any]:

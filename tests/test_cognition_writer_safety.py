@@ -1157,3 +1157,92 @@ def test_every_projection_write_path_goes_through_apply_local():
         assert "super()." not in source, (
             f"{method.__name__} mutates the projection outside the lock"
         )
+
+
+# --- failing closed must not mean failing forever -------------------------
+
+
+def test_a_worker_that_lost_the_lease_tries_to_get_it_back(monkeypatch):
+    """Fail closed, but leave a way back open.
+
+    Refusing to write without the lease is right; never retrying is a Brain
+    that is correct, permissionless and permanently idle after one transient
+    outage.
+    """
+
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(worker, "_cognition_lease", None, raising=False)
+    monkeypatch.setattr(worker, "_lease_required", True, raising=False)
+    attempts = []
+
+    class Recovered:
+        def __init__(self, dsn):
+            attempts.append(dsn)
+
+        def acquire(self, *, blocking=False):
+            # Non-blocking: the loop paces its own retries, and blocking here
+            # would hold it in a call it cannot pace or log.
+            assert blocking is False
+            return True
+
+    monkeypatch.setattr("brain.cognition_lease.CognitionLease", Recovered)
+
+    assert worker._lease_still_held() is True
+    assert attempts == ["postgres:///brain"]
+    assert worker._cognition_lease is not None
+
+
+def test_a_still_unavailable_lease_keeps_the_worker_quiet(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgres:///brain")
+    monkeypatch.setattr(worker, "_cognition_lease", None, raising=False)
+    monkeypatch.setattr(worker, "_lease_required", True, raising=False)
+
+    class StillDown:
+        def __init__(self, dsn):
+            pass
+
+        def acquire(self, *, blocking=False):
+            return False
+
+    monkeypatch.setattr("brain.cognition_lease.CognitionLease", StillDown)
+
+    assert worker._lease_still_held() is False
+    assert worker._cognition_lease is None
+
+
+def test_a_leaseless_worker_needs_no_reacquisition(monkeypatch):
+    monkeypatch.setattr(worker, "_cognition_lease", None, raising=False)
+    monkeypatch.setattr(worker, "_lease_required", False, raising=False)
+    monkeypatch.setattr(
+        "brain.cognition_lease.CognitionLease",
+        lambda dsn: (_ for _ in ()).throw(AssertionError("must not take a lease")),
+    )
+
+    # No database, nothing shared, nobody to ask.
+    assert worker._lease_still_held() is True
+
+
+def test_the_workflow_does_not_count_activities_that_declined():
+    import inspect
+
+    source = inspect.getsource(worker)
+    workflow_run = source[source.index("class ContinuousCognitionWorkflow") :]
+    workflow_run = workflow_run[: workflow_run.index("def _tick_under_lease")]
+
+    # An activity that returned for want of the lease completed without doing
+    # anything; counting it reports work that never ran.
+    assert 'batch.get("skipped")' in workflow_run
+    assert 'outcome.get("skipped")' in workflow_run
+
+
+def test_prediction_maintenance_distinguishes_idle_from_declined():
+    import inspect
+
+    source = inspect.getsource(worker)
+    start = source.index('@activity.defn(name="brain.prediction_maintenance")')
+    body = source[start : source.index("@activity.defn", start + 10)]
+
+    # Returning 0 for both "ran and expired nothing" and "did not run" is what
+    # let the workflow count maintenance that never happened.
+    assert '{"skipped": "cognition_lease_unavailable"}' in body
+    assert '{"expired": 0}' in body
