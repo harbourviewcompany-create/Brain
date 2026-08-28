@@ -1,0 +1,114 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(118, 143, 171, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(118, 143, 171, 0.022) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% 48%, #101824 0, #080d14 33%, #04070b 74%);
+  background-size: 56px 56px, 56px 56px, auto;
+}
+
+.bar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 130;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 9px 16px 9px 20px;
+  border-bottom: 1px solid rgba(160, 184, 212, 0.2);
+  background: rgba(4, 7, 11, 0.96);
+  backdrop-filter: blur(18px);
+}
+
+.bar div {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.bar strong {
+  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.13em;
+  color: #dce6f2;
+}
+
+.bar span {
+  font: 700 8px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.12em;
+  color: #5bddff;
+}
+
+.bar button {
+  min-width: 66px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(91, 221, 255, 0.3);
+  border-radius: 8px;
+  background: rgba(9, 18, 27, 0.9);
+  color: #bfeeff;
+  cursor: pointer;
+}
+
+.bar button:focus-visible {
+  outline: 2px solid #5bddff;
+  outline-offset: 2px;
+}
+
+.stage {
+  position: absolute;
+  inset: 58px 0 0;
+}
+
+.field {
+  inset: 0 0 126px !important;
+}
+
+.overlay :global(.cognition-timeline) {
+  left: 0;
+}
+
+@media (max-width: 760px) {
+  .bar {
+    height: 54px;
+    padding: 8px 10px 8px 12px;
+  }
+
+  .bar div {
+    display: grid;
+    gap: 3px;
+  }
+
+  .bar strong {
+    font-size: 9px;
+  }
+
+  .bar span {
+    font-size: 7px;
+  }
+
+  .stage {
+    inset: 54px 0 0;
+  }
+
+  .field {
+    inset: 0 0 118px !important;
+  }
+
+  .overlay :global(.thought-inspector) {
+    bottom: 118px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay *,
+  .overlay *::before,
+  .overlay *::after {
+    scroll-behavior: auto !important;
+  }
+}

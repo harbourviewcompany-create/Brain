@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID
@@ -28,6 +29,21 @@ class InMemoryBrainStore:
         if limit <= 0:
             return []
         return list(self.events[:limit])
+
+    def read_recent(
+        self,
+        *,
+        event_types: Iterable[str],
+        limit: int = 200,
+    ) -> list[BrainEvent]:
+        if limit <= 0:
+            return []
+        wanted = {str(value).strip() for value in event_types if str(value).strip()}
+        if not wanted:
+            return []
+        events = [event for event in self.events if event.event_type in wanted]
+        events.sort(key=lambda event: (event.occurred_at, str(event.id)), reverse=True)
+        return events[:limit]
 
     def read_after(self, occurred_at: datetime, event_id: UUID) -> list[BrainEvent]:
         """Return events strictly after the given cursor.
