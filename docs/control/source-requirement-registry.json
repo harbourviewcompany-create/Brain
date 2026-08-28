@@ -1028,7 +1028,7 @@
         "REQ-V1-MONEY-SPINE"
       ],
       "owner_object": "Money spine durable persistence adapter and ingest-to-revenue signal adapter",
-      "schema": "money_lanes.priority_score, revenue_source_scores (db/migrations/023_revenue_source_scores.sql), revenue_execution_actions, revenue_followups, revenue_outcome_ledger (db/migrations/017_revenue_execution_spine.sql); RevenueSignal construction from RawObservationItem; revenue_signals, scored_revenue_opportunities, packaged_offers (db/migrations/024_revenue_signal_source_lane_text_keys.sql)",
+      "schema": "money_lanes.priority_score, revenue_source_scores (db/migrations/023_revenue_source_scores.sql), revenue_execution_actions, revenue_followups, revenue_outcome_ledger (db/migrations/017_revenue_execution_spine.sql); RevenueSignal construction from RawObservationItem; revenue_signals, scored_revenue_opportunities, packaged_offers (db/migrations/025_revenue_signal_source_lane_text_keys.sql)",
       "runtime_service": "PostgresRevenueStore and revenue_signal_from_observation/classify_money_lane",
       "state_machine": "ingested observation -> money lane classification -> RevenueSignal candidate -> no-fantasy scoring -> queued/approved revenue action -> follow-up -> outcome ledger -> lane priority and source score write-back",
       "fixtures": [
@@ -1059,7 +1059,7 @@
       "source_preservation": "preserved",
       "unresolved_gaps": [
         "revenue_source_scores, money_lanes and the 017 revenue tables carry no tenant_id, so migration 022's grant loop never covered them and no policy grants brain_runtime_role access; persistence is therefore only reachable while the API runs as an unconstrained role, and remains HOLD under the tenant-enforced topology",
-        "RESOLVED by db/migrations/024_revenue_signal_source_lane_text_keys.sql + PostgresRevenueStore.save_signal/save_scored_opportunity/save_offer: revenue_signals.source_id and money_lane_id are now text (matching source_key/lane_id), and all three tables are persisted as an append-only scoring audit trail, guarded by the same _UndefinedTable degradation as revenue_source_scores since migration 024 may also be above a given deploy target's ceiling",
+        "RESOLVED by db/migrations/025_revenue_signal_source_lane_text_keys.sql + PostgresRevenueStore.save_signal/save_scored_opportunity/save_offer: revenue_signals.source_id and money_lane_id are now text (matching source_key/lane_id), and all three tables are persisted as an append-only scoring audit trail, guarded by the same _UndefinedTable degradation as revenue_source_scores since migration 025 may also be above a given deploy target's ceiling",
         "auto-classified signals require human or extraction enrichment before they can queue as actions",
         "live external revenue action remains approval-gated and HOLD"
       ]

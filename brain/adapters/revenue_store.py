@@ -1,9 +1,9 @@
 """Durable persistence for MoneySpineService and RevenueExecutionSpine.
 
 The store persists learned lane/source state, the approval-gated execution
-ledger, and (once migration 024 is present) the signal/scoring/offer audit
+ledger, and (once migration 025 is present) the signal/scoring/offer audit
 trail. Signal-audit writes are capability-gated so code can run safely on a
-deployment whose migration ceiling is still below 024 even though migration
+deployment whose migration ceiling is still below 025 even though migration
 006 already created those tables with the legacy UUID key layout.
 """
 from __future__ import annotations
@@ -306,10 +306,10 @@ class PostgresRevenueStore:
     # --- signal scoring audit trail -----------------------------------------
 
     def _signal_audit_schema_is_ready(self) -> bool:
-        """Return true only for migration-024-compatible text-key columns.
+        """Return true only for migration-025-compatible text-key columns.
 
         Migration 006 already creates all three audit tables, so catching
-        UndefinedTable cannot distinguish a pre-024 deployment from the fixed
+        UndefinedTable cannot distinguish a pre-025 deployment from the fixed
         schema. Inspecting the actual column types fails closed on the legacy
         UUID layout and prevents scoring from crashing below the migration ceiling.
         """
