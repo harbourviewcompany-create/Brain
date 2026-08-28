@@ -7,7 +7,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-VERCEL_CONFIG = REPO_ROOT / "vercel.json"
+VERCEL_CONFIG = REPO_ROOT / "apps/observatory/vercel.json"
 PREVIEW_WORKFLOW = REPO_ROOT / ".github/workflows/deploy-vercel-preview.yml"
 
 
@@ -24,6 +24,9 @@ def _deployment_enabled(branch: str, rules: dict[str, bool]) -> bool:
 
 def test_vercel_git_deployment_policy_is_exactly_fail_closed() -> None:
     config = json.loads(VERCEL_CONFIG.read_text(encoding="utf-8"))
+    assert config["framework"] == "nextjs"
+    assert config["buildCommand"] == "npm run build"
+    assert config["outputDirectory"] == ".next"
     assert config["git"]["deploymentEnabled"] == {
         "**": False,
         "main": True,
