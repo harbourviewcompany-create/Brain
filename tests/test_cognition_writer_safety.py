@@ -1495,17 +1495,17 @@ def test_the_lease_is_rechecked_after_connector_ingest(monkeypatch):
     cognition cycle as a second writer.
     """
 
-    checks = []
     ticked = []
+    state = {"held": True, "ingested": False}
 
     def lease_check():
-        checks.append(1)
-        # Held for the top-of-pass and the pre-ingest check, gone after.
-        return len(checks) <= 2
+        return state["held"]
 
     class Ingest:
         def ingest_due_sources(self):
-            return None
+            # The lock is dropped somewhere inside the network call.
+            state["ingested"] = True
+            state["held"] = False
 
     class Runner:
         _idle_cycles = 0
@@ -1514,11 +1514,15 @@ def test_the_lease_is_rechecked_after_connector_ingest(monkeypatch):
             ticked.append(1)
             raise AssertionError("must not tick after losing the lease during ingest")
 
+    def sleeper(_seconds):
+        if state["ingested"]:
+            raise StopIteration
+
     monkeypatch.setattr(worker, "_lease_still_held", lease_check)
     monkeypatch.setattr(worker, "_runner_singleton", lambda: Runner())
     monkeypatch.setattr(worker, "_learning_singleton", lambda: None)
     monkeypatch.setattr(worker, "_ingest_singleton", lambda: Ingest())
-    monkeypatch.setattr(worker.time, "sleep", lambda s: (_ for _ in ()).throw(StopIteration))
+    monkeypatch.setattr(worker.time, "sleep", sleeper)
 
     with pytest.raises(StopIteration):
         worker.run_forever_with_maintenance(tick_sleep=0, ingest_every=1, maintenance_every=0)
@@ -1693,3 +1697,171 @@ def test_temporal_activities_check_the_lease_off_the_event_loop():
     assert guarded, "no lease-checking Temporal activities found"
     offenders = {name for name, (direct, _) in guarded.items() if direct}
     assert offenders == set(), f"lease checked on the event loop in: {sorted(offenders)}"
+
+
+# --- Codex round four, against c8b0a28 -------------------------------------
+
+
+class _ReconnectingLease:
+    """A lease whose acquire() hides a reconnect, as the real one does."""
+
+    def __init__(self):
+        self.generation = 1
+        self.released = 0
+
+    def acquire(self, *, blocking=False):
+        return True
+
+    def release(self):
+        self.released += 1
+
+    def sever(self):
+        # What CognitionLease does when _still_connected() fails: drop, open a
+        # new connection, take the lock again, return True. The lock was free
+        # in between.
+        self.generation += 1
+
+
+def test_a_lease_that_reconnected_is_not_mistaken_for_continuous_ownership():
+    """acquire() returning True does not mean nobody else held it.
+
+    In the gap between a severed connection and the reconnect the lock is
+    free, so another writer can take it, write, and release. Resetting the
+    resume only on a False result reads that as uninterrupted ownership and
+    thinks on from a cache that is now several versions stale.
+    """
+
+    lease = _ReconnectingLease()
+    started = []
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=lease,
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+        on_start=lambda: started.append(1),
+    )
+
+    eng._step()
+    eng._step()
+    assert started == [1]
+
+    lease.sever()
+    eng._step()
+
+    assert started == [1, 1]
+
+
+def test_the_lease_reports_a_new_generation_after_a_reconnect():
+    from brain.cognition_lease import CognitionLease
+
+    class Conn:
+        def __init__(self):
+            self.closed = False
+
+        def execute(self, *args):
+            if self.closed:
+                raise RuntimeError("connection is gone")
+            return self
+
+        def fetchone(self):
+            return (True,)
+
+        def close(self):
+            self.closed = True
+
+    opened = []
+
+    def connect(dsn, autocommit=False):
+        conn = Conn()
+        opened.append(conn)
+        return conn
+
+    lease = CognitionLease("postgres:///brain", verify_interval_seconds=0, connect=connect)
+
+    assert lease.acquire() is True
+    first = lease.generation
+    assert lease.acquire() is True
+    assert lease.generation == first, "a still-live session is the same generation"
+
+    opened[0].closed = True
+    assert lease.acquire() is True
+
+    # Same boolean, different session -- and only the generation says so.
+    assert lease.generation != first
+
+
+def test_every_release_path_takes_the_guard():
+    """stop() and run()'s final release skipped the guard.
+
+    A shutdown landing while a request was inside request_tick(), ticking on
+    the strength of this lease, handed the lock to a waiting worker mid-write.
+    """
+
+    guard = threading.RLock()
+    lease = _FakeLease()
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=lease,
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+        guard=guard,
+    )
+    eng._step()
+
+    holding = threading.Event()
+    release_it = threading.Event()
+    released_while_held = []
+
+    def request_side():
+        # Stand in for request_tick holding the writer boundary across a tick.
+        with guard:
+            holding.set()
+            release_it.wait(timeout=5)
+            released_while_held.append(lease.released)
+
+    worker_thread = threading.Thread(target=request_side, daemon=True)
+    worker_thread.start()
+    assert holding.wait(timeout=5) is True
+
+    stopper = threading.Thread(target=lambda: eng.stop(timeout=1), daemon=True)
+    stopper.start()
+    time.sleep(0.1)
+
+    release_it.set()
+    worker_thread.join(timeout=5)
+    stopper.join(timeout=5)
+
+    # The lease must still have been held for the whole of the request's turn.
+    assert released_while_held == [0]
+
+
+def test_the_worker_takes_the_lease_before_building_a_writing_runner(monkeypatch):
+    """build_runner() writes: bootstrap_mind() appends belief.seeded events.
+
+    Constructing it before the first lease check meant a worker that could not
+    take the lock still put a batch of cognition events into the shared ledger
+    on its way to logging that it was refusing to write.
+    """
+
+    built = []
+    checks = []
+
+    def lease_check():
+        checks.append(1)
+        if len(checks) < 3:
+            return False
+        raise StopIteration  # stop the loop once it gets past the gate
+
+    monkeypatch.setattr(worker, "_lease_still_held", lease_check)
+    monkeypatch.setattr(worker, "_runner_singleton", lambda: built.append(1))
+    monkeypatch.setattr(worker, "_learning_singleton", lambda: None)
+    monkeypatch.setattr(worker, "_ingest_singleton", lambda: None)
+    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
+
+    with pytest.raises(StopIteration):
+        worker.run_forever_with_maintenance(tick_sleep=0, ingest_every=0, maintenance_every=0)
+
+    # Two refusals happened before anything was constructed.
+    assert built == []

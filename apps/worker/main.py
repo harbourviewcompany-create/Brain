@@ -367,6 +367,17 @@ def _tick_sleep_seconds(default: float = 1.0) -> float:
 def run_forever_with_maintenance(
     *, tick_sleep: float = 1.0, ingest_every: int = 30, maintenance_every: int = 60
 ) -> None:
+    # Before the singletons, not after. _runner_singleton() calls
+    # build_runner(), which calls hb.bootstrap_mind(), which appends
+    # belief.seeded events to the configured durable store. A worker that
+    # cannot take the lease would therefore write a batch of cognition events
+    # into the shared ledger on its way to logging that it is refusing to
+    # write -- as a second writer, while another process legitimately holds
+    # the lock. Construction is a write here, so it waits for permission like
+    # any other.
+    while not _lease_still_held():
+        time.sleep(max(tick_sleep, 1.0))
+
     runner = _runner_singleton()
     learning = _learning_singleton()
     ingest = _ingest_singleton()

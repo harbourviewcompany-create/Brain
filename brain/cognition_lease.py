@@ -52,10 +52,30 @@ class CognitionLease:
         self._connect = connect or psycopg.connect
         self._conn: Any | None = None
         self._verified_at: float = 0.0
+        self._generation = 0
 
     @property
     def held(self) -> bool:
         return self._conn is not None
+
+    @property
+    def generation(self) -> int:
+        """How many times this lease has been taken on a *new* connection.
+
+        acquire() returning True does not mean ownership was continuous. When
+        the connection has been severed it reconnects and takes the lock
+        again, transparently -- and in the gap between those two moments the
+        lock was free, so another process could take it, write, and release
+        it. To a caller comparing booleans that is indistinguishable from
+        never having let go, which is how a holder resumes from a belief
+        cache that is several versions stale.
+
+        This counter changes exactly when the underlying session does, so a
+        caller can tell a re-acquisition from uninterrupted ownership and
+        reload durable state before writing again.
+        """
+
+        return self._generation
 
     def acquire(self, *, blocking: bool = False) -> bool:
         """Take the lease, or report that another process holds it.
@@ -99,6 +119,9 @@ class CognitionLease:
 
         self._conn = conn
         self._verified_at = time.monotonic()
+        # A new session, and so a new generation: whatever happened while this
+        # process was disconnected, it did not happen under this lock.
+        self._generation += 1
         return True
 
     def release(self) -> None:

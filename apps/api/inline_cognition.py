@@ -149,6 +149,10 @@ class InlineCognition:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._held_since: float | None = None
+        #: The lease generation this engine last resumed under. A lease can
+        #: reconnect and retake the lock without ever saying so, so ownership
+        #: has to be compared by session, not by boolean.
+        self._generation: Any = None
         self.ticks = 0
 
     @property
@@ -229,6 +233,7 @@ class InlineCognition:
         # order, with both believing they are the only writer.
         with self._guard:
             acquired = self._lease.acquire()
+            generation = getattr(self._lease, "generation", None)
             if not acquired:
                 # Losing the lease is losing currency too: whoever holds it
                 # now is writing beliefs this cycle has not seen, so the next
@@ -236,6 +241,17 @@ class InlineCognition:
                 self._held_since = None
                 self._started = False
             else:
+                if generation != self._generation:
+                    # A different session behind the same True. acquire()
+                    # reconnects and retakes the lock transparently when the
+                    # connection has been severed, and in that gap the lock
+                    # was free -- long enough for another writer to take it,
+                    # write, and hand it back. Comparing only the boolean
+                    # reads that as uninterrupted ownership and skips the
+                    # resume, which is exactly when the resume matters most.
+                    self._generation = generation
+                    self._held_since = None
+                    self._started = False
                 if self._held_since is None:
                     self._held_since = self._clock()
                     log.info("inline cognition acquired the cognition lease")
@@ -287,12 +303,22 @@ class InlineCognition:
             self._stop.wait(self._tick_sleep)
 
     def _release(self) -> None:
-        self._held_since = None
-        self._started = False
-        try:
-            self._lease.release()
-        except Exception:
-            log.exception("inline cognition could not release the cognition lease")
+        # Every release takes the guard, not only the periodic yield. run()'s
+        # final release and stop()'s both used to skip it, so a shutdown
+        # landing while a request was inside request_tick() -- ticking on the
+        # strength of this very lease -- handed the lock to a waiting worker
+        # mid-write. The guard is reentrant, so the yield path that already
+        # holds it is unaffected, and stop() joins the loop thread first, so
+        # there is nothing left to wait on but an in-flight request, which is
+        # precisely what it should wait for.
+        with self._guard:
+            self._held_since = None
+            self._started = False
+            self._generation = None
+            try:
+                self._lease.release()
+            except Exception:
+                log.exception("inline cognition could not release the cognition lease")
 
 
 def _did_work(result: Any) -> bool:
