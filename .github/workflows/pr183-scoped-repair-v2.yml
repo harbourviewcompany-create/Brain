@@ -1,0 +1,52 @@
+name: PR183 Scoped Repair V2
+
+on:
+  push:
+    branches:
+      - fix/revenue-signal-schema
+    paths:
+      - .github/workflows/pr183-scoped-repair-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/revenue-signal-schema
+          fetch-depth: 0
+
+      - name: Reuse validated anchored repair script
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          lines = Path('.github/workflows/pr183-scoped-repair.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line.strip() == "python - <<'PY'") + 1
+          end = next(i for i in range(start, len(lines)) if lines[i].strip() == 'PY')
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines[start:end]) + '\n'
+          subprocess.run([sys.executable, '-'], input=script, text=True, check=True)
+          PY
+
+      - name: Restore workflow paths and validate source patch
+        run: |
+          git restore --source=HEAD -- .github/workflows/pr183-scoped-repair.yml .github/workflows/revenue-persistence-migration.yml
+          python -m py_compile brain/adapters/revenue_store.py brain/money_spine.py apps/api/main.py apps/api/tenant_app.py tools/verify_revenue_atomic_replica.py tests/test_revenue_atomic_contract.py
+          git diff --check
+          test "$(find db/migrations -maxdepth 1 -type f -name '024_*' | wc -l)" -eq 1
+          test "$(find db/migrations -maxdepth 1 -type f -name '025_*' | wc -l)" -eq 1
+
+      - name: Commit source repair only
+        run: |
+          git config user.name "Harbourview PR183 Repair"
+          git config user.email "harbourviewcompany@gmail.com"
+          git add apps/api/main.py apps/api/tenant_app.py brain/adapters/revenue_store.py brain/money_spine.py docs/control/evidence/PR183_REVENUE_PERSISTENCE_REPAIR.md docs/control/source-requirement-registry.json tests/test_revenue_atomic_contract.py tools/verify_revenue_atomic_replica.py
+          git diff --cached --check
+          git commit -m "fix(revenue): atomic audit and replica refresh"
+          git push origin HEAD:fix/revenue-signal-schema
