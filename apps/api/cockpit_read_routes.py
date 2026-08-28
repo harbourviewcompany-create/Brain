@@ -57,23 +57,55 @@ def _number(payload: dict[str, Any], key: str, default: float = 0.0) -> float:
 
 
 def _event_store(api_module: Any) -> Any:
-    """Resolve the canonical durable event store behind the active runtime.
-
-    PostgresBrainStore keeps disposable projections in memory and exposes its
-    durable append-only stream through ``event_store``. In-memory/test stores
-    expose ``read_all`` directly. Tenant proxies can resolve either shape.
-    """
+    """Resolve the canonical durable event store behind the active runtime."""
     store = api_module.runtime.store
     candidate = getattr(store, "event_store", None)
-    return candidate if candidate is not None and hasattr(candidate, "read_all") else store
+    if candidate is not None and (
+        hasattr(candidate, "read_recent") or hasattr(candidate, "read_all")
+    ):
+        return candidate
+    return store
 
 
-def _read_events(api_module: Any) -> list[Any]:
+def _read_events(
+    api_module: Any,
+    *,
+    event_types: set[str],
+    limit: int,
+) -> list[Any]:
+    """Return a bounded newest-first event slice for cockpit projections.
+
+    Production Postgres uses ``read_recent`` so each event type walks the
+    ``brain_events_type_idx`` index backward and stops at a finite limit. This
+    avoids the historical `/signals` full-ledger sort that exhausted PostgreSQL
+    temporary disk. Small in-memory/test stores retain a safe fallback.
+    """
+    if limit <= 0 or not event_types:
+        return []
     store = _event_store(api_module)
+    recent = getattr(store, "read_recent", None)
+    if callable(recent):
+        return list(recent(event_types=event_types, limit=limit))
+
     reader = getattr(store, "read_all", None)
     if not callable(reader):
         return []
-    return list(reader())
+    events = [
+        event
+        for event in reader()
+        if getattr(event, "event_type", None) in event_types
+    ]
+    events.sort(
+        key=lambda event: (getattr(event, "occurred_at", datetime.min.replace(tzinfo=UTC)), str(getattr(event, "id", ""))),
+        reverse=True,
+    )
+    return events[:limit]
+
+
+def _refresh_projection(api_module: Any) -> None:
+    refresh = getattr(api_module, "_refresh_reads", None)
+    if callable(refresh):
+        refresh()
 
 
 def _signal_item_from_event(event: Any) -> dict[str, Any]:
@@ -183,18 +215,21 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
 
     @app.get("/signals")
     def list_signals():
-        """Read signals from the canonical durable signal.enqueued event stream."""
+        """Read the latest durable signals without a full-ledger scan."""
         items = [
             _signal_item_from_event(event)
-            for event in _read_events(api_module)
-            if getattr(event, "event_type", None) == "signal.enqueued"
+            for event in _read_events(
+                api_module,
+                event_types={"signal.enqueued"},
+                limit=500,
+            )
         ]
-        items.sort(key=lambda item: item["created_at"], reverse=True)
         return _list_response(items)
 
     @app.get("/evidence")
     def list_evidence():
         """Expose persisted evidence and its real belief relationships."""
+        _refresh_projection(api_module)
         store = api_module.runtime.store
         relationships: dict[str, dict[str, Any]] = {}
         for belief in store.beliefs.values():
@@ -246,6 +281,7 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
     @app.get("/contradictions")
     def list_contradictions():
         """Live contradiction read model derived from contested beliefs."""
+        _refresh_projection(api_module)
         items: list[dict[str, Any]] = []
         for belief in api_module.runtime.store.beliefs.values():
             supporting = [str(e) for e in getattr(belief, "supporting_evidence", set())]
@@ -271,6 +307,7 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
     @app.get("/curiosity")
     def list_curiosity_tasks():
         """Live curiosity read model derived from belief unknowns."""
+        _refresh_projection(api_module)
         items: list[dict[str, Any]] = []
         for belief in api_module.runtime.store.beliefs.values():
             for index, unknown in enumerate(getattr(belief, "unknowns", []) or []):
@@ -292,6 +329,7 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
     @app.get("/sources")
     def list_sources():
         """Live source read model from evidence and source reliability scores."""
+        _refresh_projection(api_module)
         source_ids = {str(e.source_id) for e in api_module.runtime.store.evidence.values()}
         source_scores = getattr(api_module._learning_store, "source_scores", {}) or {}
         source_ids.update(str(key) for key in source_scores.keys())
@@ -316,25 +354,29 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
 
     @app.get("/outcomes")
     def list_outcomes():
-        """Project real outcome.recorded events into the Observatory Outcome contract."""
+        """Project recent real outcome.recorded events into the Outcome contract."""
         items = [
             _outcome_item_from_event(event)
-            for event in _read_events(api_module)
-            if getattr(event, "event_type", None) == "outcome.recorded"
+            for event in _read_events(
+                api_module,
+                event_types={"outcome.recorded"},
+                limit=200,
+            )
         ]
-        items.sort(key=lambda item: item["created_at"], reverse=True)
         return _list_response(items)
 
     @app.get("/learning-events")
     def list_learning_events():
-        """Expose the bounded durable cognitive evolution history used by the UI."""
+        """Expose bounded durable cognitive evolution history used by the UI."""
         items = [
             _learning_event_item(event)
-            for event in _read_events(api_module)
-            if getattr(event, "event_type", None) in _LEARNING_EVENT_TYPES
+            for event in _read_events(
+                api_module,
+                event_types=_LEARNING_EVENT_TYPES,
+                limit=200,
+            )
         ]
-        items.sort(key=lambda item: (item["occurred_at"], item["id"]), reverse=True)
-        return _list_response(items[:200])
+        return _list_response(items)
 
     @app.get("/working-memory")
     def get_working_memory():
@@ -344,13 +386,17 @@ def register_cockpit_read_routes(app: Any, *, api_module: Any) -> None:
         process owns the worker's in-memory buffer. Capacity is taken only from a
         real memory.working_stored event when available.
         """
-        events = _read_events(api_module)
+        events = _read_events(
+            api_module,
+            event_types={"cycle.completed", "memory.working_stored"},
+            limit=50,
+        )
         completed = next(
-            (event for event in reversed(events) if getattr(event, "event_type", None) == "cycle.completed"),
+            (event for event in events if getattr(event, "event_type", None) == "cycle.completed"),
             None,
         )
         stored = next(
-            (event for event in reversed(events) if getattr(event, "event_type", None) == "memory.working_stored"),
+            (event for event in events if getattr(event, "event_type", None) == "memory.working_stored"),
             None,
         )
         if completed is None:
