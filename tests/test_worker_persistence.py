@@ -95,6 +95,48 @@ def test_cycle_writes_beliefs_through_to_the_durable_projection():
     PostgresBrainStore produced a durable event stream whose `beliefs` table --
     the one the API reads -- was never updated. Worker beliefs were invisible to
     the API and vanished from the working set on restart.
+
+    Asserted through process(), the path that actually authors beliefs. It used
+    to be asserted through register_belief(), which persisted too -- but that
+    is a resume path, and writing there overwrote newer versions with the
+    snapshot the resume had just read. The guard belongs on the path that
+    creates a belief, not on the one that loads it.
+    """
+    from brain.cycle import CognitiveCycle, CognitiveStimulus
+    from brain.domain import Belief
+
+    class RecordingStore(InMemoryBrainStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.saved: list[Belief] = []
+
+        def save(self, item):  # type: ignore[override]
+            if isinstance(item, Belief):
+                self.saved.append(item)
+            super().save(item)
+
+    store = RecordingStore()
+    cycle = CognitiveCycle(store)
+
+    cycle.process(
+        CognitiveStimulus(
+            content="durable projection",
+            source_id="test",
+            claim="the beliefs table is written",
+        )
+    )
+
+    assert store.saved, "a cycle must write its beliefs through to the store"
+
+
+def test_resuming_a_belief_does_not_write_it_back():
+    """A resume must not be a write.
+
+    register_belief() is only ever called to adopt what the database already
+    holds -- by the API's resume, the worker's, and build_runner(). save()
+    updates the row unconditionally, so persisting here handed an older
+    snapshot back to the database, overwriting any revision an unguarded
+    writer (POST /learn takes no lease) had made in between.
     """
     from brain.cycle import CognitiveCycle
     from brain.domain import Belief
@@ -111,12 +153,12 @@ def test_cycle_writes_beliefs_through_to_the_durable_projection():
 
     store = RecordingStore()
     cycle = CognitiveCycle(store)
-    belief = Belief(statement="durable projection", confidence=0.5)
+    belief = Belief(statement="already durable", confidence=0.5)
 
     cycle.register_belief(belief)
 
-    assert store.saved, "registering a belief must write it through to the store"
-    assert store.saved[-1].id == belief.id
+    assert store.saved == []
+    assert cycle._belief_cache[belief.id] is belief
 
 
 def test_belief_write_through_is_optional():

@@ -1708,18 +1708,23 @@ class _ReconnectingLease:
     def __init__(self):
         self.generation = 1
         self.released = 0
+        self._severed = False
 
     def acquire(self, *, blocking=False):
+        # The reconnect happens *inside* acquire(), as it does in the real
+        # lease: _still_connected() fails, the connection is dropped, a new one
+        # opens, the lock is retaken, True comes back. The caller sees only the
+        # boolean; the generation is what says the lock was free in between.
+        if self._severed:
+            self._severed = False
+            self.generation += 1
         return True
 
     def release(self):
         self.released += 1
 
     def sever(self):
-        # What CognitionLease does when _still_connected() fails: drop, open a
-        # new connection, take the lock again, return True. The lock was free
-        # in between.
-        self.generation += 1
+        self._severed = True
 
 
 def test_a_lease_that_reconnected_is_not_mistaken_for_continuous_ownership():
@@ -1865,3 +1870,117 @@ def test_the_worker_takes_the_lease_before_building_a_writing_runner(monkeypatch
 
     # Two refusals happened before anything was constructed.
     assert built == []
+
+
+# --- Codex round five, against 4767f9f -------------------------------------
+
+
+def test_request_revalidation_notices_a_reconnected_lease():
+    """_step() compared generations; the request path did not.
+
+    A request arriving between the reconnect and the loop's next step saw
+    ready_to_write describing the *old* session and ticked from a cache
+    another holder may have written past.
+    """
+
+    lease = _ReconnectingLease()
+    eng = inline.InlineCognition(
+        tick=lambda: {},
+        lease=lease,
+        tick_sleep=0,
+        retry_seconds=0,
+        yield_seconds=0,
+        on_start=lambda: None,
+    )
+    eng._step()
+    assert eng.ready_to_write is True
+    assert eng.revalidate_lease() is True
+
+    lease.sever()
+
+    # Same lock, new session: not something to write on until the loop resumes.
+    assert eng.revalidate_lease() is False
+    assert eng.ready_to_write is False
+
+
+def test_the_worker_reloads_when_its_lease_quietly_reconnects(monkeypatch):
+    """acquire() reconnecting never reaches _reacquire_cognition_lease().
+
+    _cognition_lease was never None, so the reload that path performs was
+    skipped and the runner carried on from its pre-handover cache.
+    """
+
+    lease = _ReconnectingLease()
+    monkeypatch.setattr(worker, "_cognition_lease", lease)
+    monkeypatch.setattr(worker, "_lease_required", True)
+
+    resumed = []
+    monkeypatch.setattr(worker, "_resume_worker_state", lambda: resumed.append(1))
+
+    assert worker._lease_still_held() is True
+    assert resumed == []
+
+    lease.sever()
+
+    assert worker._lease_still_held() is True
+    assert resumed == [1]
+
+
+def test_a_worker_reload_that_fails_after_a_reconnect_stops_writes(monkeypatch):
+    lease = _ReconnectingLease()
+    monkeypatch.setattr(worker, "_cognition_lease", lease)
+    monkeypatch.setattr(worker, "_lease_required", True)
+    monkeypatch.setattr(
+        worker,
+        "_resume_worker_state",
+        lambda: (_ for _ in ()).throw(RuntimeError("database gone")),
+    )
+    lease.sever()
+
+    assert worker._lease_still_held() is False
+
+
+@pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "-1", "not-a-number"])
+def test_an_unusable_temporal_idle_interval_falls_back(monkeypatch, raw):
+    """The workflow now reaches workflow.sleep() on nearly every idle cycle.
+
+    Classifying endogenous cycles made the tick activity report False on
+    almost every pass, so a bad BRAIN_IDLE_SLEEP_SECONDS stops being inert:
+    it eliminates pacing, is rejected as a timer, or stalls the workflow.
+    """
+
+    monkeypatch.setenv("BRAIN_IDLE_SLEEP_SECONDS", raw)
+
+    assert worker._idle_sleep_seconds() == 1.0
+
+
+def test_a_usable_temporal_idle_interval_is_honoured(monkeypatch):
+    monkeypatch.setenv("BRAIN_IDLE_SLEEP_SECONDS", "2.5")
+
+    assert worker._idle_sleep_seconds() == 2.5
+
+
+def test_the_workflow_is_started_with_a_validated_interval():
+    """The validated value has to reach start_workflow, not just exist."""
+
+    import ast
+    import inspect
+    import textwrap
+
+    tree = ast.parse(textwrap.dedent(inspect.getsource(worker)))
+    raw_reads = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and node.value == "BRAIN_IDLE_SLEEP_SECONDS"
+    ]
+    # Read in exactly one place: the validator. Anywhere else is an unchecked path.
+    enclosing = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Constant) and node.value == "BRAIN_IDLE_SLEEP_SECONDS":
+                enclosing.append(fn.name)
+
+    assert len(raw_reads) == 1
+    assert enclosing == ["_idle_sleep_seconds"]

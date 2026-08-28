@@ -245,11 +245,28 @@ def _lease_still_held() -> bool:
         if not _lease_required:
             return True
         return _reacquire_cognition_lease()
+    before = getattr(lease, "generation", None)
     try:
-        return bool(lease.acquire())
+        held = bool(lease.acquire())
     except Exception:
         log.exception("cognition lease could not be revalidated")
         return False
+    if not held:
+        return False
+
+    # A reconnect inside acquire() never reaches _reacquire_cognition_lease(),
+    # because _cognition_lease was never None -- so the reload that path does
+    # was skipped and this runner carried on from its pre-handover cache. The
+    # generation is the only thing that distinguishes "still ours" from "ours
+    # again", and until now only InlineCognition was reading it.
+    if getattr(lease, "generation", None) != before:
+        log.warning("cognition lease reconnected; reloading durable state")
+        try:
+            _resume_worker_state()
+        except Exception:
+            log.exception("durable state could not be reloaded after a lease reconnect")
+            return False
+    return True
 
 
 def _reacquire_cognition_lease() -> bool:
@@ -360,6 +377,32 @@ def _tick_sleep_seconds(default: float = 1.0) -> float:
         return default
     if not isfinite(parsed) or parsed < 0:
         log.warning("ignoring out-of-range BRAIN_TICK_SLEEP", extra={"value": raw})
+        return default
+    return parsed
+
+
+def _idle_sleep_seconds(default: float = 1.0) -> float:
+    """The Temporal workflow's pause between idle cycles, validated.
+
+    The same hazard as BRAIN_TICK_SLEEP and newly reachable for the same
+    reason: classifying endogenous cycles means the tick activity now reports
+    False on nearly every idle pass, so the workflow reaches workflow.sleep()
+    constantly. A negative, NaN or infinite value there does not raise in this
+    process -- it eliminates pacing, is rejected as a timer, or stalls the
+    workflow indefinitely, any of which turns one environment typo into a hot
+    or dead cognition loop that looks configured correctly.
+    """
+
+    raw = (os.environ.get("BRAIN_IDLE_SLEEP_SECONDS") or "").strip()
+    if not raw:
+        return default
+    try:
+        parsed = float(raw)
+    except ValueError:
+        log.warning("ignoring non-numeric BRAIN_IDLE_SLEEP_SECONDS", extra={"value": raw})
+        return default
+    if not isfinite(parsed) or parsed < 0:
+        log.warning("ignoring out-of-range BRAIN_IDLE_SLEEP_SECONDS", extra={"value": raw})
         return default
     return parsed
 
@@ -578,7 +621,7 @@ if _HAS_TEMPORAL:
                 await client.start_workflow(
                     ContinuousCognitionWorkflow.run,
                     args=[
-                        float(os.environ.get("BRAIN_IDLE_SLEEP_SECONDS", "1.0")),
+                        _idle_sleep_seconds(),
                         int(os.environ.get("BRAIN_MAINTENANCE_EVERY_IDLE", "60")),
                         int(os.environ.get("BRAIN_WORKFLOW_MAX_ITERATIONS", "1000")),
                         -1,

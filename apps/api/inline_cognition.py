@@ -221,10 +221,28 @@ class InlineCognition:
         """
 
         try:
-            return bool(self._lease.acquire())
+            held = bool(self._lease.acquire())
         except Exception:
             log.exception("cognition lease could not be revalidated")
             return False
+        if not held:
+            return False
+
+        # And the same generation, not merely the same answer. acquire() can
+        # reconnect and retake the lock transparently, and _step() is the only
+        # place that was comparing generations -- so a request arriving before
+        # the loop's next step saw ready_to_write describing the *old* session
+        # and ticked from a cache another holder may have written past. Report
+        # the continuity as lost and clear readiness, so this request is
+        # refused and the loop resumes durable state before anything writes.
+        generation = getattr(self._lease, "generation", None)
+        if generation != self._generation:
+            with self._guard:
+                self._held_since = None
+                self._started = False
+            log.warning("cognition lease reconnected; durable state must be resumed")
+            return False
+        return True
 
     def _step(self) -> None:
         # Under the guard, because losing or gaining the lease has to be
