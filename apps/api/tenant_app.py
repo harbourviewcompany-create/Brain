@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+from dataclasses import replace
 from typing import Any
 
 from fastapi.responses import JSONResponse
@@ -14,10 +15,11 @@ from brain.adapters.learning_store import (
     PostgresPredictionStore,
     PostgresSourceStore,
 )
+from brain.adapters.revenue_store import PostgresRevenueStore
 from brain.cognitive_organism import CognitiveOrganism
 from brain.heartbeat import HeartbeatService
 from brain.learning import LearningService
-from brain.money_spine import MoneySpineService
+from brain.money_spine import MoneySpineService, RevenueExecutionSpine, default_money_lanes
 from brain.runtime import BrainRuntime
 from brain.tenant_auth import TenantRole
 from brain.tenant_context import TenantScopeViolation
@@ -122,6 +124,144 @@ class TenantAwareCognitiveOrganismStore(PostgresCognitiveOrganismStore):
         return dict(row[0]) if row else None
 
 
+class TenantRevenueStore(PostgresRevenueStore):
+    """Tenant revenue persistence with pre-025 compatibility and durable learning.
+
+    The canonical tenant API can be deployed before migration 025. Execution-ledger
+    access is therefore capability-gated until 025 adds tenant ownership/RLS/grants.
+    Once 025 is present, the outcome ledger is the durable learning source: bundle
+    reconstruction replays tenant-owned outcomes into the in-code money-lane templates
+    and source reliability scores. Global lane templates and the pre-tenant
+    ``revenue_source_scores`` table remain outside tenant mutation paths.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._tenant_execution_schema_ready: bool | None = None
+
+    def _tenant_execution_schema_is_ready(self) -> bool:
+        """Return true once migration 025 exposes the tenant execution ledger.
+
+        Only a positive result is cached. A process started below migration 025 must
+        begin using durable execution persistence immediately after the migration lands,
+        without requiring a restart.
+        """
+        if self._tenant_execution_schema_ready is True:
+            return True
+        with self.pool.connection() as conn:
+            row = conn.execute(
+                """
+                select
+                  (
+                    select count(*) = 3
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name in (
+                        'revenue_execution_actions',
+                        'revenue_followups',
+                        'revenue_outcome_ledger'
+                      )
+                      and column_name = 'tenant_id'
+                  )
+                  and has_table_privilege(
+                    current_user, 'public.revenue_execution_actions', 'SELECT'
+                  )
+                  and has_table_privilege(
+                    current_user, 'public.revenue_followups', 'SELECT'
+                  )
+                  and has_table_privilege(
+                    current_user, 'public.revenue_outcome_ledger', 'SELECT'
+                  )
+                """
+            ).fetchone()
+        ready = bool(row and row[0])
+        if ready:
+            self._tenant_execution_schema_ready = True
+        return ready
+
+    @staticmethod
+    def _learning_delta(lane: Any, outcome: Any) -> float:
+        reward = min(0.15, outcome.revenue / max(lane.price_high, 1.0) * 0.10)
+        reply_reward = 0.03 if outcome.reply else -0.02
+        cost_penalty = min(0.08, outcome.operator_hours * 0.01)
+        risk_penalty = min(0.20, outcome.legal_risk * 0.15)
+        return reward + reply_reward - cost_penalty - risk_penalty
+
+    def _durable_learning_outcomes(self) -> list[Any]:
+        if not self._tenant_execution_schema_is_ready():
+            return []
+        outcomes = super().load_outcomes().values()
+        return sorted(outcomes, key=lambda item: (item.created_at, str(item.id)))
+
+    def load_lanes(self) -> dict[str, Any]:
+        if not self._tenant_execution_schema_is_ready():
+            return {}
+        lanes = {lane.lane_id: lane for lane in default_money_lanes()}
+        for outcome in self._durable_learning_outcomes():
+            lane = lanes.get(outcome.lane_id)
+            if lane is None:
+                continue
+            delta = self._learning_delta(lane, outcome)
+            priority = round(max(0.0, min(1.0, lane.priority_score + delta)), 4)
+            lanes[outcome.lane_id] = replace(lane, priority_score=priority)
+        return lanes
+
+    def seed_lanes(self, lanes: list[Any]) -> None:
+        return None
+
+    def save_lane_priority(self, lane: Any) -> None:
+        # ``record_outcome`` persists the causal outcome first. Rebuilds replay those
+        # tenant-owned outcomes deterministically instead of mutating global templates.
+        return None
+
+    def load_source_scores(self) -> dict[str, float]:
+        if not self._tenant_execution_schema_is_ready():
+            return {}
+        lanes = {lane.lane_id: lane for lane in default_money_lanes()}
+        scores: dict[str, float] = {}
+        for outcome in self._durable_learning_outcomes():
+            lane = lanes.get(outcome.lane_id)
+            if lane is None:
+                continue
+            delta = self._learning_delta(lane, outcome)
+            previous = scores.get(outcome.source_id, 0.5)
+            scores[outcome.source_id] = round(
+                max(0.0, min(1.0, previous + delta)), 4
+            )
+        return scores
+
+    def save_source_score(self, source_id: str, score: float) -> None:
+        # Source learning is reconstructed from tenant-owned outcome rows on rebuild.
+        return None
+
+    def execution_persistence_ready(self) -> bool:
+        return self._tenant_execution_schema_is_ready()
+
+    def get_action(self, action_id: Any) -> Any | None:
+        return super().get_action(action_id) if self._tenant_execution_schema_is_ready() else None
+
+    def load_actions(self) -> dict[Any, Any]:
+        return super().load_actions() if self._tenant_execution_schema_is_ready() else {}
+
+    def save_action(self, action: Any) -> None:
+        if self._tenant_execution_schema_is_ready():
+            super().save_action(action)
+
+    def load_followups(self) -> dict[Any, Any]:
+        return super().load_followups() if self._tenant_execution_schema_is_ready() else {}
+
+    def save_followup(self, followup: Any) -> None:
+        if self._tenant_execution_schema_is_ready():
+            super().save_followup(followup)
+
+    def load_outcomes(self) -> dict[Any, Any]:
+        return super().load_outcomes() if self._tenant_execution_schema_is_ready() else {}
+
+    def save_outcome(self, entry: Any) -> None:
+        if self._tenant_execution_schema_is_ready():
+            super().save_outcome(entry)
+
+
 app = base.app
 tenant_security = TenantRequestSecurity.from_env()
 
@@ -159,13 +299,21 @@ if _DATABASE_URL:
         )
         runtime = BrainRuntime(store=store)
         heartbeat = HeartbeatService(event_store=store.event_store, learning=learning)
-        return TenantServiceBundle(
+        revenue_store = TenantRevenueStore(pool=_scoped_pool)
+        money_spine = MoneySpineService(store=revenue_store)
+        revenue_spine = RevenueExecutionSpine(money=money_spine, store=revenue_store)
+        bundle = TenantServiceBundle(
             store=store,
             runtime=runtime,
             learning=learning,
             heartbeat=heartbeat,
-            money_spine=MoneySpineService(),
+            money_spine=money_spine,
         )
+        # TenantServiceBundle predates the approval spine. Preserve its public shape
+        # while exposing the paired tenant-local execution service through the same
+        # registry/proxy boundary.
+        bundle.revenue_spine = revenue_spine
+        return bundle
 
     _service_registry = TenantServiceRegistry(_build_bundle)
     base._brain_store = BundleAttributeProxy(_service_registry, "store")
@@ -173,18 +321,48 @@ if _DATABASE_URL:
     base.learning = BundleAttributeProxy(_service_registry, "learning")
     base.heartbeat = BundleAttributeProxy(_service_registry, "heartbeat")
     base.money_spine = BundleAttributeProxy(_service_registry, "money_spine")
+    base.revenue_spine = BundleAttributeProxy(_service_registry, "revenue_spine")
+
+    organism_routes.organism_store = TenantAwareCognitiveOrganismStore(pool=_scoped_pool)
+
+    def _build_organism() -> CognitiveOrganism:
+        instance = CognitiveOrganism()
+        # Build under TenantPartitionedFactory.current(), where the verified tenant
+        # context is already active. The tenant-aware store therefore checkpoints
+        # the baseline into the same partition that will serve /organism/* routes.
+        organism_routes.seed_observatory_organism_baseline(
+            target=instance,
+            store=organism_routes.organism_store,
+        )
+        return instance
 
     # Not evictable: CognitiveOrganism is constructed empty and is never
     # hydrated from organism_store, so dropping a tenant's instance would reset
     # its workspace, agency actions and curiosity tasks rather than reload them.
-    organism_routes.organism = TenantPartitionedFactory(CognitiveOrganism, evictable=False)
-    organism_routes.organism_store = TenantAwareCognitiveOrganismStore(pool=_scoped_pool)
+    organism_routes.organism = TenantPartitionedFactory(_build_organism, evictable=False)
     organism_routes.startup_checkpoint = None
+
+
+def _expire_predictions_before_read() -> None:
+    """Persist prediction horizon expiry before exposing prediction read models."""
+
+    try:
+        base.learning.expire_due_predictions()
+    except Exception:
+        # Prediction reads remain available if maintenance encounters an unrelated
+        # persistence fault, while the failure is still visible in production logs.
+        base.log.exception("prediction expiry failed before read")
 
 
 @app.middleware("http")
 async def tenant_membership_boundary(request, call_next):
-    if request.url.path in {"/health", "/ready"} or tenant_security.mode == "disabled":
+    path = request.url.path
+    if path in {"/health", "/ready"}:
+        return await call_next(request)
+
+    if tenant_security.mode == "disabled":
+        if path == "/predictions" or path.startswith("/predictions/"):
+            _expire_predictions_before_read()
         return await call_next(request)
 
     try:
@@ -193,6 +371,8 @@ async def tenant_membership_boundary(request, call_next):
         return JSONResponse(status_code=401, content={"detail": str(exc)})
 
     if identity_context is None:
+        if path == "/predictions" or path.startswith("/predictions/"):
+            _expire_predictions_before_read()
         return await call_next(request)
     if _membership_resolver is None:
         return JSONResponse(
@@ -210,4 +390,6 @@ async def tenant_membership_boundary(request, call_next):
         return JSONResponse(status_code=503, content={"detail": "tenant_membership_lookup_failed"})
 
     with tenant_context_scope(verified):
+        if path == "/predictions" or path.startswith("/predictions/"):
+            _expire_predictions_before_read()
         return await call_next(request)

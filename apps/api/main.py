@@ -740,7 +740,7 @@ def list_revenue_actions():
 @app.get("/revenue-actions/{action_id}")
 def get_revenue_action(action_id: UUID):
     try:
-        return asdict(revenue_spine.actions[action_id])
+        return asdict(revenue_spine.get_action(action_id))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="revenue_action_not_found") from exc
 
