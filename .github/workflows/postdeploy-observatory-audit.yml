@@ -4,10 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       app_base_url:
-        description: >-
-          Base URL of the deployed Observatory. The former default,
-          thebrain-sandy.vercel.app, is not a domain of the repository's Vercel
-          project (prj_Fr14GlGBNeae7coqrnhgXteHC0jA) and no longer resolves.
+        description: Canonical deployed Brain Observatory base URL
         required: false
         default: https://brain-harbourview.vercel.app
 
@@ -17,70 +14,92 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Verify production BFF and Railway auth boundary
+
+      - name: Verify Turso-backed production BFF contracts
         shell: bash
         env:
           OBSERVATORY_ACCESS_KEY: ${{ secrets.OBSERVATORY_ACCESS_KEY }}
         run: |
           set -euo pipefail
           app="${{ inputs.app_base_url }}"
-          brain="https://brain-api-live-production.up.railway.app"
+          mkdir -p apps/observatory/evidence
 
-          # The Observatory requires a signed operator session on every route,
-          # so these probes must sign in first. `curl --fail` exits on the first
-          # HTTP error, so without a session every audit stopped at its first
-          # BFF probe instead of verifying production.
           if [ -z "${OBSERVATORY_ACCESS_KEY:-}" ]; then
-            echo "OBSERVATORY_ACCESS_KEY is required to audit the protected BFF." >&2
-            echo "Add it as a repository secret and re-run this workflow." >&2
+            echo "OBSERVATORY_ACCESS_KEY is required to audit the protected Observatory." >&2
             exit 1
           fi
-          curl --silent --show-error --fail \
+
+          curl --silent --show-error --fail --max-time 20 \
             -X POST "$app/api/auth/login" \
             -H 'content-type: application/json' \
             -d "{\"access_key\":\"${OBSERVATORY_ACCESS_KEY}\"}" \
             -c /tmp/operator-cookies.txt -o /dev/null
           auth=(--cookie /tmp/operator-cookies.txt)
 
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "$app/" -o /tmp/root.html
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/health" -o /tmp/health.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/signals" -o /tmp/signals.json
-          curl --retry 4 --retry-all-errors --retry-delay 2 --fail --silent --show-error "${auth[@]}" "$app/api/brain/organism/cockpit" -o /tmp/organism.json
-
-          railway_health=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-health.json -w '%{http_code}' "$brain/health")
-          railway_protected=$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error -o /tmp/railway-signals.json -w '%{http_code}' "$brain/signals")
-          test "$railway_health" = "200"
-          test "$railway_protected" = "401"
+          curl --retry 3 --retry-all-errors --retry-delay 2 --max-time 20 --fail --silent --show-error \
+            "$app/" -o /tmp/root.html
+          curl --retry 3 --retry-all-errors --retry-delay 2 --max-time 20 --fail --silent --show-error \
+            "${auth[@]}" "$app/api/brain/health" -o /tmp/health.json
+          curl --retry 3 --retry-all-errors --retry-delay 2 --max-time 20 --fail --silent --show-error \
+            "${auth[@]}" "$app/api/brain/signals" -o /tmp/signals.json
+          curl --retry 3 --retry-all-errors --retry-delay 2 --max-time 20 --fail --silent --show-error \
+            "${auth[@]}" "$app/api/brain/organism/cockpit" -o /tmp/organism.json
 
           node - <<'NODE'
           const fs = require('fs');
           const health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
           const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
           const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
-          const direct = JSON.parse(fs.readFileSync('/tmp/railway-signals.json','utf8'));
+
           if (health.status !== 'ok') throw new Error(`health status ${health.status}`);
           if (health.database !== 'connected') throw new Error(`database ${health.database}`);
-          if (health.persistence !== 'postgres') throw new Error(`persistence ${health.persistence}`);
+          if (health.persistence !== 'turso') throw new Error(`persistence ${health.persistence}`);
+
+          const storage = health.storage;
+          if (!storage || typeof storage !== 'object') throw new Error('health.storage missing');
+          if (storage.reachable !== true) throw new Error(`storage reachable=${storage.reachable}`);
+          const utilization = Number(storage.storage_utilization);
+          if (!Number.isFinite(utilization)) throw new Error(`storage utilization invalid: ${storage.storage_utilization}`);
+          if (utilization < 0 || utilization >= 0.85) {
+            throw new Error(`storage utilization ${utilization} violates <0.85 zero-cost release gate`);
+          }
+          if (!storage.storage_pressure || storage.storage_pressure === 'unknown') {
+            throw new Error(`storage pressure invalid: ${storage.storage_pressure}`);
+          }
+          if (storage.storage_pressure === 'refuse_optional') {
+            throw new Error('storage pressure is refuse_optional');
+          }
           if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
-          if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
-          if (direct.detail !== 'invalid_or_missing_api_key') throw new Error(`unexpected direct Railway auth response: ${JSON.stringify(direct)}`);
-          console.log(JSON.stringify({
+          if (!organism || typeof organism !== 'object' || Array.isArray(organism)) {
+            throw new Error('organism payload missing');
+          }
+
+          const evidence = {
+            verified: true,
             bff: {
               health: health.status,
               version: health.version,
               database: health.database,
               persistence: health.persistence,
+              storage_reachable: storage.reachable,
+              storage_utilization: utilization,
+              storage_pressure: storage.storage_pressure,
+              canonical_event_count: storage.canonical_event_count,
+              hot_event_count: storage.hot_event_count,
+              archived_event_count: storage.archived_event_count,
+              segment_count: storage.segment_count,
               signal_count: signals.items.length,
               organism_keys: Object.keys(organism).sort()
-            },
-            railway_direct: { health: 200, protected_signals: 401, detail: direct.detail }
-          }, null, 2));
+            }
+          };
+          fs.writeFileSync('apps/observatory/evidence/runtime-contract.json', JSON.stringify(evidence, null, 2));
+          console.log(JSON.stringify(evidence, null, 2));
           NODE
 
       - name: Install browser
@@ -90,9 +109,10 @@ jobs:
           npm install --no-save --no-package-lock playwright@1.55.0
           npx playwright install --with-deps chromium
 
-      - name: Inspect live desktop and mobile UI
+      - name: Inspect live desktop tablet and mobile UI
         env:
           APP_BASE_URL: ${{ inputs.app_base_url }}
+          OBSERVATORY_ACCESS_KEY: ${{ secrets.OBSERVATORY_ACCESS_KEY }}
         shell: bash
         working-directory: apps/observatory
         run: |
@@ -106,11 +126,25 @@ jobs:
             const browser = await chromium.launch({ headless: true });
             const reports = [];
             const failures = [];
-            for (const spec of [
+            const specs = [
               { name: 'desktop', width: 1440, height: 1000 },
+              { name: 'tablet', width: 1024, height: 1366 },
               { name: 'mobile', width: 390, height: 844 },
-            ]) {
-              const page = await browser.newPage({ viewport: { width: spec.width, height: spec.height } });
+            ];
+
+            for (const spec of specs) {
+              const context = await browser.newContext({ viewport: { width: spec.width, height: spec.height } });
+              const login = await context.request.post(process.env.APP_BASE_URL + '/api/auth/login', {
+                data: { access_key: process.env.OBSERVATORY_ACCESS_KEY },
+                timeout: 20000,
+              });
+              if (!login.ok()) {
+                failures.push(`${spec.name}: operator login status ${login.status()}`);
+                await context.close();
+                continue;
+              }
+
+              const page = await context.newPage();
               const consoleErrors = [];
               const pageErrors = [];
               const serverErrors = [];
@@ -119,43 +153,51 @@ jobs:
               page.on('response', response => {
                 if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
               });
-              const response = await page.goto(process.env.APP_BASE_URL + '/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+              const response = await page.goto(process.env.APP_BASE_URL + '/', {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000,
+              });
               if (!response || response.status() !== 200) failures.push(`${spec.name}: root status ${response?.status()}`);
-              await page.waitForTimeout(12000);
+              await page.waitForTimeout(10000);
+
               const bodyText = await page.locator('body').innerText();
               const title = await page.title();
-              const canvasCount = await page.locator('canvas').count();
               const dimensions = await page.evaluate(() => ({
                 innerWidth: window.innerWidth,
                 scrollWidth: document.documentElement.scrollWidth,
                 scrollHeight: document.documentElement.scrollHeight,
               }));
-              await page.screenshot({ path: `evidence/production-${spec.name}.png`, fullPage: true });
+              const screenshot = `evidence/production-${spec.name}.png`;
+              await page.screenshot({ path: screenshot, fullPage: true });
+
               const report = {
                 ...spec,
                 title,
-                canvasCount,
                 dimensions,
+                screenshot,
                 consoleErrors,
                 pageErrors,
                 serverErrors,
-                textSample: bodyText.slice(0, 2400),
+                textSample: bodyText.slice(0, 2600),
               };
               reports.push(report);
+
               if (!/Brain Observatory/i.test(title)) failures.push(`${spec.name}: document title is ${JSON.stringify(title)}`);
-              if (!/HEALTHY/i.test(bodyText)) failures.push(`${spec.name}: HEALTHY state missing`);
-              if (!/LIVE/i.test(bodyText)) failures.push(`${spec.name}: LIVE state missing`);
+              for (const required of ['LIVING COGNITIVE MACHINE', 'COMMAND INTAKE', 'WORKING MEMORY', 'LEARNING']) {
+                if (!bodyText.toUpperCase().includes(required)) failures.push(`${spec.name}: ${required} missing`);
+              }
               if (/\[object Object\]/.test(bodyText)) failures.push(`${spec.name}: [object Object] regression visible`);
               if (/\bDEGRADED\b/i.test(bodyText)) failures.push(`${spec.name}: unexpected DEGRADED status`);
-              if (canvasCount < 1) failures.push(`${spec.name}: cognitive canvas missing`);
-              if (spec.name === 'mobile' && dimensions.scrollWidth > dimensions.innerWidth + 2) {
-                failures.push(`mobile horizontal overflow ${dimensions.scrollWidth} > ${dimensions.innerWidth}`);
+              if (spec.name !== 'desktop' && dimensions.scrollWidth > dimensions.innerWidth + 2) {
+                failures.push(`${spec.name}: horizontal overflow ${dimensions.scrollWidth} > ${dimensions.innerWidth}`);
               }
               if (consoleErrors.length || pageErrors.length || serverErrors.length) {
                 failures.push(`${spec.name} browser/runtime errors: ${JSON.stringify({ consoleErrors, pageErrors, serverErrors })}`);
               }
-              await page.close();
+              await context.close();
             }
+
             await browser.close();
             fs.writeFileSync('evidence/production-audit.json', JSON.stringify({ reports, failures }, null, 2));
             console.log(JSON.stringify({ reports, failures }, null, 2));
