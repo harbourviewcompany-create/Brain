@@ -29,6 +29,16 @@ export interface LearningEvent {
   payload: Record<string, unknown>;
 }
 
+export interface WorkingMemoryObservation {
+  observed_at: string | null;
+  size: number | null;
+  capacity: number | null;
+  cycle_id: string | null;
+  source: "cycle.completed" | "unobserved" | string;
+  evicted_count: number;
+  last_slot_id?: string | null;
+}
+
 export interface BrainCommandReceipt {
   id?: string;
   inbox_id?: string;
