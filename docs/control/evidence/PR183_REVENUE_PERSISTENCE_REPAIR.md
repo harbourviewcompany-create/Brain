@@ -94,3 +94,13 @@ Tenant learning reconstruction deliberately uses tenant-owned outcome rows creat
 PR #180 has already merged and owns `024_durable_connector_runtime.sql`. PR #183 is based on that updated `main` and owns `025_revenue_signal_source_lane_text_keys.sql`; no competing migration 024 is contributed by this PR.
 
 Production migration/deployment remains **HOLD**. This repair does not authorize raising the live migration ceiling, applying migration 025 to production, changing Railway/Fly/Vercel production configuration, restarting services, merging the PR, or enabling revenue extraction.
+
+
+## Three-finding follow-up repair — pending exact-head CI
+
+- Source requirement registry: removed resolved persistence work from active `unresolved_gaps`; the remaining lane/source item is limited to intentionally global/non-tenant storage while tenant learning remains outcome-ledger-backed.
+- Atomic audit persistence: `PostgresRevenueStore.save_signal_and_score()` writes `RevenueSignal` and `ScoredOpportunity` on one connection/transaction; `MoneySpineService` prefers this operation.
+- Warm-replica execution: `RevenueExecutionSpine` now refreshes durable action/detail/approval/follow-up/outcome state at operation boundaries, with tenant pre-025 capability gating preserved.
+- New isolated PostgreSQL verifier injects a scored-opportunity failure and requires both audit rows to roll back, then constructs two already-warm tenant execution spines against one tenant/RLS database and requires replica B to read/approve/follow-up/outcome replica A's action while another tenant cannot read it.
+- Migration ownership remains #180=024 / #183=025; no new migration is introduced.
+- Final GO remains pending exact-head Brain Control Policy, Revenue Persistence Migration, standard test including tenant-RLS and production-container jobs, and Observatory compatibility.

@@ -163,6 +163,10 @@ class PostgresRevenueStore:
 
     # --- revenue execution actions -----------------------------------------
 
+    def execution_persistence_ready(self) -> bool:
+        """Base PostgreSQL execution tables are expected to be available."""
+        return True
+
     def load_actions(self) -> dict[UUID, RevenueExecutionAction]:
         with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -194,6 +198,21 @@ class PostgresRevenueStore:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    def get_action(self, action_id: UUID) -> RevenueExecutionAction | None:
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                select id, opportunity_id, offer_id, lane_id, source_id, action_type,
+                       target_contact, proposal, evidence_refs, approval_required, state,
+                       approved_by, manual_proof_ref, created_at, updated_at
+                from public.revenue_execution_actions
+                where id = %s
+                """,
+                (action_id,),
+            )
+            row = cur.fetchone()
+        return self._row_to_action(row) if row else None
 
     def save_action(self, action: RevenueExecutionAction) -> None:
         with self.pool.connection() as conn:
@@ -341,6 +360,52 @@ class PostgresRevenueStore:
         if ready:
             self._signal_audit_schema_ready = True
         return ready
+
+    def save_signal_and_score(
+        self, signal: RevenueSignal, scored: ScoredOpportunity
+    ) -> None:
+        """Persist the signal and its score atomically on one PostgreSQL transaction."""
+        if not self._signal_audit_schema_is_ready():
+            return
+        with self.pool.connection() as conn:
+            try:
+                conn.execute(
+                    """
+                    insert into public.revenue_signals (
+                        id, money_lane_id, source_id, raw_signal, named_buyer, named_seller,
+                        decision_maker, visible_pain, urgency_reason, payment_path, contact_channel,
+                        evidence_refs, commercial_value, confidence, urgency, contactability,
+                        execution_difficulty, legal_access_risk, time_delay, metadata
+                    ) values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do nothing
+                    """,
+                    (
+                        signal.id, signal.money_lane_id, signal.source_id, signal.raw_signal,
+                        signal.named_buyer, signal.named_seller, signal.decision_maker,
+                        signal.visible_pain, signal.urgency_reason, signal.payment_path,
+                        signal.contact_channel, Jsonb(list(signal.evidence_refs)),
+                        signal.commercial_value, signal.confidence, signal.urgency,
+                        signal.contactability, signal.execution_difficulty, signal.legal_access_risk,
+                        signal.time_delay, Jsonb(dict(signal.metadata)),
+                    ),
+                )
+                conn.execute(
+                    """
+                    insert into public.scored_revenue_opportunities (
+                        id, revenue_signal_id, money_lane_id, score, actionable,
+                        rejection_reasons, next_action
+                    ) values (%s, %s, %s, %s, %s, %s, %s)
+                    on conflict (id) do nothing
+                    """,
+                    (
+                        scored.id, scored.signal_id, scored.lane_id, scored.score, scored.actionable,
+                        Jsonb(list(scored.rejection_reasons)), scored.next_action,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def save_signal(self, signal: RevenueSignal) -> None:
         if not self._signal_audit_schema_is_ready():

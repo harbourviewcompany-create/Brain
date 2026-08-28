@@ -234,6 +234,12 @@ class TenantRevenueStore(PostgresRevenueStore):
         # Source learning is reconstructed from tenant-owned outcome rows on rebuild.
         return None
 
+    def execution_persistence_ready(self) -> bool:
+        return self._tenant_execution_schema_is_ready()
+
+    def get_action(self, action_id: Any) -> Any | None:
+        return super().get_action(action_id) if self._tenant_execution_schema_is_ready() else None
+
     def load_actions(self) -> dict[Any, Any]:
         return super().load_actions() if self._tenant_execution_schema_is_ready() else {}
 

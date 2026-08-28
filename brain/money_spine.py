@@ -249,8 +249,12 @@ class MoneySpineService:
             next_action=lane.first_48_hour_action if not rejection_reasons else None,
         )
         if self.store is not None:
-            self.store.save_signal(signal)
-            self.store.save_scored_opportunity(scored)
+            atomic_save = getattr(self.store, "save_signal_and_score", None)
+            if callable(atomic_save):
+                atomic_save(signal, scored)
+            else:
+                self.store.save_signal(signal)
+                self.store.save_scored_opportunity(scored)
         return scored
 
     def package_offer(self, signal: RevenueSignal, scored: ScoredOpportunity) -> PackagedOffer:
@@ -438,6 +442,34 @@ class RevenueExecutionSpine:
             self.followups = {}
             self.outcomes = {}
 
+    def _execution_persistence_ready(self) -> bool:
+        if self.store is None:
+            return False
+        checker = getattr(self.store, "execution_persistence_ready", None)
+        return bool(checker()) if callable(checker) else True
+
+    def refresh_from_store(self) -> None:
+        """Refresh tenant-scoped durable execution state for warm-replica reads."""
+        if not self._execution_persistence_ready():
+            return
+        self.actions = self.store.load_actions()
+        self.followups = self.store.load_followups()
+        self.outcomes = self.store.load_outcomes()
+
+    def get_action(self, action_id: UUID) -> RevenueExecutionAction:
+        if self._execution_persistence_ready():
+            getter = getattr(self.store, "get_action", None)
+            if callable(getter):
+                action = getter(action_id)
+            else:
+                action = self.store.load_actions().get(action_id)
+            if action is None:
+                self.actions.pop(action_id, None)
+                raise KeyError(action_id)
+            self.actions[action_id] = action
+            return action
+        return self.actions[action_id]
+
     def queue_action_from_signal(
         self,
         signal: RevenueSignal,
@@ -479,7 +511,7 @@ class RevenueExecutionSpine:
         return action
 
     def approve_action(self, action_id: UUID, *, approved_by: str) -> RevenueExecutionAction:
-        action = self.actions[action_id]
+        action = self.get_action(action_id)
         if action.state != RevenueActionState.APPROVAL_REQUIRED:
             raise PermissionError("only_approval_required_revenue_actions_can_be_approved")
         action.state = RevenueActionState.APPROVED
@@ -490,7 +522,7 @@ class RevenueExecutionSpine:
         return action
 
     def log_manual_action(self, action_id: UUID, *, manual_proof_ref: str) -> RevenueExecutionAction:
-        action = self.actions[action_id]
+        action = self.get_action(action_id)
         if action.state != RevenueActionState.APPROVED:
             raise PermissionError("manual_revenue_action_requires_operator_approval")
         action.state = RevenueActionState.MANUAL_ACTION_LOGGED
@@ -507,7 +539,7 @@ class RevenueExecutionSpine:
         script: str,
         delay_hours: int = 48,
     ) -> RevenueFollowUp:
-        action = self.actions[action_id]
+        action = self.get_action(action_id)
         if action.state not in {RevenueActionState.APPROVED, RevenueActionState.MANUAL_ACTION_LOGGED}:
             raise PermissionError("follow_up_requires_approved_or_logged_action")
         followup = RevenueFollowUp(
@@ -521,6 +553,7 @@ class RevenueExecutionSpine:
         return followup
 
     def due_followups(self, *, now: datetime | None = None) -> list[RevenueFollowUp]:
+        self.refresh_from_store()
         current = now or datetime.now(timezone.utc)
         return [
             followup
@@ -541,7 +574,7 @@ class RevenueExecutionSpine:
         operator_hours: float,
         lesson: str,
     ) -> RevenueOutcomeLedgerEntry:
-        action = self.actions[action_id]
+        action = self.get_action(action_id)
         if action.state not in {
             RevenueActionState.APPROVED,
             RevenueActionState.MANUAL_ACTION_LOGGED,
@@ -578,6 +611,7 @@ class RevenueExecutionSpine:
         return entry
 
     def snapshot(self) -> dict[str, Any]:
+        self.refresh_from_store()
         action_counts: dict[str, int] = {state.value: 0 for state in RevenueActionState}
         for action in self.actions.values():
             action_counts[str(action.state)] += 1
