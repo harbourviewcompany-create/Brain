@@ -109,10 +109,10 @@ alter table public.revenue_followups
 alter table public.revenue_outcome_ledger
   add column if not exists tenant_id uuid references public.tenants(id) on delete restrict;
 
--- Apply the same tenant default, RLS policies, FORCE boundary, indexes and runtime DML
--- grants that migration 022 applies to tables that already carried tenant_id. This is
--- deliberately limited to table-owner operations; migration 025 does not require a
--- broader CREATE privilege on the public schema.
+-- Apply the tenant default, RLS policies, FORCE boundary and runtime DML grants that
+-- migration 022 applies to tables that already carried tenant_id. Tenant indexes are
+-- intentionally left to a later performance-only migration so 025 remains executable
+-- by the constrained table-owner migrator without public-schema CREATE privilege.
 do $$
 declare
   t text;
@@ -126,7 +126,6 @@ begin
       'alter table public.%I alter column tenant_id set default public.current_brain_tenant_id()',
       t
     );
-    execute format('create index if not exists %I on public.%I (tenant_id)', t || '_tenant_id_idx', t);
     execute format('alter table public.%I enable row level security', t);
     execute format('alter table public.%I force row level security', t);
 
