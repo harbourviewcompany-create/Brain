@@ -1,7 +1,14 @@
 name: Brain Control Policy
 
 on:
+  # validate_pr_body.py reads the body out of the event payload, so a body that
+  # violates the control template can only be fixed by editing it -- and the
+  # default activity types (opened, synchronize, reopened) never re-run on an
+  # edit. Without `edited` the check stays red until an unrelated push happens
+  # to re-trigger it, which is exactly the empty-commit-to-kick-CI habit the
+  # build rules forbid.
   pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches:
       - main
