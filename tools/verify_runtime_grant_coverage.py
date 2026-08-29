@@ -47,15 +47,6 @@ FORBIDDEN_PRIVILEGES: tuple[str, ...] = ("truncate",)
 #: sequence-backed table fails with "permission denied for sequence" without them.
 SEQUENCE_PRIVILEGES: tuple[str, ...] = ("usage", "select")
 
-#: Tables whose writes belong to the separately audited trusted worker. The
-#: runtime role is checked for the absence of those writes; the service role is
-#: checked for their presence, so revoking them -- which would silently stop
-#: PostgresRevenueStore persisting global learning -- fails here instead of in
-#: production.
-TRUSTED_SERVICE_WRITABLE: tuple[str, ...] = ("money_lanes", "revenue_source_scores")
-
-TRUSTED_SERVICE_ROLE = "brain_trusted_service_role"
-
 # Tables the runtime may read but must never write. Checked in both directions:
 # the SELECT must be present, and every write privilege must be absent.
 READ_ONLY_TABLES: dict[str, str] = {
@@ -63,14 +54,30 @@ READ_ONLY_TABLES: dict[str, str] = {
     # lifecycle mutation waits on a durable administration service.
     "tenants": "read-only by migration 022",
     "tenant_memberships": "read-only by migration 022",
-    # Global, pre-tenant catalogues carrying no tenant_id. Any runtime may read
-    # them -- MoneySpineService loads both when the API builds its revenue spine
-    # -- but only the audited trusted worker may mutate them, since a per-tenant
-    # runtime writing global learning state would move one tenant's priorities
-    # with another tenant's outcomes.
-    "money_lanes": "global catalogue; mutable only under trusted service context",
-    "revenue_source_scores": "global learning state; mutable only under trusted service context",
 }
+
+# Tables that belong to the audited trusted worker alone. The ordinary API
+# runtime is granted nothing on these, and the service role must keep the
+# privileges its adapters need -- checking only the runtime side would let a
+# later revoke strand the worker with this gate still green.
+#
+# These are referenced by runtime SQL, unlike EXPECTED_UNGRANTED, but only from
+# code the worker process runs: brain/connectors/service.py is imported solely by
+# apps/worker/main.py, and the tenant API's TenantRevenueStore overrides every
+# global write to a no-op and reconstructs learning from tenant-owned outcomes.
+TRUSTED_SERVICE_ONLY: dict[str, str] = {
+    "source_connector_runtime_state": "worker-only acquisition state (migration 026)",
+    "source_connector_ingestion_runs": "worker-only acquisition state (migration 026)",
+    "source_connector_observations": "worker-only acquisition state (migration 026)",
+    "money_lanes": "global money-lane catalogue, service-context only (migration 026)",
+    "revenue_source_scores": "global source learning, service-context only (migration 026)",
+}
+
+#: What the trusted worker must hold on the tables above. Migration 026 grants
+#: these three; DELETE is deliberately not among them.
+TRUSTED_SERVICE_PRIVILEGES: tuple[str, ...] = ("select", "insert", "update")
+
+TRUSTED_SERVICE_ROLE = "brain_trusted_service_role"
 
 # Tables the constrained runtime login is deliberately not granted at all.
 #
@@ -113,7 +120,7 @@ def _dsn(name: str) -> str:
 def required_privileges(table: str) -> tuple[str, ...]:
     """Return the privileges `table` must grant the runtime role."""
 
-    if table in EXPECTED_UNGRANTED:
+    if table in EXPECTED_UNGRANTED or table in TRUSTED_SERVICE_ONLY:
         return ()
     if table in READ_ONLY_TABLES:
         return ("select",)
@@ -286,14 +293,13 @@ def trusted_service_write_gaps(conn: psycopg.Connection) -> list[str]:
     `seed_lanes()`, `save_lane_priority()` and `save_source_score()`.
     """
 
-    writes = ("insert", "update", "delete")
     gaps: list[str] = []
-    for table in TRUSTED_SERVICE_WRITABLE:
+    for table in TRUSTED_SERVICE_ONLY:
         if conn.execute("select to_regclass(%s)", (f"public.{table}",)).fetchone()[0] is None:
             continue
         missing = [
             privilege
-            for privilege in writes
+            for privilege in TRUSTED_SERVICE_PRIVILEGES
             if not conn.execute(
                 "select has_table_privilege(%s, %s, %s)",
                 (TRUSTED_SERVICE_ROLE, f"public.{table}", privilege),
@@ -321,7 +327,7 @@ def verify(conn: psycopg.Connection) -> None:
     known = set(present)
     vanished = sorted(
         name
-        for name in (READ_ONLY_TABLES.keys() | set(TRUSTED_SERVICE_WRITABLE))
+        for name in (READ_ONLY_TABLES.keys() | TRUSTED_SERVICE_ONLY.keys())
         if name not in known
     )
     if vanished:
@@ -354,7 +360,7 @@ def verify(conn: psycopg.Connection) -> None:
         # A table listed as read-only or withheld must not quietly gain writes.
         # Only those two lists constrain the DML upper bound; a tenant-owned table
         # holding full DML is the expected case, not an excess.
-        if table in READ_ONLY_TABLES or table in EXPECTED_UNGRANTED:
+        if table in READ_ONLY_TABLES or table in EXPECTED_UNGRANTED or table in TRUSTED_SERVICE_ONLY:
             unexpected = sorted((actual & set(FULL_DML)) - required)
             if unexpected:
                 excess.append(f"{table} (unexpected {', '.join(unexpected)})")
@@ -368,8 +374,8 @@ def verify(conn: psycopg.Connection) -> None:
         )
     if excess:
         raise RuntimeError(
-            "tables documented as read-only or withheld hold write privileges: "
-            + "; ".join(excess)
+            "tables documented as read-only, trusted-worker only, or withheld hold "
+            "privileges beyond what they allow: " + "; ".join(excess)
             + ". Revoke them, or update tools/verify_runtime_grant_coverage.py if the "
             "trust boundary really did change."
         )
@@ -394,10 +400,10 @@ def verify(conn: psycopg.Connection) -> None:
     service_gaps = trusted_service_write_gaps(conn)
     if service_gaps:
         raise RuntimeError(
-            f"{TRUSTED_SERVICE_ROLE} can no longer write the global catalogues it owns: "
+            f"{TRUSTED_SERVICE_ROLE} can no longer use the tables it owns: "
             + "; ".join(service_gaps)
-            + ". The runtime role is read-only on these by design, so revoking the "
-            "service role's writes leaves nothing able to persist global learning."
+            + ". The ordinary runtime role is granted nothing on these by design, so "
+            "revoking the service role's access leaves nothing able to use them at all."
         )
 
     sequence_gaps = ungranted_sequences(conn)
@@ -411,7 +417,7 @@ def verify(conn: psycopg.Connection) -> None:
 
     stale = sorted(
         name
-        for name in (EXPECTED_UNGRANTED.keys() | READ_ONLY_TABLES.keys())
+        for name in (EXPECTED_UNGRANTED.keys() | READ_ONLY_TABLES.keys() | TRUSTED_SERVICE_ONLY.keys())
         if name in known and held.get(name, set()) != set(required_privileges(name))
     )
     if stale:  # pragma: no cover - unreachable while the two checks above pass
@@ -426,7 +432,9 @@ def verify(conn: psycopg.Connection) -> None:
     )
     print(
         f"runtime grant coverage verified: {writable} tables writable by {RUNTIME_ROLE}, "
-        f"{len(READ_ONLY_TABLES)} read-only, {len(EXPECTED_UNGRANTED)} withheld, "
+        f"{len(READ_ONLY_TABLES)} read-only, "
+        f"{len(TRUSTED_SERVICE_ONLY)} trusted-worker only, "
+        f"{len(EXPECTED_UNGRANTED)} withheld, "
         f"{required_sequences} of {len(owners)} sequences usable, "
         f"no {', '.join(FORBIDDEN_PRIVILEGES)} anywhere",
         flush=True,
@@ -462,7 +470,7 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
                 "select has_table_privilege(%s, %s)", (f"public.{table}", privilege)
             ).fetchone()[0]:
                 forbidden.append(f"{table} ({privilege})")
-        if table in READ_ONLY_TABLES or table in EXPECTED_UNGRANTED:
+        if table in READ_ONLY_TABLES or table in EXPECTED_UNGRANTED or table in TRUSTED_SERVICE_ONLY:
             for privilege in set(FULL_DML) - required:
                 if conn.execute(
                     "select has_table_privilege(%s, %s)", (f"public.{table}", privilege)
@@ -476,8 +484,8 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
         )
     if excess:
         raise RuntimeError(
-            f"the runtime login {effective!r} can write tables documented as read-only "
-            f"or withheld, even though {RUNTIME_ROLE} cannot: " + "; ".join(sorted(excess))
+            f"the runtime login {effective!r} holds privileges on tables documented as "
+            f"read-only, trusted-worker only, or withheld that {RUNTIME_ROLE} does not: " + "; ".join(sorted(excess))
             + ". Look for a direct grant on the login or membership in another role."
         )
 

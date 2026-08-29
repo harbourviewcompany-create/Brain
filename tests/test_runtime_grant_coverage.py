@@ -18,26 +18,15 @@ from tools.verify_runtime_grant_coverage import (
     FORBIDDEN_PRIVILEGES,
     FULL_DML,
     READ_ONLY_TABLES,
-    TRUSTED_SERVICE_WRITABLE,
+    TRUSTED_SERVICE_ONLY,
+    TRUSTED_SERVICE_PRIVILEGES,
     required_privileges,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-MIGRATION = ROOT / "db" / "migrations" / "026_runtime_grants_for_post_022_tables.sql"
 # tools/ is excluded on purpose: those scripts connect with the migration DSN as
 # the table owner, so they are not bound by brain_runtime_role's privileges.
 RUNTIME_DIRS = ("brain", "apps")
-
-# Reproduced against PostgreSQL 16 with migrations 001-025 applied: as a
-# brain_runtime_role member every one of these fails with "permission denied
-# for table", while a granted table such as `beliefs` succeeds.
-PREVIOUSLY_UNREACHABLE = (
-    "money_lanes",
-    "revenue_source_scores",
-    "source_connector_runtime_state",
-    "source_connector_ingestion_runs",
-    "source_connector_observations",
-)
 
 
 def _runtime_python_files() -> list[Path]:
@@ -78,49 +67,6 @@ def test_no_withheld_table_is_referenced_by_runtime_code():
     )
 
 
-def test_migration_026_grants_every_previously_unreachable_table():
-    sql = MIGRATION.read_text()
-    for table in PREVIOUSLY_UNREACHABLE:
-        assert table in sql, f"{table} lost its grant in migration 026"
-    assert "to brain_runtime_role" in sql
-
-
-def test_global_catalogue_stays_read_only_for_a_tenant_runtime():
-    """Lane priorities and source scores are global learning state.
-
-    Granting a per-tenant runtime write access to them would let one tenant's
-    outcomes move another's, which is why 026 splits the grant by role instead of
-    handing `brain_runtime_role` the same DML it gets on tenant-owned tables.
-    """
-    sql = MIGRATION.read_text()
-    assert "grant select on table public.%I to brain_runtime_role" in sql
-    assert "grant insert, update, delete on table public.%I to brain_trusted_service_role" in sql
-    assert "current_brain_service_context()" in sql
-
-
-def test_a_runtime_table_needs_more_than_select():
-    """Reachability is not a single bit.
-
-    The connector tables are inserted, updated and deleted on every ingestion
-    pass, so a later migration narrowing their grant to SELECT would break
-    ``upsert()``, ``claim_due_sources()`` and ``record_fetched_item()`` at runtime.
-    Checking only SELECT would let that through green.
-    """
-    for table in (
-        "source_connector_runtime_state",
-        "source_connector_ingestion_runs",
-        "source_connector_observations",
-        "beliefs",
-    ):
-        assert required_privileges(table) == FULL_DML
-
-
-def test_the_global_catalogues_require_select_and_nothing_more():
-    for table in ("money_lanes", "revenue_source_scores"):
-        assert table in READ_ONLY_TABLES
-        assert required_privileges(table) == ("select",)
-
-
 def test_a_withheld_table_requires_no_privilege_at_all():
     for table in EXPECTED_UNGRANTED:
         assert required_privileges(table) == ()
@@ -136,6 +82,48 @@ def test_every_read_only_table_has_a_stated_reason():
         assert reason.strip(), f"{table} is read-only without a reason"
 
 
+def test_a_tenant_owned_table_needs_more_than_select():
+    """Reachability is not a single bit.
+
+    A tenant-owned table is read and written through the ordinary adapters, so a
+    later migration narrowing its grant to SELECT would break writes at runtime
+    while a SELECT-only check stayed green.
+    """
+    assert required_privileges("beliefs") == FULL_DML
+    assert required_privileges("brain_events") == FULL_DML
+
+
+def test_the_worker_only_tables_are_withheld_from_the_api_runtime():
+    """Migration 026 on main revokes these from the runtime role entirely.
+
+    brain/connectors/service.py is imported only by apps/worker/main.py, and the
+    tenant API's TenantRevenueStore overrides every global write to a no-op, so
+    the ordinary API runtime needs nothing here. Requiring privileges for it would
+    widen the surface past what any caller uses.
+    """
+    for table in (
+        "source_connector_runtime_state",
+        "source_connector_ingestion_runs",
+        "source_connector_observations",
+        "money_lanes",
+        "revenue_source_scores",
+    ):
+        assert table in TRUSTED_SERVICE_ONLY
+        assert required_privileges(table) == ()
+
+
+def test_the_worker_only_set_does_not_overlap_the_other_classifications():
+    assert not (TRUSTED_SERVICE_ONLY.keys() & EXPECTED_UNGRANTED.keys())
+    assert not (TRUSTED_SERVICE_ONLY.keys() & READ_ONLY_TABLES.keys())
+    for table, reason in TRUSTED_SERVICE_ONLY.items():
+        assert reason.strip(), f"{table} is worker-only without a reason"
+
+
+def test_delete_is_not_required_of_the_trusted_worker():
+    """Migration 026 grants the worker SELECT, INSERT and UPDATE -- not DELETE."""
+    assert TRUSTED_SERVICE_PRIVILEGES == ("select", "insert", "update")
+
+
 def test_truncate_is_never_a_required_privilege():
     """TRUNCATE is an upper bound, never a requirement.
 
@@ -147,15 +135,3 @@ def test_truncate_is_never_a_required_privilege():
     assert not set(FORBIDDEN_PRIVILEGES) & set(FULL_DML)
     for table in ("beliefs", "money_lanes", "brain_region_maps"):
         assert not set(required_privileges(table)) & set(FORBIDDEN_PRIVILEGES)
-
-
-def test_the_trusted_worker_owns_writes_to_the_read_only_catalogues():
-    """Read-only for the runtime only makes sense if someone else can still write.
-
-    Checking the runtime role's absence of writes without checking the service
-    role's presence would let a later revoke strand global learning persistence
-    with both halves of this gate still green.
-    """
-    for table in TRUSTED_SERVICE_WRITABLE:
-        assert table in READ_ONLY_TABLES
-        assert required_privileges(table) == ("select",)
