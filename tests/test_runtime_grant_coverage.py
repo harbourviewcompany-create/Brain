@@ -13,7 +13,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from tools.verify_runtime_grant_coverage import EXPECTED_UNGRANTED
+from tools.verify_runtime_grant_coverage import (
+    EXPECTED_UNGRANTED,
+    FULL_DML,
+    READ_ONLY_TABLES,
+    required_privileges,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "db" / "migrations" / "026_runtime_grants_for_post_022_tables.sql"
@@ -90,3 +95,41 @@ def test_global_catalogue_stays_read_only_for_a_tenant_runtime():
     assert "grant select on table public.%I to brain_runtime_role" in sql
     assert "grant insert, update, delete on table public.%I to brain_trusted_service_role" in sql
     assert "current_brain_service_context()" in sql
+
+
+def test_a_runtime_table_needs_more_than_select():
+    """Reachability is not a single bit.
+
+    The connector tables are inserted, updated and deleted on every ingestion
+    pass, so a later migration narrowing their grant to SELECT would break
+    ``upsert()``, ``claim_due_sources()`` and ``record_fetched_item()`` at runtime.
+    Checking only SELECT would let that through green.
+    """
+    for table in (
+        "source_connector_runtime_state",
+        "source_connector_ingestion_runs",
+        "source_connector_observations",
+        "beliefs",
+    ):
+        assert required_privileges(table) == FULL_DML
+
+
+def test_the_global_catalogues_require_select_and_nothing_more():
+    for table in ("money_lanes", "revenue_source_scores"):
+        assert table in READ_ONLY_TABLES
+        assert required_privileges(table) == ("select",)
+
+
+def test_a_withheld_table_requires_no_privilege_at_all():
+    for table in EXPECTED_UNGRANTED:
+        assert required_privileges(table) == ()
+
+
+def test_read_only_and_withheld_sets_do_not_overlap():
+    """A table in both lists would make its required privileges ambiguous."""
+    assert not (READ_ONLY_TABLES.keys() & EXPECTED_UNGRANTED.keys())
+
+
+def test_every_read_only_table_has_a_stated_reason():
+    for table, reason in READ_ONLY_TABLES.items():
+        assert reason.strip(), f"{table} is read-only without a reason"
