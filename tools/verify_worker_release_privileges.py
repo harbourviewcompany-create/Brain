@@ -78,7 +78,7 @@ def verify_connector_runtime(worker_dsn: str, admin_dsn: str) -> None:
         if not registry.available():
             raise AssertionError("migration 024 connector registry is not available to trusted worker")
 
-        source = registry.upsert(
+        registry.upsert(
             ConnectorSource(
                 source_key=CONNECTOR_KEY,
                 name="Worker Release Connector",
