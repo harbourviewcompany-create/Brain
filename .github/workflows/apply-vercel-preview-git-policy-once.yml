@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   apply-policy:
@@ -15,16 +16,55 @@ jobs:
     env:
       VERCEL_PROJECT_ID: prj_Fr14GlGBNeae7coqrnhgXteHC0jA
       VERCEL_TEAM_ID: team_0rK4jTvMLlSufR0ZzX4LCKYi
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_SLUG: harbourview
+      STATIC_VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
-      - name: Require Vercel authorization
+      - name: Request GitHub OIDC token
+        if: env.STATIC_VERCEL_TOKEN == ''
+        uses: actions/github-script@v7
+        id: github-oidc
+        with:
+          script: |
+            const token = await core.getIDToken();
+            core.setSecret(token);
+            core.setOutput('token', token);
+
+      - name: Resolve short-lived Vercel authorization
+        env:
+          GITHUB_OIDC_TOKEN: ${{ steps.github-oidc.outputs.token }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${VERCEL_TOKEN}" ]]; then
-            echo "Repository secret VERCEL_TOKEN is required." >&2
-            exit 2
+          if [[ -n "${STATIC_VERCEL_TOKEN}" ]]; then
+            TOKEN="${STATIC_VERCEL_TOKEN}"
+            AUTH_SOURCE="repository secret"
+          else
+            TOKEN_RESPONSE="$(curl --fail-with-body --silent --show-error \
+              -X POST https://api.vercel.com/login/oauth/token \
+              --data 'grant_type=urn:ietf:params:oauth:grant-type:token-exchange' \
+              --data 'client_id=cl_kyUx2zVvA4MGptBohkmtYHJly2XltXzD' \
+              --data 'subject_token_type=urn:ietf:params:oauth:token-type:id_token' \
+              --data 'requested_token_type=urn:ietf:params:oauth:token-type:access_token' \
+              --data-urlencode "team_id_or_slug=${VERCEL_TEAM_SLUG}" \
+              --data-urlencode "subject_token=${GITHUB_OIDC_TOKEN}")"
+            TOKEN="$(printf '%s' "${TOKEN_RESPONSE}" | jq -er '.access_token')"
+            AUTH_SOURCE="GitHub OIDC token exchange"
           fi
+
+          echo "::add-mask::${TOKEN}"
+          echo "VERCEL_ACCESS_TOKEN=${TOKEN}" >> "${GITHUB_ENV}"
+          echo "Vercel authorization source: ${AUTH_SOURCE}"
+
+      - name: Prove project-management authorization before mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}?teamId=${VERCEL_TEAM_ID}"
+          CURRENT="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${VERCEL_ACCESS_TOKEN}" \
+            "${API}")"
+          printf '%s' "${CURRENT}" | jq -e --arg project "${VERCEL_PROJECT_ID}" '.id == $project' >/dev/null
+          echo "Project-management authorization verified before mutation."
 
       - name: Apply project-authoritative Git source policy
         shell: bash
@@ -33,7 +73,7 @@ jobs:
           API="https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}?teamId=${VERCEL_TEAM_ID}"
 
           CURRENT="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Authorization: Bearer ${VERCEL_ACCESS_TOKEN}" \
             "${API}")"
 
           CURRENT_POLICY="$(printf '%s' "${CURRENT}" | jq -c '.deploymentPolicy // {}')"
@@ -55,7 +95,7 @@ jobs:
           BODY="$(jq -cn --argjson policy "${NEW_POLICY}" '{deploymentPolicy: $policy}')"
           UPDATED="$(curl --fail-with-body --silent --show-error \
             -X PATCH \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Authorization: Bearer ${VERCEL_ACCESS_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "${BODY}" \
             "${API}")"
@@ -76,7 +116,7 @@ jobs:
           ' >/dev/null
 
           AFTER="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Authorization: Bearer ${VERCEL_ACCESS_TOKEN}" \
             "${API}")"
 
           printf '%s' "${AFTER}" | jq -e '
