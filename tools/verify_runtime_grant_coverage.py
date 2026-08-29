@@ -111,6 +111,8 @@ EXPECTED_UNGRANTED: dict[str, str] = {
 
 
 def _dsn(name: str) -> str:
+    """Read a required DSN from the environment, failing loudly when it is unset."""
+
     value = os.environ.get(name)
     if not value:
         raise RuntimeError(f"{name} is required")
@@ -128,6 +130,13 @@ def required_privileges(table: str) -> tuple[str, ...]:
 
 
 def table_privileges(conn: psycopg.Connection) -> dict[str, set[str]]:
+    """Return the privileges the runtime role actually holds, keyed by table.
+
+    Asked as one cross join rather than a query per table-and-privilege: the
+    forbidden set is inspected alongside the DML set so that `grant all` shows up
+    here, rather than being invisible because only DML was ever looked at.
+    """
+
     rows = conn.execute(
         """
         select c.relname, p.privilege
@@ -311,6 +320,13 @@ def trusted_service_write_gaps(conn: psycopg.Connection) -> list[str]:
 
 
 def verify(conn: psycopg.Connection) -> None:
+    """Assert the whole privilege model against `conn`, raising on the first failure.
+
+    Ordered cheapest-first so the message a reader gets names the root cause rather
+    than a consequence: a table that vanished is reported before the privileges it
+    no longer has, and a missing RLS policy before the grant it makes useless.
+    """
+
     if conn.execute("select to_regrole(%s)", (RUNTIME_ROLE,)).fetchone()[0] is None:
         raise RuntimeError(f"{RUNTIME_ROLE} is missing; apply migration 019 first")
 
@@ -515,6 +531,12 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
 
 
 def main() -> int:
+    """Run the role-level checks, then re-run the model as the effective login.
+
+    The second pass needs a constrained DSN and is skipped -- loudly -- when none is
+    configured, so the role-level guarantee still holds everywhere this runs.
+    """
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--dsn-env",

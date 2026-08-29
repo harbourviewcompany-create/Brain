@@ -30,6 +30,13 @@ RUNTIME_DIRS = ("brain", "apps")
 
 
 def _runtime_python_files() -> list[Path]:
+    """Return the modules that run under the constrained runtime login.
+
+    Test files are excluded by name pattern, and tools/ is out of scope entirely:
+    those scripts connect with the migration DSN as the table owner, so they are
+    not bound by brain_runtime_role's privileges.
+    """
+
     files: list[Path] = []
     for directory in RUNTIME_DIRS:
         for path in (ROOT / directory).rglob("*.py"):
@@ -40,6 +47,12 @@ def _runtime_python_files() -> list[Path]:
 
 
 def test_every_withheld_table_has_a_stated_reason():
+    """A withheld table without a reason is an assertion nobody can re-evaluate.
+
+    The list is the only record of why the runtime is denied these, so an unexplained
+    entry becomes permanent by default.
+    """
+
     assert EXPECTED_UNGRANTED, "expected a non-empty exclusion list"
     for table, reason in EXPECTED_UNGRANTED.items():
         assert reason.strip(), f"{table} is withheld without a reason"
@@ -68,6 +81,8 @@ def test_no_withheld_table_is_referenced_by_runtime_code():
 
 
 def test_a_withheld_table_requires_no_privilege_at_all():
+    """Withheld means withheld: requiring even SELECT would contradict the list."""
+
     for table in EXPECTED_UNGRANTED:
         assert required_privileges(table) == ()
 
@@ -78,6 +93,8 @@ def test_read_only_and_withheld_sets_do_not_overlap():
 
 
 def test_every_read_only_table_has_a_stated_reason():
+    """Same contract as the withheld list, for the tables the runtime may read."""
+
     for table, reason in READ_ONLY_TABLES.items():
         assert reason.strip(), f"{table} is read-only without a reason"
 
@@ -113,6 +130,8 @@ def test_the_worker_only_tables_are_withheld_from_the_api_runtime():
 
 
 def test_the_worker_only_set_does_not_overlap_the_other_classifications():
+    """A table in two classifications has ambiguous required privileges."""
+
     assert not (TRUSTED_SERVICE_ONLY.keys() & EXPECTED_UNGRANTED.keys())
     assert not (TRUSTED_SERVICE_ONLY.keys() & READ_ONLY_TABLES.keys())
     for table, reason in TRUSTED_SERVICE_ONLY.items():
