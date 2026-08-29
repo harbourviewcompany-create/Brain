@@ -203,6 +203,44 @@ def sequence_owners(conn: psycopg.Connection) -> list[tuple[str, str | None]]:
     return [(row[0], row[1]) for row in rows]
 
 
+#: pg_policy.polcmd, keyed by the privilege each command letter authorises.
+_POLICY_COMMANDS: dict[str, str] = {"select": "r", "insert": "a", "update": "w", "delete": "d"}
+
+
+def policy_coverage_gaps(conn: psycopg.Connection) -> list[str]:
+    """Return (table, privilege) pairs whose grant no row level policy can satisfy.
+
+    A grant is only half of reachability. With RLS enabled, an operation also needs
+    a policy that covers it, and the two fail differently: a missing *policy* on
+    SELECT is silent -- the read succeeds and returns nothing -- so neither an ACL
+    check nor a probe read can tell it from an empty table. Only the policy
+    catalogue distinguishes them, so per-command coverage is checked structurally.
+    """
+
+    rows = conn.execute(
+        """
+        select c.relname, coalesce(array_agg(distinct p.polcmd), '{}')
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        left join pg_policy p on p.polrelid = c.oid
+        where n.nspname = 'public'
+          and c.relkind in ('r', 'p')
+          and c.relrowsecurity
+        group by c.relname
+        order by c.relname
+        """
+    ).fetchall()
+
+    gaps: list[str] = []
+    for table, commands in rows:
+        covered = {str(command) for command in commands if command is not None}
+        for privilege in required_privileges(table):
+            letter = _POLICY_COMMANDS[privilege]
+            if letter not in covered and "*" not in covered:
+                gaps.append(f"{table} ({privilege})")
+    return gaps
+
+
 def ungranted_sequences(conn: psycopg.Connection) -> list[tuple[str, str]]:
     """Return (sequence, missing privilege) pairs that would break a runtime insert.
 
@@ -344,6 +382,15 @@ def verify(conn: psycopg.Connection) -> None:
             "`grant all` is usually the cause; grant the four DML privileges instead."
         )
 
+    policy_gaps = policy_coverage_gaps(conn)
+    if policy_gaps:
+        raise RuntimeError(
+            "row level security is enabled but no policy covers operations the "
+            "constrained runtime login is granted: " + "; ".join(policy_gaps)
+            + ". The grant is intact, so nothing else in this gate notices -- a "
+            "missing SELECT policy makes the read return no rows rather than fail."
+        )
+
     service_gaps = trusted_service_write_gaps(conn)
     if service_gaps:
         raise RuntimeError(
@@ -386,6 +433,79 @@ def verify(conn: psycopg.Connection) -> None:
     )
 
 
+def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None:
+    """Verify the model through the connection the API actually uses.
+
+    Everything above reasons about `brain_runtime_role`. The API authenticates as
+    a login role that is only a *member* of it, so a direct grant on the login, or
+    membership in some other ACL-bearing role, can hand it privileges the role
+    itself does not carry -- and `require_safe_runtime_role` rejects owner,
+    superuser, BYPASSRLS and trusted-service identities without excluding that.
+
+    Row level security is checked the only way it can be: by reading. ACLs say
+    nothing about policies, so a narrowed or dropped policy leaves the grants
+    intact while the constrained login silently reads nothing. The owner DSN
+    cannot see this at all -- owners bypass RLS on tables that are not FORCEd.
+
+    Reads only. Proving writes would mean writing rows into the database being
+    verified, and a verifier with side effects is worse than a narrower one.
+    """
+
+    effective = conn.execute("select current_user").fetchone()[0]
+
+    forbidden: list[str] = []
+    excess: list[str] = []
+    for table in present:
+        required = set(required_privileges(table))
+        for privilege in FORBIDDEN_PRIVILEGES:
+            if conn.execute(
+                "select has_table_privilege(%s, %s)", (f"public.{table}", privilege)
+            ).fetchone()[0]:
+                forbidden.append(f"{table} ({privilege})")
+        if table in READ_ONLY_TABLES or table in EXPECTED_UNGRANTED:
+            for privilege in set(FULL_DML) - required:
+                if conn.execute(
+                    "select has_table_privilege(%s, %s)", (f"public.{table}", privilege)
+                ).fetchone()[0]:
+                    excess.append(f"{table} ({privilege})")
+
+    if forbidden:
+        raise RuntimeError(
+            f"the runtime login {effective!r} holds forbidden privileges directly, "
+            f"even though {RUNTIME_ROLE} does not: " + "; ".join(sorted(forbidden))
+        )
+    if excess:
+        raise RuntimeError(
+            f"the runtime login {effective!r} can write tables documented as read-only "
+            f"or withheld, even though {RUNTIME_ROLE} cannot: " + "; ".join(sorted(excess))
+            + ". Look for a direct grant on the login or membership in another role."
+        )
+
+    unreadable: list[str] = []
+    for table in present:
+        if "select" not in required_privileges(table):
+            continue
+        try:
+            conn.execute(f'select 1 from public."{table}" limit 1').fetchone()
+        except psycopg.Error as exc:
+            unreadable.append(f"{table} ({exc.diag.sqlstate or type(exc).__name__})")
+            conn.rollback()
+
+    if unreadable:
+        raise RuntimeError(
+            f"the runtime login {effective!r} cannot read tables its queries need: "
+            + "; ".join(unreadable)
+            + ". Grants alone cannot prove this -- a dropped or narrowed row level "
+            "security policy leaves the ACL intact while the read is refused."
+        )
+
+    print(
+        f"effective runtime login verified: {effective} reads every table it must, "
+        f"holds no forbidden privilege, and cannot write the read-only catalogues",
+        flush=True,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -393,10 +513,31 @@ def main() -> int:
         default="BRAIN_MIGRATION_DATABASE_URL",
         help="environment variable holding the database DSN to inspect",
     )
+    parser.add_argument(
+        "--runtime-dsn-env",
+        default="DATABASE_URL",
+        help=(
+            "environment variable holding the constrained runtime DSN. When set, the "
+            "model is re-checked through the login the API actually authenticates as."
+        ),
+    )
     args = parser.parse_args()
 
     with psycopg.connect(_dsn(args.dsn_env), autocommit=True) as conn:
         verify(conn)
+        present = public_tables(conn)
+
+    runtime_dsn = os.environ.get(args.runtime_dsn_env)
+    if not runtime_dsn:
+        print(
+            f"{args.runtime_dsn_env} is not set; skipping the effective-login check "
+            "(role-level privileges were still verified)",
+            flush=True,
+        )
+        return 0
+
+    with psycopg.connect(runtime_dsn) as runtime_conn:
+        verify_effective_login(runtime_conn, present)
     return 0
 
 
