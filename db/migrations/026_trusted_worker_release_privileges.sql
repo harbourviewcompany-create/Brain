@@ -25,6 +25,53 @@ grant select, insert, update on table
   public.source_connector_observations
 to brain_trusted_service_role;
 
+-- Migration 024 intentionally shares one lineage trigger function across the
+-- ingestion-run and observation tables. Its original compound IF referenced
+-- NEW.ingestion_run_id while firing on source_connector_ingestion_runs, where
+-- that field does not exist. PostgreSQL resolves that record field even when
+-- the preceding TG_TABLE_NAME predicate is false, so a real worker could create
+-- the source row but fail when starting its first ingestion run. Repair the
+-- function forward without modifying migration 024 or weakening lineage checks.
+create or replace function public.enforce_connector_runtime_tenant_integrity()
+returns trigger
+language plpgsql
+as $$
+declare
+  parent_tenant uuid;
+  run_tenant uuid;
+  run_source uuid;
+begin
+  select tenant_id into parent_tenant
+  from public.source_connector_runtime_state
+  where id = new.source_id;
+
+  if not found then
+    raise exception 'connector source is not visible in the current tenant/service context';
+  end if;
+
+  if new.tenant_id is distinct from parent_tenant then
+    raise exception 'connector child tenant_id must match source tenant_id';
+  end if;
+
+  if tg_table_name = 'source_connector_observations' then
+    if new.ingestion_run_id is not null then
+      select tenant_id, source_id into run_tenant, run_source
+      from public.source_connector_ingestion_runs
+      where run_id = new.ingestion_run_id;
+
+      if not found then
+        raise exception 'connector ingestion run is not visible in the current tenant/service context';
+      end if;
+      if new.tenant_id is distinct from run_tenant or new.source_id is distinct from run_source then
+        raise exception 'connector observation tenant/source must match its ingestion run';
+      end if;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
 alter table public.money_lanes enable row level security;
 alter table public.revenue_source_scores enable row level security;
 
