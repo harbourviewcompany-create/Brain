@@ -132,6 +132,30 @@ def public_tables(conn: psycopg.Connection) -> list[str]:
     ]
 
 
+def unpolicied_tables(conn: psycopg.Connection) -> list[str]:
+    """Return RLS-enabled public tables that carry no policy at all.
+
+    RLS with no policy denies every non-owner regardless of grants, so a grant
+    check alone cannot prove reachability for the constrained login.
+    """
+
+    return [
+        row[0]
+        for row in conn.execute(
+            """
+            select c.relname
+            from pg_class c
+            join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'public'
+              and c.relkind = 'r'
+              and c.relrowsecurity
+              and not exists (select 1 from pg_policy p where p.polrelid = c.oid)
+            order by c.relname
+            """
+        ).fetchall()
+    ]
+
+
 def ungranted_sequences(conn: psycopg.Connection) -> list[tuple[str, str]]:
     """Return (sequence, missing privilege) pairs the runtime role cannot use."""
 
@@ -157,6 +181,13 @@ def verify(conn: psycopg.Connection) -> None:
 
     present = public_tables(conn)
     held = table_privileges(conn)
+
+    unpolicied = [t for t in unpolicied_tables(conn) if required_privileges(t)]
+    if unpolicied:
+        raise RuntimeError(
+            "row level security is enabled with no policy, so the constrained runtime "
+            "login is denied regardless of its grants: " + ", ".join(unpolicied)
+        )
 
     missing: list[str] = []
     excess: list[str] = []
