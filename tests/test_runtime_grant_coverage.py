@@ -15,8 +15,10 @@ from pathlib import Path
 
 from tools.verify_runtime_grant_coverage import (
     EXPECTED_UNGRANTED,
+    FORBIDDEN_PRIVILEGES,
     FULL_DML,
     READ_ONLY_TABLES,
+    TRUSTED_SERVICE_WRITABLE,
     required_privileges,
 )
 
@@ -132,3 +134,28 @@ def test_read_only_and_withheld_sets_do_not_overlap():
 def test_every_read_only_table_has_a_stated_reason():
     for table, reason in READ_ONLY_TABLES.items():
         assert reason.strip(), f"{table} is read-only without a reason"
+
+
+def test_truncate_is_never_a_required_privilege():
+    """TRUNCATE is an upper bound, never a requirement.
+
+    PostgreSQL does not apply row level security to TRUNCATE, so a tenant runtime
+    holding it could empty every tenant's rows from a table whose per-row policies
+    look airtight. `grant all` hands it over silently.
+    """
+    assert "truncate" in FORBIDDEN_PRIVILEGES
+    assert not set(FORBIDDEN_PRIVILEGES) & set(FULL_DML)
+    for table in ("beliefs", "money_lanes", "brain_region_maps"):
+        assert not set(required_privileges(table)) & set(FORBIDDEN_PRIVILEGES)
+
+
+def test_the_trusted_worker_owns_writes_to_the_read_only_catalogues():
+    """Read-only for the runtime only makes sense if someone else can still write.
+
+    Checking the runtime role's absence of writes without checking the service
+    role's presence would let a later revoke strand global learning persistence
+    with both halves of this gate still green.
+    """
+    for table in TRUSTED_SERVICE_WRITABLE:
+        assert table in READ_ONLY_TABLES
+        assert required_privileges(table) == ("select",)

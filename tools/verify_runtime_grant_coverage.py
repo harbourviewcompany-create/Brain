@@ -35,9 +35,26 @@ RUNTIME_ROLE = "brain_runtime_role"
 #: a grant to SELECT would leave inserts failing at runtime with CI still green.
 FULL_DML: tuple[str, ...] = ("select", "insert", "update", "delete")
 
+#: Privileges no runtime table may grant the constrained role, whatever else it
+#: holds. TRUNCATE is the dangerous one: PostgreSQL does not apply row level
+#: security to it, so a tenant runtime holding TRUNCATE could empty every
+#: tenant's rows from a table whose per-row policies look airtight. `grant all`
+#: hands it over silently, which is why this is checked as an upper bound on
+#: every table rather than only on the ones documented as read-only.
+FORBIDDEN_PRIVILEGES: tuple[str, ...] = ("truncate",)
+
 #: Sequence privileges migration 022 grants in bulk. An INSERT into a
 #: sequence-backed table fails with "permission denied for sequence" without them.
 SEQUENCE_PRIVILEGES: tuple[str, ...] = ("usage", "select")
+
+#: Tables whose writes belong to the separately audited trusted worker. The
+#: runtime role is checked for the absence of those writes; the service role is
+#: checked for their presence, so revoking them -- which would silently stop
+#: PostgresRevenueStore persisting global learning -- fails here instead of in
+#: production.
+TRUSTED_SERVICE_WRITABLE: tuple[str, ...] = ("money_lanes", "revenue_source_scores")
+
+TRUSTED_SERVICE_ROLE = "brain_trusted_service_role"
 
 # Tables the runtime may read but must never write. Checked in both directions:
 # the SELECT must be present, and every write privilege must be absent.
@@ -111,10 +128,10 @@ def table_privileges(conn: psycopg.Connection) -> dict[str, set[str]]:
         join pg_namespace n on n.oid = c.relnamespace
         cross join unnest(%s::text[]) as p(privilege)
         where n.nspname = 'public'
-          and c.relkind = 'r'
+          and c.relkind in ('r', 'p')
           and has_table_privilege(%s, c.oid, p.privilege)
         """,
-        (list(FULL_DML), RUNTIME_ROLE),
+        (list(FULL_DML + FORBIDDEN_PRIVILEGES), RUNTIME_ROLE),
     ).fetchall()
     held: dict[str, set[str]] = {}
     for name, privilege in rows:
@@ -123,11 +140,21 @@ def table_privileges(conn: psycopg.Connection) -> dict[str, set[str]]:
 
 
 def public_tables(conn: psycopg.Connection) -> list[str]:
+    """Return every public table whose ACL the runtime is actually checked against.
+
+    `relkind = 'p'` is included deliberately. A partitioned table's privileges are
+    checked on the parent that callers name, so enumerating ordinary tables alone
+    would skip the object that decides access and, worse, treat its child
+    partitions as standalone runtime tables needing their own direct grants.
+    """
+
     return [
         row[0]
         for row in conn.execute(
             "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace"
-            " where n.nspname = 'public' and c.relkind = 'r' order by c.relname"
+            " where n.nspname = 'public' and c.relkind in ('r', 'p')"
+            " and not exists (select 1 from pg_inherits i where i.inhrelid = c.oid)"
+            " order by c.relname"
         ).fetchall()
     ]
 
@@ -156,8 +183,44 @@ def unpolicied_tables(conn: psycopg.Connection) -> list[str]:
     ]
 
 
+def sequence_owners(conn: psycopg.Connection) -> list[tuple[str, str | None]]:
+    """Return every public sequence paired with the table that owns it, if any."""
+
+    rows = conn.execute(
+        """
+        select s.relname, t.relname
+        from pg_class s
+        join pg_namespace n on n.oid = s.relnamespace
+        left join pg_depend d
+          on d.objid = s.oid
+         and d.classid = 'pg_class'::regclass
+         and d.deptype in ('a', 'i')
+        left join pg_class t on t.oid = d.refobjid
+        where n.nspname = 'public' and s.relkind = 'S'
+        order by s.relname
+        """
+    ).fetchall()
+    return [(row[0], row[1]) for row in rows]
+
+
 def ungranted_sequences(conn: psycopg.Connection) -> list[tuple[str, str]]:
-    """Return (sequence, missing privilege) pairs the runtime role cannot use."""
+    """Return (sequence, missing privilege) pairs that would break a runtime insert.
+
+    Only sequences backing a table the runtime inserts into are required. A
+    sequence owned by a deliberately withheld table must *not* drag a grant along
+    with it: that would let the runtime consume values from a table it may never
+    write. An unowned sequence has no table to classify it by, so it is required
+    conservatively -- anything creating a free-standing sequence in this schema is
+    doing something the runtime probably uses directly.
+    """
+
+    required: list[str] = []
+    for sequence, owner in sequence_owners(conn):
+        if owner is not None and "insert" not in required_privileges(owner):
+            continue
+        required.append(sequence)
+    if not required:
+        return []
 
     rows = conn.execute(
         """
@@ -167,12 +230,40 @@ def ungranted_sequences(conn: psycopg.Connection) -> list[tuple[str, str]]:
         cross join unnest(%s::text[]) as p(privilege)
         where n.nspname = 'public'
           and c.relkind = 'S'
+          and c.relname = any(%s::text[])
           and not has_sequence_privilege(%s, c.oid, p.privilege)
         order by c.relname, p.privilege
         """,
-        (list(SEQUENCE_PRIVILEGES), RUNTIME_ROLE),
+        (list(SEQUENCE_PRIVILEGES), required, RUNTIME_ROLE),
     ).fetchall()
     return [(row[0], row[1]) for row in rows]
+
+
+def trusted_service_write_gaps(conn: psycopg.Connection) -> list[str]:
+    """Return global catalogues the trusted worker can no longer write.
+
+    The read-only boundary on these tables only makes sense if someone can still
+    persist to them. Checking the runtime role's *absence* of writes without
+    checking the service role's *presence* would let a later revoke silently strand
+    `seed_lanes()`, `save_lane_priority()` and `save_source_score()`.
+    """
+
+    writes = ("insert", "update", "delete")
+    gaps: list[str] = []
+    for table in TRUSTED_SERVICE_WRITABLE:
+        if conn.execute("select to_regclass(%s)", (f"public.{table}",)).fetchone()[0] is None:
+            continue
+        missing = [
+            privilege
+            for privilege in writes
+            if not conn.execute(
+                "select has_table_privilege(%s, %s, %s)",
+                (TRUSTED_SERVICE_ROLE, f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        if missing:
+            gaps.append(f"{table} (missing {', '.join(missing)})")
+    return gaps
 
 
 def verify(conn: psycopg.Connection) -> None:
@@ -189,8 +280,24 @@ def verify(conn: psycopg.Connection) -> None:
             "login is denied regardless of its grants: " + ", ".join(unpolicied)
         )
 
+    known = set(present)
+    vanished = sorted(
+        name
+        for name in (READ_ONLY_TABLES.keys() | set(TRUSTED_SERVICE_WRITABLE))
+        if name not in known
+    )
+    if vanished:
+        raise RuntimeError(
+            "tables this verifier makes claims about are no longer in the schema: "
+            + ", ".join(vanished)
+            + ". A rename carries the old ACL to the new name, so the privilege checks "
+            "would keep passing while the adapters query a table that no longer exists. "
+            "Update tools/verify_runtime_grant_coverage.py and the adapters together."
+        )
+
     missing: list[str] = []
     excess: list[str] = []
+    forbidden: list[str] = []
     for table in present:
         required = set(required_privileges(table))
         actual = held.get(table, set())
@@ -199,11 +306,18 @@ def verify(conn: psycopg.Connection) -> None:
         if absent:
             missing.append(f"{table} (missing {', '.join(absent)})")
 
+        # TRUNCATE is refused on every table, not just the documented ones: row
+        # level security does not apply to it, so it is an upper bound even where
+        # full DML is expected.
+        held_forbidden = sorted(actual & set(FORBIDDEN_PRIVILEGES))
+        if held_forbidden:
+            forbidden.append(f"{table} (holds {', '.join(held_forbidden)})")
+
         # A table listed as read-only or withheld must not quietly gain writes.
-        # Only those two lists constrain the upper bound; a tenant-owned table
+        # Only those two lists constrain the DML upper bound; a tenant-owned table
         # holding full DML is the expected case, not an excess.
         if table in READ_ONLY_TABLES or table in EXPECTED_UNGRANTED:
-            unexpected = sorted(actual - required)
+            unexpected = sorted((actual & set(FULL_DML)) - required)
             if unexpected:
                 excess.append(f"{table} (unexpected {', '.join(unexpected)})")
 
@@ -221,6 +335,23 @@ def verify(conn: psycopg.Connection) -> None:
             + ". Revoke them, or update tools/verify_runtime_grant_coverage.py if the "
             "trust boundary really did change."
         )
+    if forbidden:
+        raise RuntimeError(
+            f"{RUNTIME_ROLE} holds privileges no runtime table may grant it: "
+            + "; ".join(forbidden)
+            + ". PostgreSQL does not apply row level security to TRUNCATE, so this "
+            "would let one tenant's runtime empty every tenant's rows. Revoke it -- "
+            "`grant all` is usually the cause; grant the four DML privileges instead."
+        )
+
+    service_gaps = trusted_service_write_gaps(conn)
+    if service_gaps:
+        raise RuntimeError(
+            f"{TRUSTED_SERVICE_ROLE} can no longer write the global catalogues it owns: "
+            + "; ".join(service_gaps)
+            + ". The runtime role is read-only on these by design, so revoking the "
+            "service role's writes leaves nothing able to persist global learning."
+        )
 
     sequence_gaps = ungranted_sequences(conn)
     if sequence_gaps:
@@ -231,7 +362,6 @@ def verify(conn: psycopg.Connection) -> None:
             "that existed when it ran, so a later sequence needs its own grant."
         )
 
-    known = set(present)
     stale = sorted(
         name
         for name in (EXPECTED_UNGRANTED.keys() | READ_ONLY_TABLES.keys())
@@ -241,14 +371,17 @@ def verify(conn: psycopg.Connection) -> None:
         raise RuntimeError("privilege documentation is out of date for: " + ", ".join(stale))
 
     writable = sum(1 for table in present if required_privileges(table) == FULL_DML)
-    sequences = conn.execute(
-        "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace"
-        " where n.nspname = 'public' and c.relkind = 'S'"
-    ).fetchone()[0]
+    owners = sequence_owners(conn)
+    required_sequences = sum(
+        1
+        for _, owner in owners
+        if owner is None or "insert" in required_privileges(owner)
+    )
     print(
         f"runtime grant coverage verified: {writable} tables writable by {RUNTIME_ROLE}, "
         f"{len(READ_ONLY_TABLES)} read-only, {len(EXPECTED_UNGRANTED)} withheld, "
-        f"{sequences} sequences usable",
+        f"{required_sequences} of {len(owners)} sequences usable, "
+        f"no {', '.join(FORBIDDEN_PRIVILEGES)} anywhere",
         flush=True,
     )
 
