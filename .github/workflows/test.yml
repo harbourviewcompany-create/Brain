@@ -247,6 +247,15 @@ jobs:
           python tools/apply_migrations.py
           python tools/verify_tenant_rls_release.py
 
+      - name: Verify the constrained runtime login can reach every table it queries
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55432/brain
+          # The second half re-checks the model through the login the API really
+          # authenticates as, which is the only way to see a direct grant on that
+          # login or a privilege it inherits from some other role.
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55432/brain
+        run: python tools/verify_runtime_grant_coverage.py
+
       - name: Build tenant-aware production images
         run: |
           docker build -t brain-api-tenant-ci -f Dockerfile .
