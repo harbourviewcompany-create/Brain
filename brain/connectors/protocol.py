@@ -75,7 +75,12 @@ class ConnectorSource:
         now = now or utcnow()
         if not self.enabled:
             return False
-        if self.access in {AccessDisposition.PROHIBITED, AccessDisposition.MANUAL_ONLY}:
+        # Automated fetch only for explicitly allowed dispositions.
+        # UNKNOWN must be classified before any network call.
+        if self.access not in {
+            AccessDisposition.ALLOWED,
+            AccessDisposition.RATE_LIMITED,
+        }:
             return False
         return now >= self.next_due_at
 
