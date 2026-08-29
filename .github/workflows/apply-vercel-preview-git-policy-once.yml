@@ -1,0 +1,102 @@
+name: Apply Vercel Preview Git Policy Once
+
+on:
+  push:
+    branches:
+      - fix/vercel-project-authoritative-preview-gate
+
+permissions:
+  contents: read
+
+jobs:
+  apply-policy:
+    if: github.repository == 'harbourviewcompany-create/Brain'
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_Fr14GlGBNeae7coqrnhgXteHC0jA
+      VERCEL_TEAM_ID: team_0rK4jTvMLlSufR0ZzX4LCKYi
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Require Vercel authorization
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${VERCEL_TOKEN}" ]]; then
+            echo "Repository secret VERCEL_TOKEN is required." >&2
+            exit 2
+          fi
+
+      - name: Apply project-authoritative Git source policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}?teamId=${VERCEL_TEAM_ID}"
+
+          CURRENT="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            "${API}")"
+
+          CURRENT_POLICY="$(printf '%s' "${CURRENT}" | jq -c '.deploymentPolicy // {}')"
+          NEW_POLICY="$(printf '%s' "${CURRENT_POLICY}" | jq -c '
+            .gitSources = [
+              {
+                sources: [{provider: "github", org: "harbourviewcompany-create", repo: "Brain"}],
+                enabled: false,
+                environments: [{type: "system", target: "preview"}]
+              },
+              {
+                sources: [{provider: "github", org: "harbourviewcompany-create", repo: "Brain"}],
+                enabled: true,
+                environments: [{type: "system", target: "production"}]
+              }
+            ]
+          ')"
+
+          BODY="$(jq -cn --argjson policy "${NEW_POLICY}" '{deploymentPolicy: $policy}')"
+          UPDATED="$(curl --fail-with-body --silent --show-error \
+            -X PATCH \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "${BODY}" \
+            "${API}")"
+
+          printf '%s' "${UPDATED}" | jq -e '
+            .deploymentPolicy.gitSources == [
+              {
+                sources: [{provider: "github", org: "harbourviewcompany-create", repo: "Brain"}],
+                enabled: false,
+                environments: [{type: "system", target: "preview"}]
+              },
+              {
+                sources: [{provider: "github", org: "harbourviewcompany-create", repo: "Brain"}],
+                enabled: true,
+                environments: [{type: "system", target: "production"}]
+              }
+            ]
+          ' >/dev/null
+
+          AFTER="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            "${API}")"
+
+          printf '%s' "${AFTER}" | jq -e '
+            .deploymentPolicy.gitSources == [
+              {
+                sources: [{provider: "github", org: "harbourviewcompany-create", repo: "Brain"}],
+                enabled: false,
+                environments: [{type: "system", target: "preview"}]
+              },
+              {
+                sources: [{provider: "github", org: "harbourviewcompany-create", repo: "Brain"}],
+                enabled: true,
+                environments: [{type: "system", target: "production"}]
+              }
+            ]
+          ' >/dev/null
+
+          {
+            echo '### Vercel project deployment policy applied'
+            echo '- GitHub Brain → Preview: disabled'
+            echo '- GitHub Brain → Production: enabled'
+            echo '- Existing non-Git deploymentSources preserved'
+          } >> "${GITHUB_STEP_SUMMARY}"
