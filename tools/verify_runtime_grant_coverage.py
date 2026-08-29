@@ -224,35 +224,61 @@ _POLICY_COMMANDS: dict[str, str] = {"select": "r", "insert": "a", "update": "w",
 
 
 def policy_coverage_gaps(conn: psycopg.Connection) -> list[str]:
-    """Return (table, privilege) pairs whose grant no row level policy can satisfy.
+    """Return (table, privilege) pairs whose grant no usable row level policy satisfies.
 
-    A grant is only half of reachability. With RLS enabled, an operation also needs
-    a policy that covers it, and the two fail differently: a missing *policy* on
-    SELECT is silent -- the read succeeds and returns nothing -- so neither an ACL
-    check nor a probe read can tell it from an empty table. Only the policy
-    catalogue distinguishes them, so per-command coverage is checked structurally.
+    A grant is only half of reachability. With RLS enabled, an operation also needs a
+    policy that covers it, and the two fail differently: a missing *policy* on SELECT
+    is silent -- the read succeeds and returns nothing -- so neither an ACL check nor
+    a probe read can tell it from an empty table. Only the policy catalogue
+    distinguishes them.
+
+    "Covers it" is narrower than a matching command. A policy applies to the runtime
+    only if it is PERMISSIVE (a restrictive policy subtracts access, it never grants
+    any) and its `polroles` includes PUBLIC or a role the runtime role is a member of.
+    Migration 026 on main writes `for all to brain_trusted_service_role` policies, so
+    a future policy scoped that way on a table the runtime is still granted would look
+    like coverage while every runtime write was refused.
     """
 
     rows = conn.execute(
         """
-        select c.relname, coalesce(array_agg(distinct p.polcmd), '{}')
+        select c.relname, p.polcmd
         from pg_class c
         join pg_namespace n on n.oid = c.relnamespace
-        left join pg_policy p on p.polrelid = c.oid
+        join pg_policy p on p.polrelid = c.oid
         where n.nspname = 'public'
           and c.relkind in ('r', 'p')
           and c.relrowsecurity
-        group by c.relname
-        order by c.relname
-        """
+          and p.polpermissive
+          and (
+            0 = any(p.polroles)
+            or exists (
+              select 1 from unnest(p.polroles) as role_oid
+              where pg_has_role(%s, role_oid, 'member')
+            )
+          )
+        """,
+        (RUNTIME_ROLE,),
     ).fetchall()
 
+    covered: dict[str, set[str]] = {}
+    for table, command in rows:
+        covered.setdefault(table, set()).add(str(command))
+
+    secured = {
+        row[0]
+        for row in conn.execute(
+            "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace"
+            " where n.nspname = 'public' and c.relkind in ('r', 'p') and c.relrowsecurity"
+        ).fetchall()
+    }
+
     gaps: list[str] = []
-    for table, commands in rows:
-        covered = {str(command) for command in commands if command is not None}
+    for table in sorted(secured):
+        usable = covered.get(table, set())
         for privilege in required_privileges(table):
             letter = _POLICY_COMMANDS[privilege]
-            if letter not in covered and "*" not in covered:
+            if letter not in usable and "*" not in usable:
                 gaps.append(f"{table} ({privilege})")
     return gaps
 
@@ -407,10 +433,11 @@ def verify(conn: psycopg.Connection) -> None:
     policy_gaps = policy_coverage_gaps(conn)
     if policy_gaps:
         raise RuntimeError(
-            "row level security is enabled but no policy covers operations the "
-            "constrained runtime login is granted: " + "; ".join(policy_gaps)
-            + ". The grant is intact, so nothing else in this gate notices -- a "
-            "missing SELECT policy makes the read return no rows rather than fail."
+            "row level security is enabled but no permissive policy applying to "
+            f"{RUNTIME_ROLE} covers operations it is granted: " + "; ".join(policy_gaps)
+            + ". The grant is intact, so nothing else in this gate notices. Check for a "
+            "policy that is RESTRICTIVE, or scoped `TO` another role, or simply absent -- "
+            "on SELECT the symptom is silent, a read returning no rows rather than failing."
         )
 
     service_gaps = trusted_service_write_gaps(conn)

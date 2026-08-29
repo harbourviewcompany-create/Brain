@@ -154,3 +154,17 @@ def test_truncate_is_never_a_required_privilege():
     assert not set(FORBIDDEN_PRIVILEGES) & set(FULL_DML)
     for table in ("beliefs", "money_lanes", "brain_region_maps"):
         assert not set(required_privileges(table)) & set(FORBIDDEN_PRIVILEGES)
+
+
+def test_policy_commands_cover_every_privilege_that_can_be_required():
+    """A privilege with no pg_policy.polcmd letter would silently skip its check.
+
+    policy_coverage_gaps() looks each required privilege up in this map; a missing
+    entry would raise KeyError, or worse, be quietly excluded if the lookup were
+    ever made forgiving.
+    """
+    from tools.verify_runtime_grant_coverage import _POLICY_COMMANDS
+
+    for privilege in FULL_DML:
+        assert privilege in _POLICY_COMMANDS
+    assert set(_POLICY_COMMANDS.values()) == {"r", "a", "w", "d"}
