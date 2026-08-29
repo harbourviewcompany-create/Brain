@@ -1,0 +1,115 @@
+name: Worker Release Privileges
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Brain runtime
+        run: pip install -c constraints.txt -e '.[dev]'
+
+      - name: Start isolated PostgreSQL with distinct release identities
+        run: |
+          docker run -d --name brain-worker-release-postgres -p 55435:5432 \
+            -e POSTGRES_USER=brain \
+            -e POSTGRES_PASSWORD=brain \
+            -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 60); do
+            if docker exec -e PGPASSWORD=brain brain-worker-release-postgres \
+                 psql -h 127.0.0.1 -U brain -d brain -tAc 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            if [ "${i}" = "60" ]; then docker logs brain-worker-release-postgres; exit 1; fi
+            sleep 1
+          done
+          docker exec -i brain-worker-release-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role brain_api_ci login password 'brain-api-ci' nosuperuser nobypassrls;
+          create role brain_worker_ci login password 'brain-worker-ci' nosuperuser nobypassrls;
+          create role brain_migrator_ci login password 'brain-migrator-ci' nosuperuser nobypassrls createrole;
+          SQL
+
+      - name: Build production-compatible baseline through migration 018
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55435/brain
+        run: python tools/apply_migrations.py --max-version 18
+
+      - name: Seed pre-tenant legacy evidence
+        run: |
+          docker exec -i brain-worker-release-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          insert into public.brain_events (
+            id, event_type, aggregate_type, aggregate_id, payload
+          ) values (
+            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa0',
+            'legacy.pre_tenant',
+            'worker_release_test',
+            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7',
+            '{"legacy":true}'::jsonb
+          );
+          SQL
+
+      - name: Hand schema ownership to the distinct migration login
+        run: |
+          docker exec -i brain-worker-release-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          grant usage, create on schema public to brain_migrator_ci;
+          reassign owned by brain to brain_migrator_ci;
+          SQL
+
+      - name: Apply canonical tenant release through migration 026
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain_migrator_ci:brain-migrator-ci@127.0.0.1:55435/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55435/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55435/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: python tools/apply_migrations.py --max-version 26
+
+      - name: Prove canonical replay and migration hashes
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain_migrator_ci:brain-migrator-ci@127.0.0.1:55435/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55435/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55435/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: |
+          python tools/apply_migrations.py --max-version 26
+          python tools/verify_tenant_rls_release.py --max-version 26
+
+      - name: Prove PR184 trusted-worker topology
+        env:
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55435/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55435/brain
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+          BRAIN_WORKER_MODE: verify
+        run: python -m apps.worker.main
+
+      - name: Prove worker connector and revenue persistence under constrained role
+        env:
+          VERIFY_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55435/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55435/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55435/brain
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: python -m tools.verify_worker_release_privileges
+
+      - name: Logs on failure
+        if: failure()
+        run: docker logs brain-worker-release-postgres || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f brain-worker-release-postgres >/dev/null 2>&1 || true
