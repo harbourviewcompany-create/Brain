@@ -94,8 +94,9 @@ jobs:
           BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
         run: python tools/apply_migrations.py --max-version 26
 
-      - name: Prove canonical replay and migration hashes
+      - name: Prove canonical replay, hashes, tenant RLS, and legacy-null behavior
         env:
+          VERIFY_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55435/brain
           BRAIN_MIGRATION_DATABASE_URL: postgresql://brain_migrator_ci:brain-migrator-ci@127.0.0.1:55435/brain
           DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55435/brain
           BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55435/brain
@@ -104,7 +105,25 @@ jobs:
           BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
         run: |
           python tools/apply_migrations.py --max-version 26
-          python tools/verify_tenant_rls_release.py --max-version 26
+          python - <<'PY'
+          import os
+          from tools.verify_tenant_rls_release import (
+              seed_tenant_fixtures,
+              verify_migration_ledger,
+              verify_runtime_role_and_isolation,
+              verify_trusted_worker,
+          )
+
+          verify_migration_ledger(os.environ["BRAIN_MIGRATION_DATABASE_URL"], 26)
+          # Fixture creation is test setup, not the migrator's runtime authority.
+          # FORCE RLS correctly prevents the constrained migrator from creating
+          # arbitrary tenant lifecycle rows, so the isolated cluster admin seeds
+          # only the deterministic verification tenants.
+          seed_tenant_fixtures(os.environ["VERIFY_DATABASE_URL"])
+          verify_runtime_role_and_isolation(os.environ["DATABASE_URL"])
+          verify_trusted_worker(os.environ["BRAIN_WORKER_DATABASE_URL"])
+          print("WORKER_RELEASE_TENANT_RLS_GO: replay, hashes, isolation, and legacy-null behavior passed")
+          PY
 
       - name: Prove PR184 trusted-worker topology
         env:
