@@ -25,7 +25,6 @@ MIGRATION = ROOT / "db" / "migrations" / "026_runtime_grants_for_post_022_tables
 # tools/ is excluded on purpose: those scripts connect with the migration DSN as
 # the table owner, so they are not bound by brain_runtime_role's privileges.
 RUNTIME_DIRS = ("brain", "apps")
-VERIFIER = "verify_runtime_grant_coverage.py"
 
 # Reproduced against PostgreSQL 16 with migrations 001-025 applied: as a
 # brain_runtime_role member every one of these fails with "permission denied
@@ -43,7 +42,7 @@ def _runtime_python_files() -> list[Path]:
     files: list[Path] = []
     for directory in RUNTIME_DIRS:
         for path in (ROOT / directory).rglob("*.py"):
-            if path.name == VERIFIER or "test" in path.name:
+            if path.name.startswith("test_") or path.name.endswith("_test.py"):
                 continue
             files.append(path)
     return files
