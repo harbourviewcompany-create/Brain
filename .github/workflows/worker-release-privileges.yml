@@ -59,11 +59,29 @@ jobs:
           );
           SQL
 
-      - name: Hand schema ownership to the distinct migration login
+      - name: Hand public schema ownership to the distinct migration login
         run: |
           docker exec -i brain-worker-release-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
-          grant usage, create on schema public to brain_migrator_ci;
-          reassign owned by brain to brain_migrator_ci;
+          alter schema public owner to brain_migrator_ci;
+          do $$
+          declare
+            r record;
+          begin
+            for r in
+              select c.relname, c.relkind
+              from pg_class c
+              join pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'public'
+                and c.relkind in ('r', 'p', 'S')
+              order by c.relname
+            loop
+              if r.relkind = 'S' then
+                execute format('alter sequence public.%I owner to brain_migrator_ci', r.relname);
+              else
+                execute format('alter table public.%I owner to brain_migrator_ci', r.relname);
+              end if;
+            end loop;
+          end $$;
           SQL
 
       - name: Apply canonical tenant release through migration 026
