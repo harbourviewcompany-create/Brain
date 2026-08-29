@@ -52,22 +52,50 @@ class CognitionLease:
         self._connect = connect or psycopg.connect
         self._conn: Any | None = None
         self._verified_at: float = 0.0
+        self._generation = 0
 
     @property
     def held(self) -> bool:
         return self._conn is not None
 
-    def acquire(self, *, blocking: bool = False) -> bool:
+    @property
+    def generation(self) -> int:
+        """How many times this lease has been taken on a *new* connection.
+
+        acquire() returning True does not mean ownership was continuous. When
+        the connection has been severed it reconnects and takes the lock
+        again, transparently -- and in the gap between those two moments the
+        lock was free, so another process could take it, write, and release
+        it. To a caller comparing booleans that is indistinguishable from
+        never having let go, which is how a holder resumes from a belief
+        cache that is several versions stale.
+
+        This counter changes exactly when the underlying session does, so a
+        caller can tell a re-acquisition from uninterrupted ownership and
+        reload durable state before writing again.
+        """
+
+        return self._generation
+
+    def acquire(self, *, blocking: bool = False, verify: bool = False) -> bool:
         """Take the lease, or report that another process holds it.
 
         When the lease is already held this revalidates the connection at most
         every ``verify_interval_seconds``: a connection can be severed without
         either side noticing, and a holder that keeps thinking on a dead
         connection has silently become a second writer.
+
+        ``verify`` skips that interval and probes the socket now. Callers about
+        to write must pass it: inside the interval a dead connection still
+        answers True from cache, while Postgres dropped the advisory lock the
+        moment the backend went away -- so another process can hold the lock,
+        legitimately, for up to verify_interval_seconds while this one goes on
+        writing under a lock it no longer has. The probe is a `select 1` on an
+        already-open connection, which is nothing beside the cycle it guards.
         """
 
         if self._conn is not None:
-            if self._still_connected():
+            if self._still_connected(force=verify):
                 return True
             log.warning("cognition lease connection lost; re-acquiring")
             self._drop()
@@ -99,6 +127,9 @@ class CognitionLease:
 
         self._conn = conn
         self._verified_at = time.monotonic()
+        # A new session, and so a new generation: whatever happened while this
+        # process was disconnected, it did not happen under this lock.
+        self._generation += 1
         return True
 
     def release(self) -> None:
@@ -115,14 +146,14 @@ class CognitionLease:
             log.warning("cognition lease unlock failed; closing to release")
         self._close(conn)
 
-    def _still_connected(self) -> bool:
+    def _still_connected(self, *, force: bool = False) -> bool:
         conn = self._conn
         if conn is None:
             return False
         if getattr(conn, "closed", False):
             return False
         now = time.monotonic()
-        if now - self._verified_at < self._verify_interval:
+        if not force and now - self._verified_at < self._verify_interval:
             return True
         try:
             conn.execute("select 1")
