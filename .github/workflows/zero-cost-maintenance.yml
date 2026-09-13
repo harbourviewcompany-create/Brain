@@ -1,0 +1,65 @@
+name: Zero-Cost Brain Maintenance
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brain-zero-cost-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      BRAIN_STORAGE_BACKEND: turso
+      BRAIN_INLINE_COGNITION: '0'
+      BRAIN_MAINTENANCE_MAX_ITEMS: '10'
+      BRAIN_MAINTENANCE_MAX_EVENTS: '1000'
+      BRAIN_MAINTENANCE_REPORT: evidence/zero-cost-maintenance.json
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install runtime dependencies
+        run: pip install -c constraints.txt -e '.[dev]'
+
+      - name: Validate zero-cost policy
+        run: python scripts/validate_zero_cost_runtime.py
+
+      - name: Require existing free Turso destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${TURSO_DATABASE_URL:-}" || { echo 'TURSO_DATABASE_URL is required'; exit 1; }
+          test -n "${TURSO_AUTH_TOKEN:-}" || { echo 'TURSO_AUTH_TOKEN is required'; exit 1; }
+          case "${TURSO_DATABASE_URL}" in
+            libsql://*|https://*) ;;
+            *) echo 'TURSO_DATABASE_URL must reference an existing remote libSQL/Turso database'; exit 1 ;;
+          esac
+
+      - name: Run bounded idempotent maintenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python tools/zero_cost_maintenance.py
+
+      - name: Upload maintenance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zero-cost-maintenance-${{ github.run_id }}
+          path: evidence/zero-cost-maintenance.json
+          if-no-files-found: warn
+          retention-days: 14

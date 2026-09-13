@@ -20,6 +20,7 @@ httptools==0.8.0
 httpx==0.28.1
 idna==3.19
 iniconfig==2.3.0
+libsql==0.1.11
 neo4j==6.2.0
 nexus-rpc==1.4.0
 numpy==2.4.4

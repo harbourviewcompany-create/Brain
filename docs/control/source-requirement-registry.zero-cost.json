@@ -1,0 +1,102 @@
+{
+  "registry_id": "brain-source-requirement-registry-zero-cost-extension-v1",
+  "status": "APPROVED_FOR_TRACEABILITY_ENFORCEMENT",
+  "purpose": "Canonical traceability extension for the zero-cost Vercel/Turso runtime, bounded storage policy, migration tooling and executable zero-cost policy validation.",
+  "rules": [
+    "The monthly paid-compute budget remains zero and paid overage remains disabled.",
+    "Turso is the proposed canonical persistence target only after an explicitly approved production migration; Railway remains a read-only source until cutover evidence is complete.",
+    "Vercel automatic deployment is restricted to relevant main releases and non-main branch work must not create a live preview runtime.",
+    "Production cutover and Railway retirement remain HOLD until real source/destination and postdeploy evidence exists."
+  ],
+  "sources": [
+    {
+      "source_id": "SRC-ZERO-COST-RUNTIME",
+      "path": "docs/control/ZERO_COST_RUNTIME.md",
+      "label": "APPROVED"
+    },
+    {
+      "source_id": "SRC-ZERO-COST-POLICY",
+      "path": "docs/control/zero_cost_policy.json",
+      "label": "APPROVED"
+    }
+  ],
+  "requirements": [
+    {
+      "requirement_id": "REQ-ZERO-COST-RUNTIME",
+      "source_ids": ["SRC-ZERO-COST-RUNTIME", "SRC-ZERO-COST-POLICY"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-ZERO-COST-PERSISTENCE",
+      "source_ids": ["SRC-ZERO-COST-RUNTIME", "SRC-ZERO-COST-POLICY"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-ZERO-COST-STORAGE-PRESSURE",
+      "source_ids": ["SRC-ZERO-COST-RUNTIME", "SRC-ZERO-COST-POLICY"],
+      "label": "APPROVED"
+    },
+    {
+      "requirement_id": "REQ-ZERO-COST-POLICY-VALIDATION",
+      "source_ids": ["SRC-ZERO-COST-POLICY"],
+      "label": "APPROVED"
+    }
+  ],
+  "code_module_records": [
+    {
+      "record_id": "TRACE-ZERO-COST-TURSO-RUNTIME",
+      "paths": [
+        "apps/api/turso_runtime.py",
+        "brain/adapters/persistence.py",
+        "brain/adapters/turso.py",
+        "brain/adapters/turso_brain_store.py",
+        "brain/adapters/turso_learning_store.py",
+        "brain/adapters/turso_revenue_store.py",
+        "brain/adapters/turso_schema.py",
+        "brain/storage_policy.py"
+      ],
+      "classification": "APPROVED",
+      "go_hold_status": "HOLD",
+      "source_ids": ["SRC-ZERO-COST-RUNTIME", "SRC-ZERO-COST-POLICY"],
+      "requirement_ids": ["REQ-ZERO-COST-RUNTIME", "REQ-ZERO-COST-PERSISTENCE", "REQ-ZERO-COST-STORAGE-PRESSURE"],
+      "owner_object": "Zero-cost Brain runtime persistence and bounded storage policy",
+      "schema": "Turso/SQLite schema and provider-neutral persistence contracts with explicit storage-pressure thresholds",
+      "runtime_service": "Vercel stateless API runtime backed by Turso free-tier persistence adapters",
+      "state_machine": "request -> validate zero-cost runtime configuration -> read/write through Turso persistence -> enforce storage pressure -> return bounded runtime result or fail closed",
+      "fixtures": ["tests/test_turso_persistence.py", "tests/test_railway_turso_migration.py"],
+      "tests": ["tests/test_turso_persistence.py", "tests/test_railway_turso_migration.py", "python -m pytest -q", "ruff check --select E4,E7,E9,F ."],
+      "acceptance_criteria": [
+        "Turso persistence contracts preserve canonical Brain data semantics",
+        "storage pressure refuses noncanonical growth at the 85 percent threshold",
+        "deterministic PostgreSQL-to-SQLite migration and replay fixture verifies counts and hashes",
+        "production cutover remains gated until real migration and postdeploy evidence exists"
+      ],
+      "audit_events": ["ZERO_COST_RUNTIME_VALIDATED", "TURSO_PERSISTENCE_VERIFIED", "STORAGE_PRESSURE_ENFORCED"],
+      "source_preservation": "preserved; Railway remains read-only migration source and no production source data is mutated or deleted by these modules",
+      "unresolved_gaps": ["production Turso import remains HOLD", "live postdeploy Turso runtime proof remains HOLD", "Railway retirement remains HOLD"]
+    },
+    {
+      "record_id": "TRACE-ZERO-COST-VALIDATOR",
+      "paths": ["scripts/validate_zero_cost_runtime.py"],
+      "classification": "APPROVED",
+      "go_hold_status": "HOLD",
+      "source_ids": ["SRC-ZERO-COST-POLICY", "SRC-ZERO-COST-RUNTIME"],
+      "requirement_ids": ["REQ-ZERO-COST-POLICY-VALIDATION", "REQ-ZERO-COST-RUNTIME"],
+      "owner_object": "Executable zero-cost release policy",
+      "schema": "Repository policy assertions covering paid budget, provider roles, Vercel deployment controls, Railway read-only rescue, storage thresholds and protected CI requirements",
+      "runtime_service": "scripts/validate_zero_cost_runtime.py in protected GitHub Actions",
+      "state_machine": "load policy and controlled files -> validate exact zero-cost invariants -> PASS or fail closed with a concrete policy violation",
+      "fixtures": ["docs/control/zero_cost_policy.json", ".github/workflows/test.yml"],
+      "tests": ["python scripts/validate_zero_cost_runtime.py", "python -m compileall -q api apps/api brain scripts tools tests", "ruff check --select E4,E7,E9,F ."],
+      "acceptance_criteria": [
+        "zero monthly paid budget and no paid overage remain enforced",
+        "Railway production dependency and mutation remain forbidden while rescue stays manual/read-only",
+        "Vercel main-only deployment controls and postdeploy Turso assertions remain required",
+        "protected CI continues to require full tests, static checks, Observatory verification, tenant-RLS and deterministic migration evidence"
+      ],
+      "audit_events": ["ZERO_COST_POLICY_VALIDATION_PASSED", "ZERO_COST_POLICY_VALIDATION_FAILED"],
+      "source_preservation": "preserved; validator is read-only and changes no runtime or production state",
+      "unresolved_gaps": ["production postdeploy audit remains HOLD until an approved cutover"]
+    }
+  ]
+}
