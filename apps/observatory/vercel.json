@@ -5,8 +5,9 @@
   "outputDirectory": ".next",
   "git": {
     "deploymentEnabled": {
-      "*": false,
-      "main": true
+      "**": false,
+      "main": true,
+      "preview/*": true
     }
   },
   "ignoreCommand": "bash ../../scripts/vercel-ignore-build.sh"

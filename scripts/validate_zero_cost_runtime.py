@@ -48,8 +48,11 @@ def validate_policy() -> dict:
 def validate_vercel_config(path: str, expected_ignore: str) -> None:
     config = json.loads(read(path))
     rules = config.get("git", {}).get("deploymentEnabled", {})
-    require(rules.get("*") is False, f"{path}: all branches must default to no automatic deployment")
-    require(rules.get("main") is True, f"{path}: main must be the only automatic deployment exception")
+    require(
+        rules.get("**") is False,
+        f"{path}: all branches must default to no automatic deployment",
+    )
+    require(rules.get("main") is True, f"{path}: main must deploy automatically")
     require(config.get("ignoreCommand") == expected_ignore, f"{path}: ignored-build command mismatch")
 
 

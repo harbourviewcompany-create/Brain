@@ -156,7 +156,7 @@ def test_the_worker_waits_for_the_lease_instead_of_polling(monkeypatch):
         def __init__(self, dsn):
             calls.append(dsn)
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             calls.append(blocking)
             return True
 
@@ -194,7 +194,7 @@ def test_the_worker_thinks_anyway_when_the_lease_cannot_be_taken(monkeypatch):
         def __init__(self, dsn):
             pass
 
-        def acquire(self, *, blocking=False):
+        def acquire(self, *, blocking=False, verify=False):
             return False
 
     monkeypatch.setattr("brain.cognition_lease.CognitionLease", RefusingLease)

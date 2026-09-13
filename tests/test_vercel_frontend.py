@@ -12,7 +12,7 @@ def test_root_vercel_config_is_deployment_control_not_frontend_authority() -> No
     assert not (ROOT / "index.html").exists()
     config = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
     rules = config["git"]["deploymentEnabled"]
-    assert rules["*"] is False
+    assert rules["**"] is False
     assert rules["main"] is True
     assert config["ignoreCommand"] == "bash scripts/vercel-ignore-build.sh"
 
@@ -26,7 +26,7 @@ def test_observatory_is_the_canonical_nextjs_vercel_app() -> None:
     assert config["framework"] == "nextjs"
     assert config["buildCommand"] == "npm run build"
     assert config["outputDirectory"] == ".next"
-    assert config["git"]["deploymentEnabled"]["*"] is False
+    assert config["git"]["deploymentEnabled"]["**"] is False
     assert config["git"]["deploymentEnabled"]["main"] is True
     assert config["ignoreCommand"] == "bash ../../scripts/vercel-ignore-build.sh"
 
