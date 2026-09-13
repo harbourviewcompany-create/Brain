@@ -8,6 +8,7 @@ exits before downloading anything.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import yaml
@@ -75,3 +76,96 @@ def test_the_deployment_topology_records_that_the_api_needs_its_own_build_root()
     assert "Deployment topology" in RUNTIME_DOC
     assert "api/index.py" in RUNTIME_DOC
     assert "BRAIN_API_URL" in RUNTIME_DOC
+
+
+# ---------------------------------------------------------------------------
+# The hourly maintenance job must not be permanently red before cutover.
+#
+# `zero-cost-maintenance.yml` runs every hour against the Turso destination.
+# That destination does not exist until the production cutover, so the job
+# used to fail on every single run. A control that is always red is not a
+# control -- it is noise that trains readers to ignore the one run that
+# matters. These tests execute the gate script itself rather than matching
+# strings, so a future edit that reintroduces the hard failure is caught.
+# ---------------------------------------------------------------------------
+
+MAINTENANCE = yaml.safe_load(
+    (ROOT / ".github/workflows/zero-cost-maintenance.yml").read_text(encoding="utf-8")
+)
+MAINTENANCE_STEPS = MAINTENANCE["jobs"]["maintain"]["steps"]
+
+
+def _step(step_id: str) -> dict:
+    for step in MAINTENANCE_STEPS:
+        if step.get("id") == step_id:
+            return step
+    raise AssertionError(f"no step with id {step_id!r} in zero-cost-maintenance.yml")
+
+
+def _run_destination_gate(tmp_path, **env: str):
+    """Execute the destination gate exactly as the workflow does."""
+
+    import subprocess
+
+    output = tmp_path / "github_output"
+    output.touch()
+    result = subprocess.run(
+        ["bash", "-c", _step("destination")["run"]],
+        capture_output=True,
+        text=True,
+        env={
+            "PATH": os.environ["PATH"],
+            "GITHUB_OUTPUT": str(output),
+            "TURSO_DATABASE_URL": "",
+            "TURSO_AUTH_TOKEN": "",
+            **env,
+        },
+    )
+    return result, output.read_text(encoding="utf-8")
+
+
+def test_maintenance_skips_cleanly_when_the_destination_does_not_exist_yet(tmp_path):
+    """Before cutover there is nothing to maintain; that is not a failure."""
+
+    result, output = _run_destination_gate(tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "configured=false" in output
+    assert "configured=true" not in output
+
+
+def test_maintenance_still_fails_on_a_half_configured_destination(tmp_path):
+    """One secret without the other is a real misconfiguration, not a skip."""
+
+    url_only, _ = _run_destination_gate(tmp_path, TURSO_DATABASE_URL="libsql://brain.turso.io")
+    assert url_only.returncode != 0
+    assert "TURSO_AUTH_TOKEN" in url_only.stdout + url_only.stderr
+
+    token_only, _ = _run_destination_gate(tmp_path, TURSO_AUTH_TOKEN="token")
+    assert token_only.returncode != 0
+    assert "TURSO_DATABASE_URL" in token_only.stdout + token_only.stderr
+
+
+def test_maintenance_still_rejects_a_destination_that_is_not_remote(tmp_path):
+    """A local file destination would silently maintain the wrong database."""
+
+    result, _ = _run_destination_gate(
+        tmp_path, TURSO_DATABASE_URL="file:local.db", TURSO_AUTH_TOKEN="token"
+    )
+
+    assert result.returncode != 0
+    assert "remote libSQL/Turso database" in result.stdout + result.stderr
+
+
+def test_a_configured_destination_still_runs_maintenance(tmp_path):
+    """The skip must not swallow the real run once cutover happens."""
+
+    result, output = _run_destination_gate(
+        tmp_path, TURSO_DATABASE_URL="libsql://brain.turso.io", TURSO_AUTH_TOKEN="token"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "configured=true" in output
+
+    run_step = next(s for s in MAINTENANCE_STEPS if "zero_cost_maintenance.py" in s.get("run", ""))
+    assert run_step["if"] == "steps.destination.outputs.configured == 'true'"
