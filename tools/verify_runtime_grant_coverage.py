@@ -28,7 +28,6 @@ import os
 import psycopg
 from psycopg import sql
 
-
 RUNTIME_ROLE = "brain_runtime_role"
 
 #: What a tenant-owned runtime table needs. The runtime reads and writes these
@@ -79,6 +78,15 @@ TRUSTED_SERVICE_ONLY: dict[str, str] = {
 TRUSTED_SERVICE_PRIVILEGES: tuple[str, ...] = ("select", "insert", "update")
 
 TRUSTED_SERVICE_ROLE = "brain_trusted_service_role"
+
+#: What the trusted worker may never hold on the tables it owns. Migration 026
+#: (#197) grants SELECT, INSERT and UPDATE deliberately: the worker appends and
+#: refreshes acquisition state, it never removes it. Checking only that the
+#: worker *has* those three would let a later `grant delete` -- or a `grant all`
+#: that sweeps up TRUNCATE, which row level security does not apply to at all --
+#: widen the trusted boundary with this gate still green. The privilege model is
+#: only meaningful if it is asserted as an upper bound as well as a lower one.
+TRUSTED_SERVICE_FORBIDDEN: tuple[str, ...] = ("delete", "truncate")
 
 # Tables the constrained runtime login is deliberately not granted at all.
 #
@@ -362,6 +370,33 @@ def trusted_service_write_gaps(conn: psycopg.Connection) -> list[str]:
     return gaps
 
 
+def trusted_service_excess_privileges(conn: psycopg.Connection) -> list[str]:
+    """Return trusted-worker tables whose service role holds more than it should.
+
+    The mirror of `trusted_service_write_gaps()`. That function proves the worker
+    can still do its job; this one proves the job has not quietly grown. Migration
+    026 (#197) withholds DELETE from the worker on purpose, and TRUNCATE is exempt
+    from row level security, so either one appearing later is a real widening of
+    the trust boundary rather than a harmless extra grant.
+    """
+
+    excess: list[str] = []
+    for table in TRUSTED_SERVICE_ONLY:
+        if conn.execute("select to_regclass(%s)", (f"public.{table}",)).fetchone()[0] is None:
+            continue
+        held = [
+            privilege
+            for privilege in TRUSTED_SERVICE_FORBIDDEN
+            if conn.execute(
+                "select has_table_privilege(%s, %s, %s)",
+                (TRUSTED_SERVICE_ROLE, f"public.{table}", privilege),
+            ).fetchone()[0]
+        ]
+        if held:
+            excess.append(f"{table} (holds {', '.join(held)})")
+    return excess
+
+
 def verify(conn: psycopg.Connection) -> None:
     """Assert the whole privilege model against `conn`, raising on the first failure.
 
@@ -464,6 +499,16 @@ def verify(conn: psycopg.Connection) -> None:
             + "; ".join(service_gaps)
             + ". The ordinary runtime role is granted nothing on these by design, so "
             "revoking the service role's access leaves nothing able to use them at all."
+        )
+
+    service_excess = trusted_service_excess_privileges(conn)
+    if service_excess:
+        raise RuntimeError(
+            f"{TRUSTED_SERVICE_ROLE} holds privileges migration 026 (#197) withholds "
+            "from it: " + "; ".join(service_excess)
+            + f". The worker is granted {', '.join(TRUSTED_SERVICE_PRIVILEGES)} and no "
+            "more: it appends and refreshes acquisition state, it never removes it, "
+            "and row level security does not apply to TRUNCATE at all."
         )
 
     sequence_gaps = ungranted_sequences(conn)

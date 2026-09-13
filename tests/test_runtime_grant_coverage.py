@@ -19,6 +19,7 @@ from tools.verify_runtime_grant_coverage import (
     FORBIDDEN_PRIVILEGES,
     FULL_DML,
     READ_ONLY_TABLES,
+    TRUSTED_SERVICE_FORBIDDEN,
     TRUSTED_SERVICE_ONLY,
     TRUSTED_SERVICE_PRIVILEGES,
     required_privileges,
@@ -169,3 +170,28 @@ def test_policy_commands_cover_every_privilege_that_can_be_required():
     for privilege in FULL_DML:
         assert privilege in _POLICY_COMMANDS
     assert set(_POLICY_COMMANDS.values()) == {"r", "a", "w", "d"}
+
+
+def test_the_trusted_worker_may_never_hold_delete_or_truncate():
+    """The worker's privileges are an exact set, not a floor.
+
+    Migration 026 (#197) grants SELECT, INSERT and UPDATE and withholds DELETE on
+    purpose. Checking only that the worker holds those three would let a later
+    `grant delete` -- or a `grant all` sweeping up TRUNCATE, which row level
+    security never applies to -- widen the trusted boundary with the gate green.
+    """
+
+    assert set(TRUSTED_SERVICE_FORBIDDEN) == {"delete", "truncate"}
+    assert not set(TRUSTED_SERVICE_PRIVILEGES) & set(TRUSTED_SERVICE_FORBIDDEN)
+
+
+def test_the_worker_forbidden_set_covers_every_dml_it_is_not_granted():
+    """Nothing in FULL_DML may be left unclassified for the trusted worker.
+
+    Every ordinary DML privilege must be either granted to the worker or named as
+    forbidden, so adding a privilege to FULL_DML later cannot silently create a
+    fourth category the worker is neither allowed nor denied.
+    """
+
+    classified = set(TRUSTED_SERVICE_PRIVILEGES) | set(TRUSTED_SERVICE_FORBIDDEN)
+    assert set(FULL_DML) <= classified
