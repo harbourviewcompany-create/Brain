@@ -2,6 +2,10 @@ name: Brain Control Policy
 
 on:
   pull_request:
+    # Without an explicit list this defaults to opened/synchronize/reopened, so a
+    # PR body corrected after validate_pr_body.py rejects it is never re-checked
+    # and the red result stands against a body that now passes.
+    types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches:
       - main
