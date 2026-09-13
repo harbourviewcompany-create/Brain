@@ -546,6 +546,22 @@ def verify(conn: psycopg.Connection) -> None:
     )
 
 
+def _sample(items: list[str], limit: int = 12) -> str:
+    """Render a bounded, sorted sample of a failure list.
+
+    A non-inheriting membership strips every privilege at once, so this list can
+    reach one entry per table per privilege. An unbounded join turns the CI log
+    into hundreds of lines that all say the same thing; the count plus a sample
+    identifies the fault just as well and stays readable.
+    """
+
+    ordered = sorted(items)
+    if len(ordered) <= limit:
+        return "; ".join(ordered)
+    remaining = len(ordered) - limit
+    return "; ".join(ordered[:limit]) + f"; ... and {remaining} more"
+
+
 def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None:
     """Verify the model through the connection the API actually uses.
 
@@ -560,16 +576,26 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
     intact while the constrained login silently reads nothing. The owner DSN
     cannot see this at all -- owners bypass RLS on tables that are not FORCEd.
 
-    Reads only. Proving writes would mean writing rows into the database being
-    verified, and a verifier with side effects is worse than a narrower one.
+    Write *privileges* are checked without writing. `has_table_privilege` answers
+    for the connected login and, on a non-inheriting membership (`grant ... with
+    inherit false`), correctly reports false for the role's privileges -- so a
+    login holding only a direct SELECT grant is caught here rather than at the
+    first runtime INSERT. No row is ever written: a verifier with side effects on
+    the database it is verifying would be worse than a narrower one.
     """
 
     effective = conn.execute("select current_user").fetchone()[0]
 
     forbidden: list[str] = []
     excess: list[str] = []
+    missing: list[str] = []
     for table in present:
         required = set(required_privileges(table))
+        for privilege in sorted(required):
+            if not conn.execute(
+                "select has_table_privilege(%s, %s)", (f"public.{table}", privilege)
+            ).fetchone()[0]:
+                missing.append(f"{table} ({privilege})")
         for privilege in FORBIDDEN_PRIVILEGES:
             if conn.execute(
                 "select has_table_privilege(%s, %s)", (f"public.{table}", privilege)
@@ -582,6 +608,15 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
                 ).fetchone()[0]:
                     excess.append(f"{table} ({privilege})")
 
+    if missing:
+        raise RuntimeError(
+            f"the runtime login {effective!r} lacks {len(missing)} privileges its "
+            "queries need: " + _sample(missing)
+            + f". Role-level coverage is not enough: a login that is a member of "
+            f"{RUNTIME_ROLE} through a non-inheriting grant (`grant ... with inherit "
+            "false`) holds none of the role's privileges until it runs SET ROLE, and a "
+            "direct SELECT grant then leaves reads working while every write fails."
+        )
     if forbidden:
         raise RuntimeError(
             f"the runtime login {effective!r} holds forbidden privileges directly, "
@@ -617,8 +652,9 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
         )
 
     print(
-        f"effective runtime login verified: {effective} reads every table it must, "
-        f"holds no forbidden privilege, and cannot write the read-only catalogues",
+        f"effective runtime login verified: {effective} holds every privilege its "
+        "queries need, reads every table it must, holds no forbidden privilege, and "
+        "cannot write the read-only catalogues",
         flush=True,
     )
 
