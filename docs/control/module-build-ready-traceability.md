@@ -48,6 +48,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | brain/cognitive_immune.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_organism.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/cognitive_state.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| brain/connectors/entity_extractor.py | partial | partial | partial | partial | partial | missing | partial | HOLD |
 | brain/connectors/http_client.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/connectors/http_json.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
 | brain/connectors/protocol.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
