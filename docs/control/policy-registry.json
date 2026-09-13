@@ -42,6 +42,7 @@
     "docs/control/OBSERVATORY_CONSOLIDATION_PROVENANCE.md",
     "docs/control/source-requirement-registry.observatory.json",
     "docs/control/module-build-ready-traceability.observatory.md",
+    "docs/control/source-requirement-registry.cloudflare-cron.json",
     "docs/control/source-requirement-registry.zero-cost.json",
     "docs/control/module-build-ready-traceability.zero-cost.md"
   ],
@@ -121,6 +122,7 @@
       "docs/control/source-requirement-registry.infra.json",
       "docs/control/source-requirement-registry.observatory.json",
       "docs/control/source-requirement-registry.hardening.json",
+      "docs/control/source-requirement-registry.cloudflare-cron.json",
       "docs/control/source-requirement-registry.zero-cost.json"
     ],
     "module_build_ready_schema_path": "docs/control/module-build-ready-traceability.schema.json",

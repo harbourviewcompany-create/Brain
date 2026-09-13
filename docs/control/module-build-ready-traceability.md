@@ -25,6 +25,7 @@ A module is BUILD-READY only when all required fields are present and evidence-b
 | Module path | Owner object | Schema | Runtime service | State machine | Fixtures / tests | Acceptance evidence | Audit events | GO/HOLD |
 |---|---|---|---|---|---|---|---|---|
 | apps/api/cognitive_organism_routes.py | partial | partial | partial | missing | partial | missing | partial | HOLD |
+| apps/api/cognition_cron_routes.py | partial | partial | present | present | present | partial | missing | HOLD |
 | apps/api/inline_cognition.py | partial | partial | present | present | present | missing | partial | HOLD |
 | apps/api/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |
 | apps/operator/main.py | partial | partial | partial | missing | partial | missing | missing | HOLD |

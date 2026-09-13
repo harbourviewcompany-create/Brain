@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from apps.api.cockpit_read_routes import register_cockpit_read_routes
+from apps.api.cognition_cron_routes import register_cognition_cron_routes
 from apps.api.inline_cognition import (
     InlineCognition,
     cognition_dsn,
@@ -1065,3 +1066,6 @@ register_cognitive_organism_routes(app)
 # The cockpit read model lives on the canonical image, not only on the
 # deprecated Dockerfile.railway compatibility entrypoint.
 register_cockpit_read_routes(app, api_module=sys.modules[__name__])
+
+# Free serverless cron (Cloudflare Worker) hits this lease-aware path.
+register_cognition_cron_routes(app, api_module=sys.modules[__name__])
