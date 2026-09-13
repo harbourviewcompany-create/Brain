@@ -42,6 +42,35 @@ def validate_policy() -> dict:
     require(int(thresholds["reject_noncanonical_growth"]) == 85, "optional-write refusal gate must remain 85%")
     require(policy["migration"]["workflow_trigger"] == "workflow_dispatch_only", "rescue must remain manual-only")
     require(policy["migration"]["verify_before_import"] is True, "migration verification must precede import")
+    cutover = policy["cutover"]
+    require(
+        list(cutover["admissible_paths"]) == ["migrated", "clean_start"],
+        "cutover must admit exactly the migrated and clean-start paths",
+    )
+    require(
+        cutover["migrated_requires_verified_rescue"] is True,
+        "a migrated cutover must still require a verified rescue",
+    )
+    require(
+        cutover["clean_start_requires_unrecoverable_source"] is True,
+        "clean start is permitted only when the source is unrecoverable",
+    )
+    require(
+        cutover["clean_start_requires_recorded_source_evidence"] is True,
+        "clean start must record the evidence that the source is unrecoverable",
+    )
+    require(
+        cutover["clean_start_requires_explicit_data_loss_acknowledgement"] is True,
+        "clean start must state the data loss explicitly",
+    )
+    require(
+        cutover["paid_plan_to_recover_source_allowed"] is False,
+        "buying a paid plan to recover the source would break the zero-dollar invariant",
+    )
+    require(
+        cutover["silent_data_loss_allowed"] is False,
+        "data loss may be accepted but never silent",
+    )
     return policy
 
 

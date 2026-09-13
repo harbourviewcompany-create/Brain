@@ -52,5 +52,17 @@
     "verify_before_import": true,
     "source_destination_counts_required": true,
     "sha256_manifest_required": true
+  },
+  "cutover": {
+    "admissible_paths": [
+      "migrated",
+      "clean_start"
+    ],
+    "migrated_requires_verified_rescue": true,
+    "clean_start_requires_unrecoverable_source": true,
+    "clean_start_requires_recorded_source_evidence": true,
+    "clean_start_requires_explicit_data_loss_acknowledgement": true,
+    "paid_plan_to_recover_source_allowed": false,
+    "silent_data_loss_allowed": false
   }
 }
