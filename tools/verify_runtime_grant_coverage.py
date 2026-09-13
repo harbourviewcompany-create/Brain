@@ -241,7 +241,11 @@ def sequence_owners(conn: psycopg.Connection) -> list[tuple[str, str | None]]:
 _POLICY_COMMANDS: dict[str, str] = {"select": "r", "insert": "a", "update": "w", "delete": "d"}
 
 
-def policy_coverage_gaps(conn: psycopg.Connection) -> list[str]:
+def policy_coverage_gaps(
+    conn: psycopg.Connection,
+    role: str = RUNTIME_ROLE,
+    membership: str = "member",
+) -> list[str]:
     """Return (table, privilege) pairs whose grant no usable row level policy satisfies.
 
     A grant is only half of reachability. With RLS enabled, an operation also needs a
@@ -256,6 +260,13 @@ def policy_coverage_gaps(conn: psycopg.Connection) -> list[str]:
     Migration 026 (#197) writes `for all to brain_trusted_service_role` policies, so
     a future policy scoped that way on a table the runtime is still granted would look
     like coverage while every runtime write was refused.
+
+    `membership` decides which sense of "a role the caller belongs to" applies, and
+    the two are not interchangeable. For the group role, MEMBER is right: the role
+    simply is itself. For a login, only USAGE is right -- PostgreSQL applies a
+    role-scoped policy through *inherited* membership, so a login joined by
+    `grant ... with inherit false` is a MEMBER whose policies never apply. Checking
+    a login with MEMBER would report coverage for exactly the topology that breaks.
     """
 
     rows = conn.execute(
@@ -272,11 +283,11 @@ def policy_coverage_gaps(conn: psycopg.Connection) -> list[str]:
             0 = any(p.polroles)
             or exists (
               select 1 from unnest(p.polroles) as role_oid
-              where pg_has_role(%s, role_oid, 'member')
+              where pg_has_role(%s, role_oid, %s)
             )
           )
         """,
-        (RUNTIME_ROLE,),
+        (role, membership),
     ).fetchall()
 
     covered: dict[str, set[str]] = {}
@@ -627,6 +638,17 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
             f"the runtime login {effective!r} holds privileges on tables documented as "
             f"read-only, trusted-worker only, or withheld that {RUNTIME_ROLE} does not: " + "; ".join(sorted(excess))
             + ". Look for a direct grant on the login or membership in another role."
+        )
+
+    policy_gaps = policy_coverage_gaps(conn, role=effective, membership="usage")
+    if policy_gaps:
+        raise RuntimeError(
+            f"no row level policy applies to the runtime login {effective!r} for: "
+            + _sample(policy_gaps)
+            + ". The grants are present and the policies exist, but they are scoped to "
+            f"a role this login does not hold by inheritance, so {RUNTIME_ROLE} passes "
+            "the role-level check while the login reads nothing and every write is "
+            "refused by row level security."
         )
 
     unreadable: list[str] = []

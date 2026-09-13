@@ -11,6 +11,7 @@ ordinary suite that runs everywhere.
 
 from __future__ import annotations
 
+import inspect
 import re
 from pathlib import Path
 
@@ -19,10 +20,13 @@ from tools.verify_runtime_grant_coverage import (
     FORBIDDEN_PRIVILEGES,
     FULL_DML,
     READ_ONLY_TABLES,
+    RUNTIME_ROLE,
     TRUSTED_SERVICE_FORBIDDEN,
     TRUSTED_SERVICE_ONLY,
     TRUSTED_SERVICE_PRIVILEGES,
+    policy_coverage_gaps,
     required_privileges,
+    verify_effective_login,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -195,3 +199,31 @@ def test_the_worker_forbidden_set_covers_every_dml_it_is_not_granted():
 
     classified = set(TRUSTED_SERVICE_PRIVILEGES) | set(TRUSTED_SERVICE_FORBIDDEN)
     assert set(FULL_DML) <= classified
+
+
+def test_policy_coverage_defaults_to_the_role_and_member_semantics():
+    """The group role is checked as a MEMBER of itself, which is the right sense there.
+
+    A login must instead be checked with USAGE: PostgreSQL applies a role-scoped
+    policy only through *inherited* membership, so a login joined by
+    `grant ... with inherit false` is a MEMBER whose policies never apply. Checking
+    a login with MEMBER reports coverage for exactly the topology that breaks, which
+    is why the caller chooses the predicate and the default is the role's.
+    """
+
+    signature = inspect.signature(policy_coverage_gaps)
+    assert signature.parameters["role"].default == RUNTIME_ROLE
+    assert signature.parameters["membership"].default == "member"
+
+
+def test_the_effective_login_policy_check_uses_inherited_membership():
+    """verify_effective_login must ask with USAGE, never MEMBER.
+
+    Pinned as source because the failure is silent in both directions: with MEMBER
+    the check passes on a topology where the login reads nothing, and there is no
+    assertion elsewhere that would notice the predicate being wrong.
+    """
+
+    source = inspect.getsource(verify_effective_login)
+    assert 'membership="usage"' in source
+    assert 'membership="member"' not in source
