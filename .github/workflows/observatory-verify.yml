@@ -10,6 +10,7 @@ on:
       - "apps/observatory/eslint.config.mjs"
       - "apps/observatory/tailwind.config.ts"
       - "docs/observatory/BRAIN_OBSERVATORY.md"
+      - "docs/observatory/LIVING_COGNITIVE_MACHINE.md"
       - ".github/workflows/observatory-verify.yml"
       - ".github/workflows/test.yml"
       - "docs/control/policy-registry.json"
@@ -41,59 +42,7 @@ jobs:
       - name: Production build
         working-directory: apps/observatory
         run: npm run build
-      - name: Existing production BFF read smoke
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Canonical Vercel project is `brain` (see docs/observatory/PRODUCTION_WIRING.md).
-          # Live production may still return 503 operator_auth_not_configured until the
-          # open-when-unconfigured middleware is promoted. 401 remains valid when the
-          # optional operator gate is configured.
-          base="https://brain-seven-puce.vercel.app/api/brain"
-          health_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
-            -o /tmp/health.json -w "%{http_code}" "$base/health" || true)"
-          signals_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
-            -o /tmp/signals.json -w "%{http_code}" "$base/signals" || true)"
-          organism_code="$(curl --retry 4 --retry-all-errors --retry-delay 2 --silent --show-error \
-            -o /tmp/organism.json -w "%{http_code}" "$base/organism/cockpit" || true)"
-          node - <<NODE
-          const fs = require('fs');
-          const healthCode = "${health_code}";
-          let health = { status: null, version: null, database: null, persistence: null, heartbeat: null };
-          if (healthCode === '200') {
-            health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
-            if (health.status !== 'ok') throw new Error(\`health status \${health.status}\`);
-          } else if (healthCode !== '401' && healthCode !== '503') {
-            throw new Error(\`unexpected health status \${healthCode}\`);
-          }
-
-          const signalsCode = "${signals_code}";
-          let signalsCount = null;
-          if (signalsCode === '200') {
-            const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
-            if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
-            signalsCount = signals.items.length;
-          } else if (signalsCode !== '401' && signalsCode !== '404' && signalsCode !== '503') {
-            throw new Error(\`unexpected signals status \${signalsCode}\`);
-          }
-
-          const organismCode = "${organism_code}";
-          let organismKeys = [];
-          if (organismCode === '200') {
-            const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
-            if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
-            organismKeys = Object.keys(organism).sort();
-          } else if (organismCode !== '404' && organismCode !== '401' && organismCode !== '503') {
-            throw new Error(\`unexpected organism cockpit status \${organismCode}\`);
-          }
-
-          console.log(JSON.stringify({
-            health: { code: healthCode, status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
-            signals: { status: signalsCode, count: signalsCount },
-            organism: { status: organismCode, keys: organismKeys }
-          }, null, 2));
-          NODE
-      - name: Render desktop and mobile visual evidence
+      - name: Render desktop, tablet and mobile visual evidence
         shell: bash
         working-directory: apps/observatory
         env:
@@ -150,6 +99,13 @@ jobs:
             evidence/brain-observatory-desktop.png
           npx --yes playwright@1.55.0 screenshot \
             --browser chromium \
+            --viewport-size="1024,1366" \
+            --wait-for-timeout=10000 \
+            --load-storage=/tmp/brain-operator-state.json \
+            http://127.0.0.1:3000 \
+            evidence/brain-observatory-tablet.png
+          npx --yes playwright@1.55.0 screenshot \
+            --browser chromium \
             --viewport-size="390,844" \
             --wait-for-timeout=10000 \
             --load-storage=/tmp/brain-operator-state.json \
@@ -157,6 +113,7 @@ jobs:
             evidence/brain-observatory-mobile.png
 
           test -s evidence/brain-observatory-desktop.png
+          test -s evidence/brain-observatory-tablet.png
           test -s evidence/brain-observatory-mobile.png
           file evidence/*.png
       - name: Upload visual evidence
@@ -166,3 +123,68 @@ jobs:
           path: apps/observatory/evidence/*.png
           if-no-files-found: error
           retention-days: 7
+      - name: Existing production BFF diagnostic
+        id: production_baseline
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          # PR builds cannot require an already-deployed production backend to
+          # contain the code being proposed by the PR. This remains a visible
+          # diagnostic here. The hard production release assertion lives in
+          # `.github/workflows/postdeploy-observatory-audit.yml`, which fails on
+          # an unhealthy BFF, `/signals`, Railway auth, or live browser errors.
+          # Bound every diagnostic request so an unhealthy live service cannot
+          # consume the PR job's full timeout while still preserving visibility.
+          base="https://brain-seven-puce.vercel.app/api/brain"
+          health_code="$(curl --connect-timeout 3 --max-time 10 --retry 1 --retry-all-errors --retry-delay 1 --retry-max-time 12 --silent --show-error \
+            -o /tmp/health.json -w "%{http_code}" "$base/health" || true)"
+          signals_code="$(curl --connect-timeout 3 --max-time 10 --retry 1 --retry-all-errors --retry-delay 1 --retry-max-time 12 --silent --show-error \
+            -o /tmp/signals.json -w "%{http_code}" "$base/signals" || true)"
+          organism_code="$(curl --connect-timeout 3 --max-time 10 --retry 1 --retry-all-errors --retry-delay 1 --retry-max-time 12 --silent --show-error \
+            -o /tmp/organism.json -w "%{http_code}" "$base/organism/cockpit" || true)"
+          node - <<NODE
+          const fs = require('fs');
+          const healthCode = "${health_code}";
+          let health = { status: null, version: null, database: null, persistence: null, heartbeat: null };
+          if (healthCode === '200') {
+            health = JSON.parse(fs.readFileSync('/tmp/health.json','utf8'));
+            if (health.status !== 'ok') throw new Error(\`health status \${health.status}\`);
+          } else if (healthCode !== '401' && healthCode !== '503') {
+            throw new Error(\`unexpected health status \${healthCode}\`);
+          }
+
+          const signalsCode = "${signals_code}";
+          let signalsCount = null;
+          if (signalsCode === '200') {
+            const signals = JSON.parse(fs.readFileSync('/tmp/signals.json','utf8'));
+            if (!Array.isArray(signals.items)) throw new Error('signals.items missing');
+            signalsCount = signals.items.length;
+          } else if (signalsCode !== '401' && signalsCode !== '404' && signalsCode !== '503') {
+            throw new Error(\`unexpected signals status \${signalsCode}\`);
+          }
+
+          const organismCode = "${organism_code}";
+          let organismKeys = [];
+          if (organismCode === '200') {
+            const organism = JSON.parse(fs.readFileSync('/tmp/organism.json','utf8'));
+            if (!organism || typeof organism !== 'object') throw new Error('organism payload missing');
+            organismKeys = Object.keys(organism).sort();
+          } else if (organismCode !== '404' && organismCode !== '401' && organismCode !== '503') {
+            throw new Error(\`unexpected organism cockpit status \${organismCode}\`);
+          }
+
+          console.log(JSON.stringify({
+            health: { code: healthCode, status: health.status, version: health.version, database: health.database, persistence: health.persistence, heartbeat: health.heartbeat },
+            signals: { status: signalsCode, count: signalsCount },
+            organism: { status: organismCode, keys: organismKeys }
+          }, null, 2));
+          NODE
+      - name: Record production baseline diagnostic
+        if: always()
+        shell: bash
+        run: |
+          echo "### Existing production baseline" >> "$GITHUB_STEP_SUMMARY"
+          echo "PR verification: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Production diagnostic outcome: ${{ steps.production_baseline.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Hard production verification remains Postdeploy Observatory Audit after deployment." >> "$GITHUB_STEP_SUMMARY"

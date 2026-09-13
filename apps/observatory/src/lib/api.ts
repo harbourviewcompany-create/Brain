@@ -2,7 +2,7 @@
  * Brain Runtime API client (browser-safe).
  *
  * All calls go to same-origin /api/brain/* which proxies to Railway and
- * attaches BRAIN_API_KEY on the server. The browser never sees the upstream secret.
+ * attaches upstream credentials on the server. The browser never sees them.
  */
 
 import type {
@@ -26,6 +26,13 @@ import type {
   OrganismQuarantineItem,
   OrganismPersistenceStatus,
 } from "@/types/brain";
+import type {
+  BrainCommandMode,
+  BrainCommandReceipt,
+  LearningEvent,
+  ObservedEvidence,
+  WorkingMemoryObservation,
+} from "@/types/living-brain";
 
 const BFF = "/api/brain";
 
@@ -80,7 +87,7 @@ export async function getHealth(): Promise<HealthResponse> {
 export async function createBelief(statement: string, confidence = 0.5) {
   return request<{ id: string; statement: string; confidence: number; state: string }>(
     "/beliefs",
-    { method: "POST", body: JSON.stringify({ statement, confidence }) }
+    { method: "POST", body: JSON.stringify({ statement, confidence }) },
   );
 }
 
@@ -89,7 +96,7 @@ export async function learn(
   claim: string,
   sourceId: string,
   reliability: number,
-  supports: boolean
+  supports: boolean,
 ) {
   return request<{
     id: string;
@@ -105,6 +112,32 @@ export async function learn(
       source_id: sourceId,
       reliability,
       supports,
+    }),
+  });
+}
+
+export async function submitBrainCommand(
+  content: string,
+  mode: BrainCommandMode,
+): Promise<BrainCommandReceipt> {
+  const command = content.trim();
+  if (!command) throw new Error("command_required");
+
+  // The canonical write boundary is POST /signals. We mark operator commands
+  // explicitly in metadata so durable command history can be reconstructed
+  // from the same event stream without introducing a parallel chat database.
+  return request<BrainCommandReceipt>("/signals", {
+    method: "POST",
+    body: JSON.stringify({
+      content: command,
+      claim: command,
+      source_key: "operator",
+      metadata: {
+        operator_command: true,
+        command_mode: mode,
+        ui_surface: "living_brain",
+      },
+      process_now: false,
     }),
   });
 }
@@ -141,6 +174,18 @@ export async function listPredictions(): Promise<ListResponse<Prediction>> {
 
 export async function listSignals(): Promise<ListResponse<Signal>> {
   return request<ListResponse<Signal>>("/signals");
+}
+
+export async function listEvidence(): Promise<ListResponse<ObservedEvidence>> {
+  return request<ListResponse<ObservedEvidence>>("/evidence");
+}
+
+export async function listLearningEvents(): Promise<ListResponse<LearningEvent>> {
+  return request<ListResponse<LearningEvent>>("/learning-events");
+}
+
+export async function getWorkingMemoryObservation(): Promise<WorkingMemoryObservation> {
+  return request<WorkingMemoryObservation>("/working-memory");
 }
 
 export async function listOpportunities(): Promise<ListResponse<Opportunity>> {

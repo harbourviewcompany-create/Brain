@@ -134,6 +134,45 @@ class PostgresEventStore:
             cur.execute(sql, params)
             return [self._row_to_event(row) for row in cur.fetchall()]
 
+    def read_recent(
+        self,
+        *,
+        event_types: Iterable[str],
+        limit: int = 200,
+    ) -> list[BrainEvent]:
+        """Read the newest events for selected types without scanning/sorting the ledger.
+
+        `brain_events_type_idx (event_type, occurred_at)` is part of the baseline
+        schema. Querying each requested type independently lets PostgreSQL walk
+        that index backward and stop at `limit`, rather than materializing and
+        sorting the entire append-only ledger. The small bounded result sets are
+        then merged in process to preserve one globally newest-first response.
+        """
+        if limit <= 0:
+            return []
+        types = sorted({str(value).strip() for value in event_types if str(value).strip()})
+        if not types:
+            return []
+
+        events: list[BrainEvent] = []
+        with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            for event_type in types:
+                cur.execute(
+                    """
+                        select id, event_type, aggregate_type, aggregate_id,
+                               causation_id, correlation_id, payload, occurred_at
+                        from public.brain_events
+                        where event_type = %s
+                        order by occurred_at desc
+                        limit %s
+                    """,
+                    (event_type, limit),
+                )
+                events.extend(self._row_to_event(row) for row in cur.fetchall())
+
+        events.sort(key=lambda event: (event.occurred_at, str(event.id)), reverse=True)
+        return events[:limit]
+
     def read_after(self, occurred_at: datetime, event_id: UUID) -> list[BrainEvent]:
         with self.pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
             cur.execute(

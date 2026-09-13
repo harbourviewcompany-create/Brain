@@ -164,8 +164,22 @@ class CognitiveCycle:
         return service
 
     def register_belief(self, belief: Belief) -> None:
+        """Adopt a belief the database already holds into the working cache.
+
+        Cache-only, deliberately. Every caller of this is a resume path -- the
+        API's inline resume, the worker's, and build_runner() -- loading what
+        some other writer already committed. Persisting here wrote that
+        snapshot straight back through save(), which updates the row
+        unconditionally: so a belief revised by an unguarded writer (POST
+        /learn is not lease-guarded) between the hydrate and the moment this
+        loop reached it was silently overwritten with the older version this
+        process had just read. A resume must not be a write.
+
+        The cognition paths that genuinely author beliefs call
+        _persist_belief() themselves; they are unaffected.
+        """
+
         self._belief_cache[belief.id] = belief
-        self._persist_belief(belief)
 
     def _persist_belief(self, belief: Belief) -> None:
         """Write a belief through to the durable projection, when there is one.
