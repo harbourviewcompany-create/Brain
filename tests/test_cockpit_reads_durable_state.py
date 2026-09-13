@@ -30,10 +30,12 @@ class _CountingStore:
     def __init__(self, counts: dict[str, int] | None = None) -> None:
         self._counts = counts or {}
         self.counter_calls = 0
+        self.counter_ttls: list[float] = []
         self.refresh_calls: list[float] = []
 
-    def cognition_counters(self) -> dict[str, int]:
+    def cognition_counters(self, max_age_seconds: float = 0.0) -> dict[str, int]:
         self.counter_calls += 1
+        self.counter_ttls.append(max_age_seconds)
         return dict(self._counts)
 
     def refresh_if_stale(self, max_age_seconds: float) -> bool:
@@ -67,7 +69,7 @@ def test_process_local_heartbeat_is_the_fallback_without_a_durable_store(monkeyp
 
 def test_a_broken_counter_query_degrades_instead_of_failing_health(monkeypatch):
     class Exploding(_CountingStore):
-        def cognition_counters(self):
+        def cognition_counters(self, max_age_seconds: float = 0.0):
             raise RuntimeError("database went away")
 
     monkeypatch.setattr(api, "_brain_store", Exploding())
@@ -80,10 +82,15 @@ def test_counters_are_one_indexed_grouped_query_not_a_full_scan():
     """#75 removed a full brain_events scan from /health; do not reintroduce one."""
     import inspect
 
-    source = inspect.getsource(PostgresBrainStore.cognition_counters)
+    source = inspect.getsource(PostgresBrainStore._count_cognition_events)
     assert "group by event_type" in source
     assert "where event_type = any(" in source
     assert "read_all" not in source, "counting must not materialise the event stream"
+    # cognition_counters caches on top of it; the guard belongs on whichever
+    # method actually issues the query.
+    assert "self._count_cognition_events()" in inspect.getsource(
+        PostgresBrainStore.cognition_counters
+    )
 
 
 def test_counted_event_types_are_ones_cognition_actually_emits():

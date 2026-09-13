@@ -4,7 +4,8 @@ Design principles:
   - Connectors never write beliefs; they only produce observations.
   - Every item carries provenance (URL, retrieved_at, content hash).
   - Legal/access disposition is checked before fetch.
-  - Dedupe is hash-based so repeated polls are cheap and safe.
+  - Dedupe is source-scoped: independent sources may corroborate identical content.
+  - Captured-but-not-enqueued observations remain retryable.
   - Failures are typed and recorded for backoff / health.
 """
 
@@ -74,7 +75,12 @@ class ConnectorSource:
         now = now or utcnow()
         if not self.enabled:
             return False
-        if self.access in {AccessDisposition.PROHIBITED, AccessDisposition.MANUAL_ONLY}:
+        # Automated fetch only for explicitly allowed dispositions.
+        # UNKNOWN must be classified before any network call.
+        if self.access not in {
+            AccessDisposition.ALLOWED,
+            AccessDisposition.RATE_LIMITED,
+        }:
             return False
         return now >= self.next_due_at
 
@@ -109,6 +115,20 @@ class RawObservationItem:
     signal_hints: list[str] = field(default_factory=list)
     entities: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True, frozen=True)
+class ConnectorObservationReceipt:
+    """Persistence/dedupe result for one fetched item.
+
+    `is_new` is source-scoped. `should_enqueue` may also be true for an older
+    durable observation that was captured but never successfully enqueued, so a
+    transient inbox failure cannot permanently erase that perception.
+    """
+
+    is_new: bool
+    should_enqueue: bool
+    observation_id: UUID | None = None
 
 
 @dataclass(slots=True)
@@ -148,6 +168,15 @@ class ConnectorRegistry(Protocol):
     def due_sources(self, now: datetime | None = None) -> list[ConnectorSource]: ...
 
     def mark_fetch(self, source_key: str, *, success: bool) -> None: ...
+
+    def record_fetched_item(
+        self,
+        source: ConnectorSource,
+        item: RawObservationItem,
+        *,
+        retrieved_at: datetime,
+        ingestion_run_id: UUID | None = None,
+    ) -> ConnectorObservationReceipt: ...
 
 
 class InboxEnqueuer(Protocol):

@@ -105,9 +105,13 @@ def test_neo4j_edge_move_deletes_same_logical_edge_before_recreate():
     ]
     assert "DELETE old" in queries[0][0]
     assert queries[0][1]["projection_id"] == f"{TENANT_A}:{EDGE}"
-    assert "CREATE (s)-[r:BRAIN_REL]->(t)" in queries[1][0]
-    assert queries[1][1]["source_projection_id"] == f"{TENANT_A}:{NODE_A}"
-    assert queries[1][1]["target_projection_id"] == f"{TENANT_A}:{NODE_B}"
+    # JUSTIFIES cleanup runs before BRAIN_REL recreate when evidence links exist.
+    create = next(q for q, _ in queries if "CREATE (s)-[r:BRAIN_REL]->(t)" in q)
+    assert create
+    create_params = next(p for q, p in queries if "CREATE (s)-[r:BRAIN_REL]->(t)" in q)
+    assert create_params["source_projection_id"] == f"{TENANT_A}:{NODE_A}"
+    assert create_params["target_projection_id"] == f"{TENANT_A}:{NODE_B}"
+    assert any("JUSTIFIES" in q and "DELETE" in q for q, _ in queries)
 
 
 def test_neo4j_rebuild_deletes_only_requested_tenant_scope():

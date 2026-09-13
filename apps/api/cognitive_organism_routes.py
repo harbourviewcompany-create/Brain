@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 from brain.adapters.cognition import InMemoryCognitiveOrganismStore, PostgresCognitiveOrganismStore
 from brain.cognitive_organism import AgencyTier, CognitiveOrganism, GlobalWorkspaceItem
 
+OBSERVATORY_PRODUCTION_SEED_V1 = "observatory-production-seed-v1"
+
 organism = CognitiveOrganism()
 
 
@@ -128,25 +130,165 @@ def encode(value: Any) -> Any:
     return jsonable_encoder(value)
 
 
+def _checkpoint_payload(target: CognitiveOrganism, reason: str) -> dict[str, Any]:
+    return {
+        "reason": reason,
+        "cockpit": target.cockpit(),
+        "counts": {
+            "self_state_snapshots": len(target.self_model.snapshots),
+            "workspace_items": len(target.workspace.items),
+            "curiosity_tasks": len(target.curiosity.tasks),
+            "original_ideas": len(target.originality.ideas),
+            "dream_insights": len(target.dreams.insights),
+            "debates": len(target.debates.debates),
+            "quarantine_items": len(target.immune.quarantine),
+            "agency_actions": len(target.agency.actions),
+            "development_events": len(target.development.events),
+        },
+    }
+
+
 def _checkpoint(reason: str) -> None:
     organism_store.save_checkpoint(
         "organism_runtime",
-        {
-            "reason": reason,
-            "cockpit": organism.cockpit(),
-            "counts": {
-                "self_state_snapshots": len(organism.self_model.snapshots),
-                "workspace_items": len(organism.workspace.items),
-                "curiosity_tasks": len(organism.curiosity.tasks),
-                "original_ideas": len(organism.originality.ideas),
-                "dream_insights": len(organism.dreams.insights),
-                "debates": len(organism.debates.debates),
-                "quarantine_items": len(organism.immune.quarantine),
-                "agency_actions": len(organism.agency.actions),
-                "development_events": len(organism.development.events),
-            },
+        _checkpoint_payload(organism, reason),
+    )
+
+
+def seed_observatory_organism_baseline(
+    *,
+    target: CognitiveOrganism | None = None,
+    store: InMemoryCognitiveOrganismStore | PostgresCognitiveOrganismStore | None = None,
+    seed_pack: str | None = None,
+) -> bool:
+    """Initialize a transparent production baseline for the process-local organism.
+
+    The durable seed script populates PostgreSQL read models. The CognitiveOrganism
+    is intentionally process-local today, so without an explicit startup baseline
+    a restart still rendered SELF STATE NOT SNAPSHOTTED even while the database
+    was populated. This baseline uses only internal system facts and architecture
+    questions; it never represents seeded material as external intelligence.
+    """
+
+    requested = (
+        seed_pack
+        if seed_pack is not None
+        else (os.environ.get("BRAIN_OBSERVATORY_SEED_PACK") or "").strip()
+    )
+    if requested != OBSERVATORY_PRODUCTION_SEED_V1:
+        return False
+
+    target = target or organism
+    store = store or organism_store
+    if target.self_model.current is not None:
+        return False
+
+    refs = [
+        "seed:production-runtime",
+        "seed:observatory-runtime",
+        "seed:repository-contract",
+    ]
+    focus = GlobalWorkspaceItem(
+        item_type="system_baseline",
+        title="Production cognition baseline",
+        content=(
+            "Validate live transport, durable state, cognition continuity, and the next "
+            "verified-source ingestion improvements."
+        ),
+        source_refs=refs,
+        salience=0.88,
+        novelty=0.58,
+        urgency=0.66,
+        risk=0.12,
+        goal_pressure=target.goals.dominant_goal().pressure,
+    )
+    target.admit_workspace_item(focus)
+
+    target.curiosity.generate(
+        "production_baseline",
+        refs,
+        "Which remaining cognition projections still depend on process-local state?",
+        expected_value=0.90,
+        uncertainty=0.72,
+        cost=0.10,
+        falsification_condition="Resolve when every displayed projection survives process replacement.",
+    )
+    target.curiosity.generate(
+        "source_quality",
+        ["seed:repository-contract"],
+        "Which approved source classes produce the highest information gain per unit cost?",
+        expected_value=0.88,
+        uncertainty=0.80,
+        cost=0.18,
+        falsification_condition="Reject a source class when measured freshness and utility remain below threshold.",
+    )
+    target.curiosity.generate(
+        "worker_architecture",
+        ["seed:production-runtime"],
+        "When does production load justify moving lease-controlled cognition to a dedicated worker?",
+        expected_value=0.76,
+        uncertainty=0.62,
+        cost=0.12,
+    )
+
+    target.immune.screen(
+        item_type="production_release",
+        item_ref="tenant-rls-019-022",
+        claims=["Tenant RLS release changes production authorization and data ownership boundaries."],
+        evidence_refs=["seed:deployment-control"],
+        risk_score=0.68,
+        external_action=True,
+    )
+    target.agency.propose(
+        action_type="prioritize_verified_source_ingestion",
+        proposal=(
+            "Prioritize verified source ingestion after baseline cognition is stable; "
+            "keep external actions approval-gated."
+        ),
+        tier=AgencyTier.TIER_3_RECOMMEND,
+        source_refs=refs,
+        risk_score=0.10,
+    )
+
+    target.update_self_state(
+        current_focus_summary="Production cognition baseline and verified data flow",
+        belief_count=5,
+        event_count=9,
+        prediction_count=3,
+        opportunity_count=0,
+        uncertainty_load=0.34,
+        contradiction_load=0.28,
+        curiosity_pressure=0.72,
+        revenue_pressure=0.22,
+        risk_pressure=0.18,
+        memory_pressure=0.20,
+        action_backlog_pressure=0.16,
+        source_event_ids=refs,
+        metadata={
+            "seed_pack": OBSERVATORY_PRODUCTION_SEED_V1,
+            "external_intelligence": False,
+            "purpose": "production_observability_baseline",
         },
     )
+
+    payload = _checkpoint_payload(target, OBSERVATORY_PRODUCTION_SEED_V1)
+    payload["seed_pack"] = OBSERVATORY_PRODUCTION_SEED_V1
+    store.save_checkpoint("organism_runtime", payload)
+    store.append_audit_event(
+        "OBSERVATORY_ORGANISM_BASELINE_INITIALIZED",
+        "seed_pack",
+        OBSERVATORY_PRODUCTION_SEED_V1,
+        {
+            "seed_pack": OBSERVATORY_PRODUCTION_SEED_V1,
+            "external_intelligence": False,
+        },
+    )
+    return True
+
+
+# Production bootstrap is explicitly opt-in by environment variable. Tests and
+# unconfigured environments remain unchanged.
+seed_observatory_organism_baseline()
 
 
 def register_cognitive_organism_routes(app: FastAPI) -> None:
@@ -156,7 +298,12 @@ def register_cognitive_organism_routes(app: FastAPI) -> None:
 
     @app.get("/organism/goals")
     def organism_goals():
-        return encode({"items": list(organism.goals.goals.values()), "tension": organism.goals.tension_report()})
+        return encode(
+            {
+                "items": list(organism.goals.goals.values()),
+                "tension": organism.goals.tension_report(),
+            }
+        )
 
     @app.get("/organism/workspace")
     def organism_workspace():
@@ -172,7 +319,9 @@ def register_cognitive_organism_routes(app: FastAPI) -> None:
 
     @app.get("/organism/dreams")
     def organism_dreams():
-        return encode({"cycles": organism.dreams.cycles, "insights": organism.dreams.insights})
+        return encode(
+            {"cycles": organism.dreams.cycles, "insights": organism.dreams.insights}
+        )
 
     @app.get("/organism/debates")
     def organism_debates():
@@ -238,7 +387,11 @@ def register_cognitive_organism_routes(app: FastAPI) -> None:
         item = GlobalWorkspaceItem(**body.model_dump())
         admitted = organism.admit_workspace_item(item)
         _checkpoint("workspace_admit")
-        return {"admitted": admitted, "item": encode(item), "workspace": organism.workspace.snapshot()}
+        return {
+            "admitted": admitted,
+            "item": encode(item),
+            "workspace": organism.workspace.snapshot(),
+        }
 
     @app.post("/organism/curiosity/generate")
     def organism_generate_curiosity(body: CuriosityGenerateRequest):
@@ -254,7 +407,9 @@ def register_cognitive_organism_routes(app: FastAPI) -> None:
 
     @app.post("/organism/dream/run")
     def organism_run_dream(body: DreamRunRequest):
-        cycle, insight = organism.dreams.run(body.memory_refs, body.signal_refs, body.repeated_patterns)
+        cycle, insight = organism.dreams.run(
+            body.memory_refs, body.signal_refs, body.repeated_patterns
+        )
         _checkpoint("dream_run")
         return {"cycle": encode(cycle), "insight": encode(insight)}
 

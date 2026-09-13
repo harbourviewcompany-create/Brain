@@ -13,6 +13,7 @@ from brain.connectors.protocol import (
     ConnectorKind,
     ConnectorSource,
     FetchStatus,
+    RawObservationItem,
     utcnow,
 )
 from brain.connectors.rss import RssConnector
@@ -172,6 +173,51 @@ def test_prohibited_source_not_due_and_forced_skip():
     assert forced.status == FetchStatus.SKIPPED.value
 
 
+def test_unknown_access_not_due_and_forced_skip():
+    inbox = InMemorySensoryInbox()
+    svc = IngestService(inbox=inbox)
+    svc.register_source(
+        ConnectorSource(
+            source_key="unclassified",
+            url="https://example.com/feed.xml",
+            kind=ConnectorKind.RSS,
+            access=AccessDisposition.UNKNOWN,
+            enabled=True,
+        )
+    )
+    src = svc.registry.get("unclassified")
+    assert src is not None
+    assert src.enabled is False
+    assert src.is_due() is False
+
+    batch = svc.ingest_due_sources()
+    assert batch.sources_due == 0
+
+    forced = svc.ingest_source("unclassified")
+    assert forced.status == FetchStatus.SKIPPED.value
+    assert forced.error == "access_unknown"
+
+
+def test_allowed_and_rate_limited_remain_due():
+    now = utcnow()
+    allowed = ConnectorSource(
+        source_key="ok",
+        url="https://example.com/a",
+        kind=ConnectorKind.RSS,
+        access=AccessDisposition.ALLOWED,
+        next_due_at=now - timedelta(seconds=1),
+    )
+    limited = ConnectorSource(
+        source_key="slow",
+        url="https://example.com/b",
+        kind=ConnectorKind.RSS,
+        access=AccessDisposition.RATE_LIMITED,
+        next_due_at=now - timedelta(seconds=1),
+    )
+    assert allowed.is_due(now) is True
+    assert limited.is_due(now) is True
+
+
 def test_ingest_due_sources_enqueues_and_dedupes():
     url = "https://example.com/feed.xml"
     client = FakeHttpClient({url: _resp(url, SAMPLE_RSS)})
@@ -202,6 +248,53 @@ def test_ingest_due_sources_enqueues_and_dedupes():
     events = store.read_all()
     assert any(e.event_type == "ingest.fetch_completed" for e in events)
     assert any(e.event_type == "ingest.batch_completed" for e in events)
+
+
+def test_dedupe_is_source_scoped_so_corroboration_survives():
+    registry = InMemoryConnectorRegistry()
+    source_a = ConnectorSource(source_key="source-a", url="https://a.example/feed", kind=ConnectorKind.RSS)
+    source_b = ConnectorSource(source_key="source-b", url="https://b.example/feed", kind=ConnectorKind.RSS)
+    item = RawObservationItem(
+        title="Same fact",
+        content="The same fact was independently reported.",
+        claim="Independent sources report the same fact",
+        source_url="https://example.com/fact",
+        item_id="fact-1",
+        content_hash="identical-hash",
+    )
+
+    first = registry.record_fetched_item(source_a, item, retrieved_at=utcnow())
+    duplicate_same_source = registry.record_fetched_item(source_a, item, retrieved_at=utcnow())
+    corroboration = registry.record_fetched_item(source_b, item, retrieved_at=utcnow())
+
+    assert first.is_new is True
+    assert duplicate_same_source.is_new is False
+    assert corroboration.is_new is True
+    assert registry.seen_count() == 2
+
+
+def test_ingest_preserves_observed_and_retrieved_time_without_secret_metadata():
+    url = "https://example.com/feed.xml"
+    client = FakeHttpClient({url: _resp(url, SAMPLE_RSS)})
+    inbox = InMemorySensoryInbox()
+    svc = IngestService(
+        inbox=inbox,
+        connectors=[RssConnector(client=client)],  # type: ignore[list-item]
+    )
+    svc.register_rss(source_key="provenance", url=url, refresh_seconds=30)
+    src = svc.registry.get("provenance")
+    assert src is not None
+    src.next_due_at = utcnow() - timedelta(seconds=1)
+
+    batch = svc.ingest_due_sources()
+    assert batch.observations_enqueued == 2
+    claimed = inbox.claim_next()
+    assert claimed is not None
+    metadata = claimed["payload"]["metadata"]
+    assert metadata["observed_at"]
+    assert metadata["retrieved_at"]
+    assert metadata["content_hash"]
+    assert metadata["source_url"]
 
 
 def test_ingest_feeds_cognition_path():

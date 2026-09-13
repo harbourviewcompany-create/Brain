@@ -1,0 +1,160 @@
+name: Observatory Seed PostgreSQL
+
+on:
+  pull_request:
+    paths:
+      - 'tools/seed_observatory_production.py'
+      - 'apps/api/tenant_app.py'
+      - 'apps/api/cognitive_organism_routes.py'
+      - 'tests/test_observatory_production_seed.py'
+      - '.github/workflows/observatory-seed-postgres.yml'
+  push:
+    paths:
+      - 'tools/seed_observatory_production.py'
+      - 'apps/api/tenant_app.py'
+      - 'apps/api/cognitive_organism_routes.py'
+      - 'tests/test_observatory_production_seed.py'
+      - '.github/workflows/observatory-seed-postgres.yml'
+
+jobs:
+  seed-replay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Brain runtime
+        run: pip install -c constraints.txt -e '.[dev]'
+
+      - name: Start isolated PostgreSQL
+        run: |
+          docker run -d --name brain-observatory-seed-postgres -p 55435:5432 \
+            -e POSTGRES_USER=brain \
+            -e POSTGRES_PASSWORD=brain \
+            -e POSTGRES_DB=brain \
+            pgvector/pgvector:pg16
+          for i in $(seq 1 60); do
+            if docker exec -e PGPASSWORD=brain brain-observatory-seed-postgres \
+                 psql -h 127.0.0.1 -U brain -d brain -tAc 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            if [ "${i}" = "60" ]; then docker logs brain-observatory-seed-postgres; exit 1; fi
+            sleep 1
+          done
+          docker exec -i brain-observatory-seed-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          create role anon nologin;
+          create role authenticated nologin;
+          create role brain_api_ci login password 'brain-api-ci';
+          create role brain_worker_ci login password 'brain-worker-ci';
+          SQL
+
+      - name: Apply pre-tenant baseline through migration 018
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55435/brain
+        run: python tools/apply_migrations.py --max-version 18
+
+      - name: Prove pre-020 seed replay and learned-state preservation
+        env:
+          BRAIN_OBSERVATORY_SEED_PACK: observatory-production-seed-v1
+          DATABASE_URL: postgresql://brain:brain@127.0.0.1:55435/brain
+        run: |
+          python tools/seed_observatory_production.py
+          python tools/seed_observatory_production.py
+          python - <<'PY'
+          import os
+          import psycopg
+          from tools.seed_observatory_production import sid
+
+          dsn = os.environ['DATABASE_URL']
+          with psycopg.connect(dsn) as conn:
+              assert conn.execute("select count(*) from public.sources where key like 'seed:%'").fetchone()[0] == 5
+              assert conn.execute("select count(*) from public.beliefs where id = any(%s)", ([sid('belief:' + key) for key in ('transport','durability','source-quality','worker-required','tenant-release')],)).fetchone()[0] == 5
+              assert conn.execute("select count(*) from public.predictions where source_keys @> array['observatory-production-seed-v1']::text[]").fetchone()[0] == 3
+              conn.execute(
+                  "update public.beliefs set confidence = 0.123, state = 'contested', version = 2 where id = %s",
+                  (sid('belief:durability'),),
+              )
+              conn.commit()
+          PY
+          python tools/seed_observatory_production.py
+          python - <<'PY'
+          import os
+          import psycopg
+          from tools.seed_observatory_production import sid
+
+          with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+              confidence, state, version = conn.execute(
+                  "select confidence, state, version from public.beliefs where id = %s",
+                  (sid('belief:durability'),),
+              ).fetchone()
+              assert float(confidence) == 0.123
+              assert state == 'contested'
+              assert version == 2
+          print('PRE020_SEED_GO: replay is idempotent and learned belief state is preserved')
+          PY
+
+      - name: Apply tenant migrations through 023
+        env:
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55435/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55435/brain
+          BRAIN_WORKER_DATABASE_URL: postgresql://brain_worker_ci:brain-worker-ci@127.0.0.1:55435/brain
+          BRAIN_TENANT_RLS_RELEASE: '1'
+          BRAIN_TENANT_MODE: required
+          BRAIN_TENANT_CONTEXT_SECRET: ci-only-tenant-signing-fixture
+        run: python tools/apply_migrations.py --max-version 23
+
+      - name: Prove post-020 partial uniqueness and system seed replay
+        env:
+          BRAIN_OBSERVATORY_SEED_PACK: observatory-production-seed-v1
+          BRAIN_MIGRATION_DATABASE_URL: postgresql://brain:brain@127.0.0.1:55435/brain
+          DATABASE_URL: postgresql://brain_api_ci:brain-api-ci@127.0.0.1:55435/brain
+        run: |
+          docker exec -i brain-observatory-seed-postgres psql -v ON_ERROR_STOP=1 -U brain -d brain <<'SQL'
+          insert into public.tenants (id, name, slug)
+          values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1', 'Seed Test Tenant', 'seed-test-tenant');
+          insert into public.sources (
+            id, key, name, authority_score, historical_utility, metadata, tenant_id
+          ) values (
+            'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1',
+            'seed:production-runtime',
+            'Tenant-local source with same key',
+            0.5,
+            0.5,
+            '{}'::jsonb,
+            'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1'
+          );
+          SQL
+          python tools/seed_observatory_production.py
+          python tools/seed_observatory_production.py
+          python - <<'PY'
+          import os
+          import psycopg
+          from tools.seed_observatory_production import sid
+
+          with psycopg.connect(os.environ['BRAIN_MIGRATION_DATABASE_URL']) as conn:
+              rows = conn.execute(
+                  "select tenant_id from public.sources where key = 'seed:production-runtime' order by tenant_id nulls first"
+              ).fetchall()
+              assert len(rows) == 2
+              assert rows[0][0] is None
+              assert str(rows[1][0]) == 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1'
+              confidence, state, version = conn.execute(
+                  "select confidence, state, version from public.beliefs where id = %s",
+                  (sid('belief:durability'),),
+              ).fetchone()
+              assert float(confidence) == 0.123
+              assert state == 'contested'
+              assert version == 2
+          print('POST020_SEED_GO: system partial-index upsert coexists with tenant key and preserves learned state')
+          PY
+
+      - name: PostgreSQL logs on failure
+        if: failure()
+        run: docker logs brain-observatory-seed-postgres || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f brain-observatory-seed-postgres >/dev/null 2>&1 || true
