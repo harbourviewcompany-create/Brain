@@ -1,0 +1,371 @@
+name: Railway to Turso Rescue
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: Railway Brain project ID
+        required: true
+        default: 54914617-2d60-488d-a144-9492082c5b9d
+      environment_id:
+        description: Railway production environment ID
+        required: true
+        default: a05b761c-d332-4cda-abd7-5b55cdf08867
+      postgres_service_id:
+        description: Railway Postgres service ID
+        required: true
+        default: e1412e0a-6153-489c-b042-2de37635bc78
+      volume_id:
+        description: Railway Postgres volume ID
+        required: true
+        default: 1186d471-2a5e-4774-839f-81304e83f28b
+      postgres_superuser:
+        description: Superuser in the recovered local cluster
+        required: true
+        default: postgres
+      brain_database:
+        description: Brain database in the recovered local cluster
+        required: true
+        default: railway
+      import_to_turso:
+        description: Import only after every local verification gate passes
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brain-railway-turso-rescue
+  cancel-in-progress: false
+
+jobs:
+  rescue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      RAILWAY_PROJECT_ID: ${{ inputs.project_id }}
+      RAILWAY_ENVIRONMENT_ID: ${{ inputs.environment_id }}
+      RAILWAY_POSTGRES_SERVICE_ID: ${{ inputs.postgres_service_id }}
+      RAILWAY_VOLUME_ID: ${{ inputs.volume_id }}
+      POSTGRES_SUPERUSER: ${{ inputs.postgres_superuser }}
+      BRAIN_DATABASE: ${{ inputs.brain_database }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install migration dependencies
+        run: |
+          set -euo pipefail
+          pip install -c constraints.txt -e '.[dev]'
+          npm install --global @railway/cli
+          mkdir -p evidence
+          railway --version > evidence/railway-cli-version.txt
+          python --version > evidence/python-version.txt
+
+      - name: Validate zero-cost policy before source access
+        run: python scripts/validate_zero_cost_runtime.py
+
+      - name: Require Railway rescue secret
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "${RAILWAY_TOKEN:-}" || { echo 'RAILWAY_TOKEN repository secret is required'; exit 1; }
+
+      - name: Verify selected Railway volume exists
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          railway volume list \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --service "${RAILWAY_POSTGRES_SERVICE_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT_ID}" \
+            --json > evidence/railway-volume-list.json
+          python - <<'PY'
+          import json, os
+          payload = json.load(open('evidence/railway-volume-list.json', encoding='utf-8'))
+          target = os.environ['RAILWAY_VOLUME_ID']
+          text = json.dumps(payload, sort_keys=True)
+          if target not in text:
+              raise SystemExit(f'selected Railway volume {target} was not returned by volume list')
+          print('selected Railway volume verified')
+          PY
+
+      - name: Download Railway volume without source mutation
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf source-volume
+          mkdir -p source-volume
+          railway volume files --volume "${RAILWAY_VOLUME_ID}" download / "${PWD}/source-volume" \
+            --project "${RAILWAY_PROJECT_ID}" \
+            --service "${RAILWAY_POSTGRES_SERVICE_ID}" \
+            --environment "${RAILWAY_ENVIRONMENT_ID}" \
+            --concurrency 8 >/dev/null
+          test -n "$(find source-volume -mindepth 1 -print -quit)" || {
+            echo 'Railway volume download was empty'; exit 1;
+          }
+
+      - name: Hash immutable runner source copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          root = Path('source-volume')
+          files = []
+          aggregate = hashlib.sha256()
+          total = 0
+          for path in sorted(p for p in root.rglob('*') if p.is_file()):
+              digest = hashlib.sha256()
+              size = 0
+              with path.open('rb') as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                      digest.update(chunk); size += len(chunk)
+              rel = path.relative_to(root).as_posix()
+              item = {'path': rel, 'bytes': size, 'sha256': digest.hexdigest()}
+              canonical = json.dumps(item, sort_keys=True, separators=(',', ':')).encode()
+              aggregate.update(len(canonical).to_bytes(8, 'big')); aggregate.update(canonical)
+              files.append(item); total += size
+          payload = {
+              'file_count': len(files),
+              'total_bytes': total,
+              'tree_sha256': aggregate.hexdigest(),
+              'files': files,
+          }
+          Path('evidence/railway-volume-source-manifest.json').write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          PY
+
+      - name: Locate PGDATA and create recovery-only working copy
+        id: pgdata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t versions < <(find source-volume -type f -name PG_VERSION -print)
+          if [ "${#versions[@]}" -ne 1 ]; then
+            printf 'Expected exactly one PG_VERSION, found %s\n' "${#versions[@]}" >&2
+            printf '%s\n' "${versions[@]}" >&2
+            exit 1
+          fi
+          source_pgdata="$(dirname "${versions[0]}")"
+          pg_major="$(cut -d. -f1 < "${versions[0]}")"
+          test -n "${pg_major}"
+          rm -rf pgdata-work
+          mkdir -p pgdata-work
+          cp -a "${source_pgdata}/." pgdata-work/
+          printf '%s\n' "${pg_major}" > evidence/postgres-major-version.txt
+          printf '%s\n' "${source_pgdata#source-volume/}" > evidence/source-pgdata-relative-path.txt
+          echo "pg_major=${pg_major}" >> "$GITHUB_OUTPUT"
+
+          SOURCE_PGDATA="${source_pgdata}" python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          source = Path(os.environ['SOURCE_PGDATA'])
+          copy = Path('pgdata-work')
+          def digest(root):
+              h = hashlib.sha256(); count = 0; total = 0
+              for path in sorted(p for p in root.rglob('*') if p.is_file()):
+                  rel = path.relative_to(root).as_posix().encode()
+                  file_hash = hashlib.sha256(path.read_bytes()).digest()
+                  h.update(len(rel).to_bytes(4,'big')); h.update(rel); h.update(file_hash)
+                  count += 1; total += path.stat().st_size
+              return count, total, h.hexdigest()
+          a, b = digest(source), digest(copy)
+          if a != b:
+              raise SystemExit(f'runner-local PGDATA copy integrity mismatch: {a} != {b}')
+          Path('evidence/pgdata-copy-integrity.txt').write_text(
+              f'file_count={a[0]}\nbytes={a[1]}\nsha256={a[2]}\nverified=true\n', encoding='utf-8'
+          )
+          PY
+
+      - name: Recover PostgreSQL only from runner-local copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > evidence/pg_hba.conf <<'EOF'
+          local all all trust
+          host all all 127.0.0.1/32 trust
+          host all all ::1/128 trust
+          EOF
+          docker pull "postgres:${{ steps.pgdata.outputs.pg_major }}"
+          docker run -d --name brain-rescue-postgres \
+            -e PGDATA=/var/lib/postgresql/data \
+            -p 127.0.0.1:55432:5432 \
+            -v "${PWD}/pgdata-work:/var/lib/postgresql/data" \
+            -v "${PWD}/evidence/pg_hba.conf:/tmp/brain-pg_hba.conf:ro" \
+            "postgres:${{ steps.pgdata.outputs.pg_major }}" \
+            -c hba_file=/tmp/brain-pg_hba.conf \
+            -c ssl=off \
+            -c listen_addresses='*'
+          for i in $(seq 1 60); do
+            if docker exec brain-rescue-postgres pg_isready -U "${POSTGRES_SUPERUSER}" -d postgres >/dev/null 2>&1; then
+              docker logs brain-rescue-postgres > evidence/postgres-local-recovery.log 2>&1 || true
+              exit 0
+            fi
+            if [ "${i}" = 60 ]; then
+              docker logs brain-rescue-postgres >&2 || true
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Enumerate every persistent table in recovered cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker exec brain-rescue-postgres psql -U "${POSTGRES_SUPERUSER}" -d postgres -At \
+            -c "select datname from pg_database where datallowconn and not datistemplate order by datname" \
+            > evidence/postgres-databases.txt
+          : > evidence/postgres-persistent-table-inventory.txt
+          while IFS= read -r database; do
+            test -n "${database}" || continue
+            docker exec brain-rescue-postgres psql -U "${POSTGRES_SUPERUSER}" -d "${database}" -At \
+              -c "select table_schema||'.'||table_name from information_schema.tables where table_type='BASE TABLE' and table_schema not in ('pg_catalog','information_schema') and table_schema not like 'pg_toast%' order by table_schema,table_name" \
+              | while IFS= read -r table; do
+                  test -n "${table}" && printf '%s|%s\n' "${database}" "${table}"
+                done >> evidence/postgres-persistent-table-inventory.txt
+          done < evidence/postgres-databases.txt
+
+          grep -Fxq "${BRAIN_DATABASE}" evidence/postgres-databases.txt || {
+            echo "Brain database '${BRAIN_DATABASE}' is not present in recovered cluster" >&2; exit 1;
+          }
+          outside="$(awk -F'|' -v target="${BRAIN_DATABASE}" '$1 != target {print}' evidence/postgres-persistent-table-inventory.txt)"
+          if [ -n "${outside}" ]; then
+            echo 'Persistent tables exist outside the selected Brain database; refusing an incomplete cluster migration:' >&2
+            printf '%s\n' "${outside}" >&2
+            exit 1
+          fi
+
+      - name: Convert complete recovered Brain database to verified SQLite/libSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          dsn="host=127.0.0.1 port=55432 user=${POSTGRES_SUPERUSER} dbname=${BRAIN_DATABASE} sslmode=disable"
+          python tools/railway_turso_migration.py convert \
+            --postgres-dsn "${dsn}" \
+            --sqlite brain-migrated.sqlite \
+            --evidence-dir evidence
+
+      - name: Verify canonical event replay equivalence
+        shell: bash
+        run: |
+          set -euo pipefail
+          dsn="host=127.0.0.1 port=55432 user=${POSTGRES_SUPERUSER} dbname=${BRAIN_DATABASE} sslmode=disable"
+          python tools/verify_event_replay_equivalence.py \
+            --postgres-dsn "${dsn}" \
+            --sqlite brain-migrated.sqlite \
+            --output evidence/event-replay-equivalence.json
+
+      - name: Independently reopen and verify SQLite destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/railway_turso_migration.py verify-sqlite \
+            --sqlite brain-migrated.sqlite \
+            --evidence-dir evidence
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from brain.adapters.turso import TursoDatabase, TursoEventStore
+          db = TursoDatabase('brain-migrated.sqlite')
+          try:
+              health = TursoEventStore(db).health()
+          finally:
+              db.close()
+          Path('evidence/sqlite-storage-health.json').write_text(
+              json.dumps(health, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          if health.get('estimated_bytes') is not None and health['estimated_bytes'] > health['budget_bytes']:
+              raise SystemExit('migrated SQLite exceeds zero-cost logical storage budget')
+          PY
+
+      - name: Import into existing free Turso only after verification
+        if: ${{ inputs.import_to_turso }}
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${TURSO_DATABASE_URL:-}" || { echo 'TURSO_DATABASE_URL secret is required'; exit 1; }
+          test -n "${TURSO_AUTH_TOKEN:-}" || { echo 'TURSO_AUTH_TOKEN secret is required'; exit 1; }
+          python - <<'PY'
+          import json
+          for path in ('evidence/migration_verification.json','evidence/sqlite_full_verification.json','evidence/event-replay-equivalence.json'):
+              payload = json.load(open(path, encoding='utf-8'))
+              if payload.get('verified') is not True:
+                  raise SystemExit(f'pre-import verification is not green: {path}')
+          PY
+          python tools/railway_turso_migration.py import-turso \
+            --sqlite brain-migrated.sqlite \
+            --evidence-dir evidence
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from brain.adapters.turso import TursoDatabase, TursoEventStore
+          db = TursoDatabase.from_env()
+          try:
+              health = TursoEventStore(db).health()
+          finally:
+              db.close()
+          Path('evidence/turso-storage-health.json').write_text(
+              json.dumps(health, indent=2, sort_keys=True) + '\n', encoding='utf-8'
+          )
+          if health.get('estimated_bytes') is not None and health['estimated_bytes'] > health['budget_bytes']:
+              raise SystemExit('Turso destination exceeds zero-cost logical storage budget')
+          PY
+
+      - name: Record rescue summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### Railway → Turso rescue'
+            echo "Source project: ${RAILWAY_PROJECT_ID}"
+            echo "Source service: ${RAILWAY_POSTGRES_SERVICE_ID}"
+            echo "Source volume: ${RAILWAY_VOLUME_ID}"
+            echo "Import requested: ${{ inputs.import_to_turso }}"
+            if [ -f evidence/migration_verification.json ]; then
+              echo 'Migration verification:'
+              cat evidence/migration_verification.json
+            fi
+            if [ -f evidence/event-replay-equivalence.json ]; then
+              echo 'Event replay verification:'
+              cat evidence/event-replay-equivalence.json
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload manifests and verification evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: railway-turso-rescue-evidence-${{ github.run_id }}
+          path: |
+            evidence/*.json
+            evidence/*.txt
+            evidence/*.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Destroy runner-local database copies
+        if: always()
+        shell: bash
+        run: |
+          docker rm -f brain-rescue-postgres >/dev/null 2>&1 || true
+          rm -rf source-volume pgdata-work brain-migrated.sqlite
