@@ -18,7 +18,7 @@ on:
       volume_id:
         description: Railway Postgres volume ID
         required: true
-        default: 1186d471-2a5e-4774-839f-81304e83f28b
+        default: 8c85b856-4358-49a8-82f9-8e8bdd648f07
       postgres_superuser:
         description: Superuser in the recovered local cluster
         required: true
