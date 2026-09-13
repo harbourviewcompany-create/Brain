@@ -4,7 +4,8 @@ Migrations 021, 022 and 025 grant privileges through loops evaluated at migratio
 time, so they cannot cover a table created by a later migration, nor a pre-tenant
 table that carries no `tenant_id`. tools/verify_runtime_grant_coverage.py proves the
 resulting property against a real database in CI; these tests keep its exclusion
-list honest and keep migration 026's grants from being quietly dropped, in the
+list honest and keep migration 026's (#197) privilege split from being
+quietly dropped, in the
 ordinary suite that runs everywhere.
 """
 
@@ -111,7 +112,7 @@ def test_a_tenant_owned_table_needs_more_than_select():
 
 
 def test_the_worker_only_tables_are_withheld_from_the_api_runtime():
-    """Migration 026 on main revokes these from the runtime role entirely.
+    """Migration 026 (#197) revokes these from the runtime role entirely.
 
     brain/connectors/service.py is imported only by apps/worker/main.py, and the
     tenant API's TenantRevenueStore overrides every global write to a no-op, so
@@ -139,7 +140,7 @@ def test_the_worker_only_set_does_not_overlap_the_other_classifications():
 
 
 def test_delete_is_not_required_of_the_trusted_worker():
-    """Migration 026 grants the worker SELECT, INSERT and UPDATE -- not DELETE."""
+    """Migration 026 (#197) grants the worker SELECT, INSERT and UPDATE -- not DELETE."""
     assert TRUSTED_SERVICE_PRIVILEGES == ("select", "insert", "update")
 
 

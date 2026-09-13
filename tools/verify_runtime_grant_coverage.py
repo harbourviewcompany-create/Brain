@@ -26,6 +26,7 @@ import argparse
 import os
 
 import psycopg
+from psycopg import sql
 
 
 RUNTIME_ROLE = "brain_runtime_role"
@@ -66,14 +67,14 @@ READ_ONLY_TABLES: dict[str, str] = {
 # apps/worker/main.py, and the tenant API's TenantRevenueStore overrides every
 # global write to a no-op and reconstructs learning from tenant-owned outcomes.
 TRUSTED_SERVICE_ONLY: dict[str, str] = {
-    "source_connector_runtime_state": "worker-only acquisition state (migration 026)",
-    "source_connector_ingestion_runs": "worker-only acquisition state (migration 026)",
-    "source_connector_observations": "worker-only acquisition state (migration 026)",
-    "money_lanes": "global money-lane catalogue, service-context only (migration 026)",
-    "revenue_source_scores": "global source learning, service-context only (migration 026)",
+    "source_connector_runtime_state": "worker-only acquisition state (migration 026, #197)",
+    "source_connector_ingestion_runs": "worker-only acquisition state (migration 026, #197)",
+    "source_connector_observations": "worker-only acquisition state (migration 026, #197)",
+    "money_lanes": "global money-lane catalogue, service-context only (migration 026, #197)",
+    "revenue_source_scores": "global source learning, service-context only (migration 026, #197)",
 }
 
-#: What the trusted worker must hold on the tables above. Migration 026 grants
+#: What the trusted worker must hold on the tables above. Migration 026 (#197) grants
 #: these three; DELETE is deliberately not among them.
 TRUSTED_SERVICE_PRIVILEGES: tuple[str, ...] = ("select", "insert", "update")
 
@@ -180,6 +181,14 @@ def unpolicied_tables(conn: psycopg.Connection) -> list[str]:
 
     RLS with no policy denies every non-owner regardless of grants, so a grant
     check alone cannot prove reachability for the constrained login.
+
+    The relation set must match `public_tables()` exactly, for two reasons that
+    fail in opposite directions. Omitting `relkind = 'p'` would miss an
+    RLS-enabled partitioned parent with no policy -- the gate passes while the
+    runtime reads nothing. Including inheritance children would report a child
+    that enables RLS directly, and `required_privileges()` would then demand
+    FULL_DML of a relation `public_tables()` never lists -- a failure with no
+    fix. Parent policies do not apply to a child named directly in a query.
     """
 
     return [
@@ -190,8 +199,9 @@ def unpolicied_tables(conn: psycopg.Connection) -> list[str]:
             from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             where n.nspname = 'public'
-              and c.relkind = 'r'
+              and c.relkind in ('r', 'p')
               and c.relrowsecurity
+              and not exists (select 1 from pg_inherits i where i.inhrelid = c.oid)
               and not exists (select 1 from pg_policy p where p.polrelid = c.oid)
             order by c.relname
             """
@@ -235,7 +245,7 @@ def policy_coverage_gaps(conn: psycopg.Connection) -> list[str]:
     "Covers it" is narrower than a matching command. A policy applies to the runtime
     only if it is PERMISSIVE (a restrictive policy subtracts access, it never grants
     any) and its `polroles` includes PUBLIC or a role the runtime role is a member of.
-    Migration 026 on main writes `for all to brain_trusted_service_role` policies, so
+    Migration 026 (#197) writes `for all to brain_trusted_service_role` policies, so
     a future policy scoped that way on a table the runtime is still granted would look
     like coverage while every runtime write was refused.
     """
@@ -270,6 +280,7 @@ def policy_coverage_gaps(conn: psycopg.Connection) -> list[str]:
         for row in conn.execute(
             "select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace"
             " where n.nspname = 'public' and c.relkind in ('r', 'p') and c.relrowsecurity"
+            " and not exists (select 1 from pg_inherits i where i.inhrelid = c.oid)"
         ).fetchall()
     }
 
@@ -327,6 +338,12 @@ def trusted_service_write_gaps(conn: psycopg.Connection) -> list[str]:
     checking the service role's *presence* would let a later revoke silently strand
     `seed_lanes()`, `save_lane_priority()` and `save_source_score()`.
     """
+
+    if conn.execute("select to_regrole(%s)", (TRUSTED_SERVICE_ROLE,)).fetchone()[0] is None:
+        raise RuntimeError(
+            f"{TRUSTED_SERVICE_ROLE} does not exist, so the read-only boundary on the "
+            "global catalogues has no writer; apply migration 019 first"
+        )
 
     gaps: list[str] = []
     for table in TRUSTED_SERVICE_ONLY:
@@ -537,7 +554,11 @@ def verify_effective_login(conn: psycopg.Connection, present: list[str]) -> None
         if "select" not in required_privileges(table):
             continue
         try:
-            conn.execute(f'select 1 from public."{table}" limit 1').fetchone()
+            conn.execute(
+                sql.SQL("select 1 from {} limit 1").format(
+                    sql.Identifier("public", table)
+                )
+            ).fetchone()
         except psycopg.Error as exc:
             unreadable.append(f"{table} ({exc.diag.sqlstate or type(exc).__name__})")
             conn.rollback()
