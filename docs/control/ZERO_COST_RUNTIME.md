@@ -58,6 +58,35 @@ Repository-controlled deployment rules live in `vercel.json` and `scripts/vercel
 
 PR validation is therefore completed before a change can reach the protected main release path.
 
+## Deployment topology
+
+`api/index.py` and the Observatory are two different builds and cannot be served
+by one Vercel project whose build root is `apps/observatory`. A project rooted
+there never sees the repository-root `api/` directory or the root `vercel.json`,
+so the Python runtime is silently not built: the deployment contains only the
+Next.js functions and every `/api/*` path resolves to the Observatory's own 404.
+
+This is not hypothetical. Production deployment `dpl_12HtpetJjRMEMuXm1WqgdbBxFu2q`
+(commit `ab3067f`, the merge that added this runtime) reported
+`lambdaRuntimeStats: {"nodejs": 4}` -- four Node functions and no Python -- while
+`GET /api/health` returned a Next.js 404 carrying `x-matched-path: /404`. The
+Observatory was live and its backend did not exist.
+
+The required topology is therefore:
+
+- one Vercel project building the Observatory from `apps/observatory`;
+- a second Vercel project building `api/index.py` from the repository root, with
+  `BRAIN_STORAGE_BACKEND=turso`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN` and
+  `BRAIN_API_KEY`;
+- the Observatory's `BRAIN_API_URL` pointing at that second project's origin.
+
+Both projects remain on Hobby, so this does not affect the zero-dollar invariant.
+
+`apps/observatory/src/lib/brain-upstream.ts` rejects any `*.railway.app` upstream
+outright. Until the API project exists there is no admissible value for
+`BRAIN_API_URL`, and the Observatory renders nothing whatever else is configured.
+A cutover that promotes the Observatory without the API project is not a cutover.
+
 ## Railway rescue invariant
 
 The rescue workflow is manual (`workflow_dispatch`) only. It uses the repository secret `RAILWAY_TOKEN` and MUST NOT mutate, delete, restart, redeploy, migrate, vacuum, rewrite, or otherwise alter the Railway source volume/database.
@@ -78,6 +107,36 @@ The workflow sequence is:
 12. upload migration evidence artifacts.
 
 The workflow contains no command that creates a Turso database, upgrades a plan, enables overage, deletes Railway data, or mutates the Railway source.
+
+## Recorded source state
+
+As of 2026-09-13 the Railway source is unrecoverable without a paid plan, which
+the zero-dollar invariant forbids. This is the evidence Path B requires.
+
+The free trial lapsed and every deployment in project `54914617-2d60-488d-a144-9492082c5b9d`,
+environment `a05b761c-d332-4cda-abd7-5b55cdf08867`, was REMOVED within one minute
+on 2026-08-29 (`brain-api-live` at 19:04:51Z, `Postgres` at 19:05:52Z) with no
+failure reason recorded. CPU and memory have read zero since. A redeploy of the
+Postgres service was attempted on 2026-09-13 and refused:
+
+```text
+Your trial has expired. Please select a plan to continue using Railway.
+Latest deployment for this service: fb081c92-e2e2-444b-9f70-81543e337d3e (REMOVED).
+Retrying will not change this -- that deployment has no build to copy.
+```
+
+That is the deploy path refusing, not only the agent API. The rescue workflow
+reads volume files rather than a running database, but it authenticates to the
+same account, so it should be treated as blocked until proven otherwise.
+
+What was lost cannot be established precisely, and this record does not claim
+otherwise. What is known: volume `8c85b856-4358-49a8-82f9-8e8bdd648f07` held
+0.169893888 GB. A Brain database carrying migrations 001-026 with **zero rows**
+measures 68 MB on disk, and PostgreSQL 18's larger base plus the default 80 MB
+minimum WAL accounts for most of the remainder. The strong inference is that the
+source held little or no canonical data, consistent with the Observatory having
+rendered no data before the outage. It remains an inference: the row counts could
+not be read, and Path B requires saying so rather than rounding it to zero.
 
 ## Maintenance
 
@@ -101,17 +160,43 @@ Requires all of the following:
 
 ### Production cutover GO
 
-In addition to code-merge GO:
+Two cutover paths are admissible. Both require code-merge GO and the shared
+runtime evidence; they differ only in what is required of the Railway source.
+`docs/control/zero_cost_policy.json` carries the machine-readable form under
+`cutover`, and `scripts/validate_zero_cost_runtime.py` enforces it.
+
+**Shared runtime evidence, required by both paths:**
+
+- Turso storage usage is below the zero-cost pressure ceiling;
+- Vercel production health reports `persistence=turso` and healthy storage pressure;
+- live API/BFF and Observatory desktop/tablet/mobile audit passes;
+- production deployment SHA/ID is recorded.
+
+**Path A — migrated cutover.** The Railway source is readable and its contents
+are carried forward. In addition to the shared evidence:
 
 - Railway rescue successfully completed from the real source without source mutation;
 - every persistent source table enumerated;
 - deterministic source/destination counts match or documented transformations reconcile exactly;
 - SHA-256 migration manifests verify;
-- canonical Brain event counts and event/replay equivalence verify;
-- Turso storage usage is below the zero-cost pressure ceiling;
-- Vercel production health reports `persistence=turso` and healthy storage pressure;
-- live API/BFF and Observatory desktop/tablet/mobile audit passes;
-- production deployment SHA/ID is recorded.
+- canonical Brain event counts and event/replay equivalence verify.
+
+**Path B — clean-start cutover.** The Railway source is unrecoverable, so Turso
+begins empty and `TursoDatabase.bootstrap()` creates the schema on first connect.
+This path exists because Path A can become impossible through no fault of the
+code: a lapsed provider plan makes the source unreadable, and the zero-dollar
+invariant forbids buying a plan to recover it. A gate that cannot be satisfied is
+not a safety control, it is a dead end. In addition to the shared evidence:
+
+- the source is recorded as unrecoverable, with the provider's own refusal quoted
+  and dated, and the attempted operation named;
+- the lost dataset is characterised as precisely as the evidence allows, including
+  what could not be established;
+- the data loss is acknowledged explicitly in the cutover record. Accepting loss is
+  permitted; discovering it later is not. `silent_data_loss_allowed` is `false`.
+
+Path B does not authorise deleting or mutating the Railway source, and does not
+retire Railway. Retirement remains a separate decision below.
 
 ### Railway retirement GO
 
