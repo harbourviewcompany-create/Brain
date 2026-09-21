@@ -115,7 +115,7 @@ export async function proxyToBrain(
     return Response.json(
       {
         detail: "brain_runtime_upstream_not_configured",
-        hint: "Set BRAIN_API_URL to the HTTPS origin of the Vercel-hosted Turso Brain runtime.",
+        hint: "Set BRAIN_API_URL to the active Brain runtime HTTPS origin.",
       },
       { status: 503, headers: { "cache-control": "no-store" } }
     );
