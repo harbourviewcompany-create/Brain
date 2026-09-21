@@ -94,11 +94,23 @@ def check_archive_assets() -> list[str]:
     if not manifest_path.is_file():
         return ["archive manifest is missing"]
 
-    missing = [path for path in EXPECTED_ARCHIVE_PATHS if not (ROOT / path).is_file()]
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"archive manifest cannot be read: {exc}"]
+
+    declared: list[str] = []
+    source_package = manifest.get("source_package") or {}
+    if source_package.get("target_path"):
+        declared.append(str(source_package["target_path"]))
+    for item in manifest.get("items", []):
+        if item.get("required") and item.get("target_path"):
+            declared.append(str(item["target_path"]))
+
+    missing = sorted({path for path in declared if not (ROOT / path).is_file()})
     if missing:
         return ["archive asset file bytes missing: " + ", ".join(missing)]
     return []
-
 
 def main() -> int:
     gaps = []
