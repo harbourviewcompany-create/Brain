@@ -21,9 +21,6 @@ function resolveBase(): string {
     return "";
   }
   if (parsed.protocol !== "https:") return "";
-  if (LEGACY_RAILWAY_HOSTS.has(parsed.hostname) || parsed.hostname.endsWith(".railway.app")) {
-    return "";
-  }
   return parsed.origin + parsed.pathname.replace(/\/$/, "");
 }
 
