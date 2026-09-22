@@ -1,0 +1,48 @@
+name: Cognitive Host Resurrection (CHRP)
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Target host(s)"
+        required: true
+        default: "both"
+        type: choice
+        options: [railway, fly, both]
+  issues:
+    types: [labeled]
+
+jobs:
+  resurrect:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && contains(github.event.label.name, 'chrp-restore'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Fly CLI
+        if: inputs.provider == 'fly' || inputs.provider == 'both' || github.event_name == 'issues'
+        run: |
+          curl -L https://fly.io/install.sh | sh
+          echo "$HOME/.fly/bin" >> $GITHUB_PATH
+
+      - name: Install Railway CLI
+        if: inputs.provider == 'railway' || inputs.provider == 'both' || github.event_name == 'issues'
+        run: npm i -g @railway/cli
+
+      - name: Run CHRP
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BRAIN_API_KEY: ${{ secrets.BRAIN_API_KEY }}
+          BRAIN_CORS_ORIGINS: ${{ secrets.BRAIN_CORS_ORIGINS }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          FLY_APP: brain-api
+        run: |
+          if [ -z "$DATABASE_URL" ] || [ -z "$BRAIN_API_KEY" ]; then
+            echo "DATABASE_URL and BRAIN_API_KEY secrets required"
+            exit 1
+          fi
+          chmod +x scripts/restore_api_host.sh
+          ./scripts/restore_api_host.sh ${{ inputs.provider || 'both' }}
