@@ -4,11 +4,18 @@ import { getVercelOidcToken } from "@vercel/oidc";
  * Server-only upstream config for the Brain Runtime API.
  * Used exclusively by /api/brain/[...path] — never import from client components.
  *
- * Production may run the canonical API image on Railway or Fly.io. The active
- * host is selected exclusively by BRAIN_API_URL; there is no implicit fallback.
- * The URL must be an explicit HTTPS origin, keeping deployment selection
- * operator-controlled without a hard-coded hosting assumption.
+ * The zero-dollar runtime has no Railway fallback. Production must explicitly
+ * point BRAIN_API_URL at the stateless Vercel-hosted Turso runtime. A missing,
+ * non-HTTPS, or legacy Railway URL fails closed instead of silently restoring a
+ * paid/runtime dependency that the migration is removing. Railway origins are
+ * unsupported upstreams in the zero-cost runtime and are rejected explicitly.
  */
+
+const LEGACY_RAILWAY_HOSTS = new Set([
+  "brain-api-live-production.up.railway.app",
+  "brain-api-docker-production.up.railway.app",
+  "brain-api-production-f142.up.railway.app",
+]);
 
 function resolveBase(): string {
   const configured = (process.env.BRAIN_API_URL || "").trim().replace(/\/$/, "");
@@ -21,6 +28,9 @@ function resolveBase(): string {
     return "";
   }
   if (parsed.protocol !== "https:") return "";
+  if (LEGACY_RAILWAY_HOSTS.has(parsed.hostname) || parsed.hostname.endsWith(".railway.app")) {
+    return "";
+  }
   return parsed.origin + parsed.pathname.replace(/\/$/, "");
 }
 
@@ -115,7 +125,7 @@ export async function proxyToBrain(
     return Response.json(
       {
         detail: "brain_runtime_upstream_not_configured",
-        hint: "Set BRAIN_API_URL to the active Brain runtime HTTPS origin.",
+        hint: "Set BRAIN_API_URL to the HTTPS origin of the Vercel-hosted Turso Brain runtime.",
       },
       { status: 503, headers: { "cache-control": "no-store" } }
     );
