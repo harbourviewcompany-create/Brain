@@ -165,7 +165,12 @@ def build_runner(*, enable_endogenous: bool = True, event_store: Any | None = No
             "worker cognition is in-memory and will be lost on restart"
         )
 
-    hb = build_default_heartbeat(with_learning=True, event_store=store)
+    learning = build_learning(store) if store is not None else None
+    hb = build_default_heartbeat(
+        with_learning=store is not None,
+        event_store=store,
+        learning=learning,
+    )
 
     if store is not None:
         # Resume from the durable projection before seeding. bootstrap_mind()
