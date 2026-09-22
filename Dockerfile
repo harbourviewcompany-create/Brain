@@ -18,9 +18,6 @@ RUN mkdir -p brain \
 COPY brain ./brain
 COPY apps ./apps
 COPY db ./db
-# tools/ carries the Railway deployment identity bridge and the migration
-# runner named by railway.toml's preDeployCommand. Omitting it produced an
-# image that could neither verify a Vercel OIDC bearer nor apply migrations.
 COPY tools ./tools
 RUN python -m pip install --no-cache-dir --no-deps --force-reinstall . \
     && python -m pip check
@@ -37,11 +34,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8000') + '/ready', timeout=4).read()" || exit 1
 
-# live_cockpit_routes is apps.api.tenant_app plus the Vercel OIDC bridge, and
-# nothing else: it imports that app object rather than building a second one.
-# tenant_app itself preserves legacy single-tenant behavior when
-# BRAIN_TENANT_MODE=disabled and installs signed membership/RLS enforcement
-# when tenant mode is enabled. Serving the bridged app here keeps every Railway
-# path -- railway.toml, railway.brain-api-live.toml, Dockerfile.railway -- on
-# one runtime surface.
+# The canonical container serves the API runtime. Worker validation invokes the
+# worker module explicitly with an entrypoint override in CI.
 CMD ["sh", "-c", "python -m uvicorn tools.live_cockpit_routes:app --host 0.0.0.0 --port ${PORT}"]
