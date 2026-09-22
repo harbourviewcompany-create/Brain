@@ -114,8 +114,11 @@ Fly cutover (create app, secrets, scale worker, point Vercel `BRAIN_API_URL`): *
 
 Server-side production configuration includes:
 
-- `BRAIN_API_URL=<active API host HTTPS origin>` — Railway live URL **or** Fly app URL after cutover
+- `BRAIN_API_URL=<active API host HTTPS origin>`
+- `BRAIN_API_ALLOWED_HOSTS=<exact approved API hostname(s)>`
 - `BRAIN_API_KEY` only when the server-only fallback path is intentionally configured
+
+Security invariant: `BRAIN_API_URL` is not a trust boundary. The BFF refuses to proxy to an HTTPS origin unless its hostname is explicitly present in `BRAIN_API_ALLOWED_HOSTS`. Host matching is exact; schemes, ports, paths, and wildcard suffixes are not accepted. This prevents a configuration mistake from turning the BFF into a credential-forwarding proxy to an arbitrary HTTPS host.
 
 Vercel deployment identity remains the primary production authentication path. Vercel Authentication (SSO) may be enabled for deployment URLs; custom domains can be exempted per project protection settings.
 
