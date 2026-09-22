@@ -30,18 +30,7 @@ MAIN_BRANCH = os.environ.get("BRAIN_MAIN_BRANCH", "main")
 # against those files directly so a future workflow rename can't silently
 # reintroduce this bug.
 REQUIRED_STATUS_CHECKS = {"Validate Brain control policy", "test"}
-EXPECTED_ARCHIVE_PATHS = [
-    "docs/archive/Brain_Compilation_Full_Current_Thread.docx",
-    "docs/archive/Brain_Compilation_Full_Current_Thread.md",
-    "docs/archive/source/Pasted text.txt",
-    "docs/archive/visuals/step_by_step_process_overview.png",
-    "docs/archive/visuals/brain_functions_vs._real_brain_anatomy.png",
-    "docs/archive/visuals/a_high_detail_infographic_poster_on_a_dark_black_t.png",
-    "docs/archive/visuals/brain_vs_ai_a_comparative_overview.png",
-    "docs/archive/visuals/brain_architecture_vs_generic_ai_comparison.png",
-    "docs/archive/visuals/comparing_ai_and_brain_architectures.png",
-    "artifacts/Brain_Compilation_Full_Current_Thread_Package.zip",
-]
+
 
 
 
@@ -99,13 +88,33 @@ def check_archive_assets() -> list[str]:
     except (OSError, json.JSONDecodeError) as exc:
         return [f"archive manifest cannot be read: {exc}"]
 
+    required_top_level = {"archive_id", "title", "status", "rule", "source_package", "items"}
+    if not required_top_level.issubset(manifest):
+        missing_keys = sorted(required_top_level - set(manifest))
+        return ["archive manifest missing required keys: " + ", ".join(missing_keys)]
+
+    source_package = manifest["source_package"]
+    items = manifest["items"]
+    if not isinstance(source_package, dict):
+        return ["archive manifest source_package must be an object"]
+    if not isinstance(items, list) or not items:
+        return ["archive manifest items must be a non-empty list"]
+
     declared: list[str] = []
-    source_package = manifest.get("source_package") or {}
-    if source_package.get("target_path"):
-        declared.append(str(source_package["target_path"]))
-    for item in manifest.get("items", []):
-        if item.get("required") and item.get("target_path"):
-            declared.append(str(item["target_path"]))
+    target_values = [("source_package.target_path", source_package.get("target_path"))]
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            return [f"archive manifest items[{index}] must be an object"]
+        if item.get("required"):
+            target_values.append((f"items[{index}].target_path", item.get("target_path")))
+
+    for field, value in target_values:
+        if not isinstance(value, str) or not value.strip():
+            return [f"archive manifest {field} must be a non-empty repo-relative path"]
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            return [f"archive manifest {field} must be a safe repo-relative path: {value}"]
+        declared.append(value)
 
     missing = sorted({path for path in declared if not (ROOT / path).is_file()})
     if missing:
