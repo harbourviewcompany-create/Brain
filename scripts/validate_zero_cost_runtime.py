@@ -139,6 +139,13 @@ def validate_rescue_workflow() -> None:
         require(forbidden_trigger not in trigger, f"Railway rescue cannot use {forbidden_trigger.rstrip(':')} trigger")
     require("secrets.RAILWAY_TOKEN" in text, "Railway rescue must use repository-secret RAILWAY_TOKEN")
     require("secrets.TURSO_DATABASE_URL" in text, "Turso destination URL must come from a secret")
+    for token in (
+        "54914617-2d60-488d-a144-9492082c5b9d",
+        "a05b761c-d332-4cda-abd7-5b55cdf08867",
+        "e1412e0a-6153-489c-b042-2de37635bc78",
+        "8c85b856-4358-49a8-82f9-8e8bdd648f07",
+    ):
+        require(token in text, f"rescue workflow must pin canonical recovery source: {token}")
     require("secrets.TURSO_AUTH_TOKEN" in text, "Turso auth token must come from a secret")
     require("import_to_turso" in text, "remote Turso import must be an explicit manual input")
     require("railway volume files" in text and "download" in text, "rescue must use Railway volume download")
