@@ -4,7 +4,7 @@
 
 This document is the authoritative production-wiring record for the Brain runtime and the Vercel control plane (Observatory).
 
-Verified runtime baseline snapshot: **2026-08-27** (Fly host alternative documented; Railway may still be the live API until cutover).
+Verified runtime baseline: **2026-09-22 repository contract**. Live production verification remains an external gate; this document distinguishes repository-defined architecture from verified live deployment.
 
 ## Repository boundary
 
@@ -12,9 +12,9 @@ The Brain repository is consolidated. Both the runtime and the operator UI / BFF
 
 | Responsibility | Location in repo | Production host |
 |---|---|---|
-| Brain runtime, API, persistence adapters, migrations, host build/deploy configuration, Vercel identity verification bridge | `apps/api/*`, `brain/*`, `db/migrations/*`, `tools/*`, `Dockerfile*`, `railway*.toml`, `fly.toml` | **Railway or Fly.io** (same image) |
+| Brain runtime, serverless API entrypoint, persistence adapters, migrations and Vercel identity boundary | `api/*`, `apps/api/*`, `brain/*`, `db/migrations/*`, `tools/*` | **Vercel** (`api/index.py`) + **Turso/libSQL** |
 | Brain operator UI (Observatory), same-origin BFF, Vercel deployment identity acquisition/forwarding, browser-safe API client | `apps/observatory/*` (and related Vercel config) | Vercel |
-| Event ledger / projections | `db/migrations/*` | Supabase / PostgreSQL |
+| Event ledger / projections | `db/migrations/*` and Turso adapters | **Turso/libSQL** in production; PostgreSQL remains local/rescue-only |
 
 ### Brain API host ownership (Railway **or** Fly)
 
@@ -44,14 +44,12 @@ No Brain database migration or API runtime implementation belongs solely on the 
 
 ## Production endpoints
 
-- Operator UI / canonical Vercel production URL: `https://brain-seven-puce.vercel.app`
-- Additional Vercel production aliases: `https://brain-harbourview.vercel.app`, `https://brain-git-main-harbourview.vercel.app`
-- Brain Runtime API (Railway, current documented live): `https://brain-api-live-production.up.railway.app`
-- Brain Runtime API (Fly alternative): `https://<fly-app>.fly.dev` after `fly deploy` (see `docs/deployment-fly.md`)
+- Canonical operator UI / BFF: the Vercel `brain` project
+- Canonical Brain API: Vercel `/api/*` backed by repository-root `api/index.py`
+- Browser API boundary: same-origin `/api/brain/*`
+- Persistence: Turso/libSQL
 
-The browser calls only same-origin `/api/brain/*`. The BFF is responsible for authenticating upstream requests to the active API host.
-
-> Historical note: earlier wiring used Vercel project `thebrain` and URL `https://thebrain-sandy.vercel.app`. That project is no longer the canonical production authority. Do not point CI smoke tests or OIDC scope at `thebrain-sandy.vercel.app`.
+Exact public deployment aliases remain external verification data and are not treated as authoritative until a live post-deploy audit confirms the deployed commit and routes.
 
 ## Production authentication model
 
@@ -121,49 +119,28 @@ Vercel deployment identity remains the primary production authentication path. V
 
 ## Verified production deployment mapping
 
-This section records the last runtime-affecting production baseline verified at the snapshot date. Merging documentation can produce newer hosting deployment IDs even when application behavior is unchanged, so these identifiers are evidence of the verified runtime baseline rather than a promise that they remain the newest docs-only deployment.
+No live production mapping is asserted by this repository document alone. A production GO requires fresh evidence for:
 
-### Railway (may remain live until Fly cutover)
+- deployed Vercel commit and deployment state
+- repository-root Vercel Root Directory
+- `/api/health` and `/api/ready`
+- Observatory BFF health and protected reads
+- Turso persistence connectivity and migration state
+- live GitHub enforcement
+- browser bundle credential isolation
 
-- project: `Brain`
-- service: `brain-api-live`
-- service ID: `81c88785-4d36-4621-8125-8c22b2ef3520`
-- production URL: `https://brain-api-live-production.up.railway.app`
-- **Pending for full #168/#169/#171 effect:** redeploy `main` at or after `4c24aec` with OIDC env set.
-
-### Fly (alternative API+worker host)
-
-- config: `fly.toml` (`app = brain-api`, region `yyz`)
-- image: `Dockerfile`
-- processes: `app` (HTTP `/ready`), `worker` (`apps.worker.main`)
-- migrations: `release_command` → `apply_migrations.py --max-version 18`
-- runbook: `docs/deployment-fly.md`
-- status: repository-ready; live GO requires `fly deploy`, secrets, and Vercel `BRAIN_API_URL` switch
-
-### Vercel — canonical production project
-
-- team: `harbourview` (`team_0rK4jTvMLlSufR0ZzX4LCKYi`)
-- project: `brain`
-- project ID: `prj_Fr14GlGBNeae7coqrnhgXteHC0jA`
-- source repository: `harbourviewcompany-create/Brain`
-- production branch: `main`
-- production domains:
-  - `https://brain-seven-puce.vercel.app`
-  - `https://brain-harbourview.vercel.app`
-  - `https://brain-git-main-harbourview.vercel.app`
-
-Legacy / non-canonical Vercel projects (`thebrain`, etc.) are not production authority.
+Historical Railway/Fly deployment IDs and host URLs are retained only in repository history and issue/PR evidence; they are not current production authority.
 
 ## Deployment boundary
 
 A Brain production release follows these boundaries:
 
-1. Backend/runtime/schema work merges to `harbourviewcompany-create/Brain` `main`.
-2. The active API host (Railway **or** Fly) deploys from Brain `main`.
-3. Migrations apply only through the approved ceiling (018 pre-tenant) before runtime promotion.
-4. Observatory / BFF / UI work merges to the same `main`.
-5. Vercel project `brain` deploys from Brain `main`.
-6. Keep host responsibilities split: API/worker on Railway or Fly; operator UI and same-origin BFF on Vercel; data on Supabase.
+1. Runtime/schema work merges to `harbourviewcompany-create/Brain` `main`.
+2. The canonical Vercel project builds from the repository root.
+3. `api/index.py` serves the Brain API under `/api/*`.
+4. Production persistence is Turso/libSQL.
+5. Observatory/BFF and API remain on the same Vercel project boundary.
+6. Manual PostgreSQL rescue is separate from ordinary deployment and cannot silently substitute for Turso.
 
 ## Post-deploy verification
 
