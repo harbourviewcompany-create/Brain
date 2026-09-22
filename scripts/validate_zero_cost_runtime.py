@@ -86,6 +86,10 @@ def validate_vercel_config(path: str, expected_ignore: str) -> None:
 
 
 def validate_vercel() -> None:
+    root = json.loads(read("vercel.json"))
+    require(root.get("framework") == "nextjs", "root Vercel project must use the Next.js framework")
+    require(root.get("buildCommand", "").startswith("cd apps/observatory"), "root Vercel build must build the Observatory from the repository root")
+    require(root.get("outputDirectory") == "apps/observatory/.next", "root Vercel output must point at the Observatory build")
     validate_vercel_config("vercel.json", "bash scripts/vercel-ignore-build.sh")
     validate_vercel_config("apps/observatory/vercel.json", "bash ../../scripts/vercel-ignore-build.sh")
     script = read("scripts/vercel-ignore-build.sh")
@@ -179,6 +183,9 @@ def validate_runtime() -> None:
     require("LIVE_RAILWAY_BASE" not in upstream, "Observatory BFF cannot retain Railway fallback")
     require(".railway.app" in upstream and "unsupported" in upstream.lower(), "BFF must reject Railway upstream configuration")
     require("BRAIN_API_URL" in upstream, "BFF must require an explicit zero-cost runtime origin")
+    require("BRAIN_API_ALLOWED_HOSTS" in upstream, "BFF must require an explicit upstream hostname allowlist")
+    wiring = read("docs/observatory/PRODUCTION_WIRING.md")
+    require("repository root" in wiring.lower() and "runtime entrypoint: `api/index.py`" in wiring, "production wiring must document the repository-root Vercel API")
 
 
 def validate_protected_ci() -> None:
