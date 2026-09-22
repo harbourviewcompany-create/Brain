@@ -100,20 +100,60 @@ def build_brain_store() -> Any | None:
 
 
 def build_learning(event_store: Any | None = None) -> Any:
-    try:
+    """Build learning against the same durable store as cognition.
+
+    A worker backed by PostgreSQL must not pair a Postgres brain store with
+    in-memory predictions/edges/attributions/sources: that split makes the
+    event ledger durable while the learning state disappears on restart and
+    leaves the API and worker observing different cognitive state.
+    """
+    from brain.learning import LearningService
+
+    store = event_store
+    if store is None:
+        try:
+            store = build_brain_store()
+        except Exception:
+            store = None
+
+    if store is None:
         from brain.adapters.learning_store import InMemoryLearningStore
-        from brain.learning import LearningService
         from brain.memory import InMemoryBrainStore
 
-        store = event_store or InMemoryBrainStore()
+        memory_store = InMemoryBrainStore()
         mem = InMemoryLearningStore()
         return LearningService(
-            store, predictions=mem, edges=mem, attributions=mem, sources=mem
+            memory_store,
+            predictions=mem,
+            edges=mem,
+            attributions=mem,
+            sources=mem,
         )
-    except Exception:
-        log.exception("learning service unavailable; continuing without attribution")
-        return None
 
+    pool = getattr(store, "pool", None)
+    if pool is None:
+        pool = getattr(getattr(store, "event_store", None), "pool", None)
+
+    if pool is None:
+        raise RuntimeError(
+            "durable cognition store has no PostgreSQL pool; refusing to downgrade "
+            "learning state to memory"
+        )
+
+    from brain.adapters.learning_store import (
+        PostgresAttributionStore,
+        PostgresEdgeStore,
+        PostgresPredictionStore,
+        PostgresSourceStore,
+    )
+
+    return LearningService(
+        store,
+        predictions=PostgresPredictionStore(pool),
+        edges=PostgresEdgeStore(pool),
+        attributions=PostgresAttributionStore(pool),
+        sources=PostgresSourceStore(pool),
+    )
 
 def build_runner(*, enable_endogenous: bool = True, event_store: Any | None = None) -> Any:
     from brain.heartbeat import build_default_heartbeat
