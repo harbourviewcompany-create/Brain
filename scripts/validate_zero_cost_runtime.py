@@ -74,6 +74,34 @@ def validate_policy() -> dict:
     return policy
 
 
+def validate_hosting_boundary() -> None:
+    """Fail closed if retired paid-host deployment contracts reappear."""
+    forbidden = (
+        "fly.toml",
+        "railway.toml",
+        "railway.brain-api-live.toml",
+        "railway.worker.toml",
+        "Dockerfile.railway",
+        "Dockerfile.worker",
+    )
+    present = [path for path in forbidden if (ROOT / path).exists()]
+    require(not present, f"retired hosted-production artifacts present: {present}")
+
+    rescue = read(".github/workflows/railway-turso-rescue.yml").lower()
+    for forbidden_command in (
+        "railway up",
+        "railway deploy",
+        "railway redeploy",
+        "fly deploy",
+        "turso db create",
+        "turso database create",
+    ):
+        require(
+            forbidden_command not in rescue,
+            f"manual rescue workflow contains deployment/resource-creation command: {forbidden_command}",
+        )
+
+
 def validate_vercel_config(path: str, expected_ignore: str) -> None:
     config = json.loads(read(path))
     rules = config.get("git", {}).get("deploymentEnabled", {})
@@ -204,6 +232,7 @@ def validate_protected_ci() -> None:
 
 def main() -> None:
     validate_policy()
+    validate_hosting_boundary()
     validate_vercel()
     validate_rescue_workflow()
     validate_maintenance_workflow()
