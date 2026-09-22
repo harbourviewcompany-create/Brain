@@ -11,11 +11,22 @@ import { getVercelOidcToken } from "@vercel/oidc";
  * unsupported upstreams in the zero-cost runtime and are rejected explicitly.
  */
 
-const LEGACY_RAILWAY_HOSTS = new Set([
-  "brain-api-live-production.up.railway.app",
-  "brain-api-docker-production.up.railway.app",
-  "brain-api-production-f142.up.railway.app",
-]);
+/**
+ * Explicit upstream hostname allowlist. The BFF carries server-only credentials,
+ * so BRAIN_API_URL alone is never sufficient to establish trust.
+ *
+ * Operators must set BRAIN_API_ALLOWED_HOSTS to the exact hostname(s) that are
+ * approved to receive Brain credentials. Hostnames are matched exactly; ports,
+ * schemes, paths, and wildcard suffixes are not accepted.
+ */
+function allowedUpstreamHosts(): Set<string> {
+  return new Set(
+    (process.env.BRAIN_API_ALLOWED_HOSTS || "")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
 
 function resolveBase(): string {
   const configured = (process.env.BRAIN_API_URL || "").trim().replace(/\/$/, "");
@@ -28,9 +39,8 @@ function resolveBase(): string {
     return "";
   }
   if (parsed.protocol !== "https:") return "";
-  if (LEGACY_RAILWAY_HOSTS.has(parsed.hostname) || parsed.hostname.endsWith(".railway.app")) {
-    return "";
-  }
+  if (parsed.username || parsed.password || parsed.port) return "";
+  if (!allowedUpstreamHosts().has(parsed.hostname.toLowerCase())) return "";
   return parsed.origin + parsed.pathname.replace(/\/$/, "");
 }
 
