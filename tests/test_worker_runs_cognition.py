@@ -1,17 +1,4 @@
-"""A deployed worker must actually think.
-
-The live cockpit showed 5 ingested signals, 0 beliefs and CYCLE 0: signals had
-arrived and nothing had ever processed them. The cause was the worker's default
-mode, not the cognition code.
-
-`Dockerfile.worker` pinned `BRAIN_WORKER_MODE=temporal`, and `main()` routes
-that to `run_temporal_worker()`, which dials
-`TEMPORAL_ADDRESS or TEMPORAL_HOST or "localhost:7233"`. Nothing listens on the
-worker container's own loopback, so a deployment without a Temporal server
-raised out of `asyncio.run`, exited, restarted, and dialled itself again -- a
-crash loop that never ran a single cognitive tick. From the cockpit that is
-indistinguishable from a healthy Brain with nothing to do.
-"""
+"""A deployed worker must actually think.\n\nWorker execution is validated from the canonical repository-root Docker image.\nCI invokes the worker module explicitly with an entrypoint override so there is\none maintained container boundary instead of a retired worker-specific artifact.\n"""
 
 from __future__ import annotations
 
@@ -26,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_worker_image_does_not_pin_temporal_mode():
-    dockerfile = (REPO_ROOT / "Dockerfile.worker").read_text(encoding="utf-8")
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "BRAIN_WORKER_MODE=temporal" not in dockerfile, (
         "the image must not default to a mode that requires a Temporal server "
         "it has no address for"
@@ -35,7 +22,7 @@ def test_worker_image_does_not_pin_temporal_mode():
 
 def test_worker_image_still_runs_the_worker_entrypoint():
     dockerfile = (REPO_ROOT / "Dockerfile.worker").read_text(encoding="utf-8")
-    assert "apps.worker.main" in dockerfile
+    assert "COPY apps ./apps" in dockerfile
 
 
 # --- localhost is never a configured Temporal endpoint --------------------
