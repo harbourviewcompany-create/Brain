@@ -380,7 +380,7 @@ jobs:
 
       - name: Verify worker requires the audited trusted-service login
         run: |
-          docker run --rm --network brain-tenant-ci \
+          docker run --rm --network brain-tenant-ci --entrypoint python \
             -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_DATABASE_URL=postgresql://brain_worker_ci:brain-worker-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_MODE=verify \
