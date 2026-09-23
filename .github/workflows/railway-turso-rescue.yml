@@ -74,6 +74,17 @@ jobs:
       - name: Validate zero-cost policy before source access
         run: python scripts/validate_zero_cost_runtime.py
 
+      - name: Fail closed on non-canonical recovery source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${RAILWAY_PROJECT_ID}" = "54914617-2d60-488d-a144-9492082c5b9d" || { echo 'recovery source project is not the canonical Brain project'; exit 1; }
+          test "${RAILWAY_ENVIRONMENT_ID}" = "a05b761c-d332-4cda-abd7-5b55cdf08867" || { echo 'recovery source environment is not the canonical Brain environment'; exit 1; }
+          test "${RAILWAY_POSTGRES_SERVICE_ID}" = "e1412e0a-6153-489c-b042-2de37635bc78" || { echo 'recovery source service is not the canonical Brain PostgreSQL service'; exit 1; }
+          test "${RAILWAY_VOLUME_ID}" = "8c85b856-4358-49a8-82f9-8e8bdd648f07" || { echo 'recovery source volume is not the canonical Brain PostgreSQL volume'; exit 1; }
+          test "${POSTGRES_SUPERUSER}" = "postgres" || { echo 'recovery superuser must remain the canonical local recovery account'; exit 1; }
+          test "${BRAIN_DATABASE}" = "railway" || { echo 'recovery database must remain the canonical Brain database'; exit 1; }
+
       - name: Require Railway rescue secret
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
