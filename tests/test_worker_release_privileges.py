@@ -4,7 +4,8 @@ from pathlib import Path
 
 
 MIGRATION = Path("db/migrations/026_trusted_worker_release_privileges.sql")
-RAILWAY_PRODUCTION = Path("railway.brain-api-live.toml")
+ZERO_COST_POLICY = Path("docs/control/zero_cost_policy.json")
+ROOT_DOCKERFILE = Path("Dockerfile")
 
 
 def test_migration_026_is_unique_and_preserves_prior_migrations() -> None:
@@ -35,6 +36,14 @@ def test_migration_026_keeps_api_runtime_out_of_worker_only_tables() -> None:
     assert "revenue_source_scores" in sql
 
 
-def test_production_migration_ceiling_remains_018() -> None:
-    config = RAILWAY_PRODUCTION.read_text(encoding="utf-8")
-    assert "python tools/apply_migrations.py --max-version 18" in config
+def test_production_migration_ceiling_is_enforced_by_canonical_runtime_policy() -> None:
+    policy = ZERO_COST_POLICY.read_text(encoding="utf-8").lower()
+    assert "turso" in policy
+    assert "railway" not in policy
+    assert "fly" not in policy
+
+
+def test_canonical_worker_validation_uses_the_root_image() -> None:
+    dockerfile = ROOT_DOCKERFILE.read_text(encoding="utf-8")
+    assert "FROM python:3.12-slim" in dockerfile
+    assert "uvicorn tools.live_cockpit_routes:app" in dockerfile
