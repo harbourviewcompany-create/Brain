@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# The canonical Vercel project currently uses apps/observatory as its Root
-# Directory. Normalize to the repository root before evaluating Git paths so
-# the same ignored-build rule works from either project root.
+# The canonical Vercel project uses the repository root as its Root Directory.
+# Normalize to the repository root before evaluating Git paths so this shared
+# ignore rule remains safe if invoked from the nested Observatory directory.
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
 
