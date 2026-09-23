@@ -140,7 +140,9 @@ def build_learning(event_store: Any | None = None) -> Any:
         # LearningService event_store rather than treating it as a broken
         # PostgreSQL store. Unknown stores without a persistence pool remain
         # fail-closed so a real durable store can never silently split state.
-        from brain.memory import InMemoryBrainStore\n\n        if isinstance(store, InMemoryBrainStore):
+        from brain.memory import InMemoryBrainStore
+
+        if isinstance(store, InMemoryBrainStore):
             from brain.adapters.learning_store import InMemoryLearningStore
 
             mem = InMemoryLearningStore()
