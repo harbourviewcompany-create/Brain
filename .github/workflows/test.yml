@@ -384,7 +384,7 @@ jobs:
             -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_DATABASE_URL=postgresql://brain_worker_ci:brain-worker-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_MODE=verify \
-            python -m apps.worker.main
+            brain-worker-tenant-ci -m apps.worker.main
 
           set +e
           docker run --rm --network brain-tenant-ci --entrypoint python \
