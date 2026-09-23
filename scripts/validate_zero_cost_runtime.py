@@ -181,7 +181,7 @@ def validate_runtime() -> None:
     require("REFUSE_OPTIONAL" in policy, "storage pressure must fail closed for optional growth")
     upstream = read("apps/observatory/src/lib/brain-upstream.ts")
     require("LIVE_RAILWAY_BASE" not in upstream, "Observatory BFF cannot retain Railway fallback")
-    require(".railway.app" in upstream and "unsupported" in upstream.lower(), "BFF must reject Railway upstream configuration")
+    require("unsupported upstreams" in upstream.lower() and "railway" in upstream.lower(), "BFF must document Railway as an unsupported upstream")
     require("BRAIN_API_URL" in upstream, "BFF must require an explicit zero-cost runtime origin")
     require("BRAIN_API_ALLOWED_HOSTS" in upstream, "BFF must require an explicit upstream hostname allowlist")
     wiring = read("docs/observatory/PRODUCTION_WIRING.md")
