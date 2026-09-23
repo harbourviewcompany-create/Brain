@@ -135,6 +135,22 @@ def build_learning(event_store: Any | None = None) -> Any:
         pool = getattr(getattr(store, "event_store", None), "pool", None)
 
     if pool is None:
+        # An explicitly supplied in-memory store is a legitimate ephemeral
+        # topology for local/unit execution. Preserve that store as the
+        # LearningService event_store rather than treating it as a broken
+        # PostgreSQL store. Unknown stores without a persistence pool remain
+        # fail-closed so a real durable store can never silently split state.
+        if type(store).__module__ == "brain.memory" and type(store).__name__ == "InMemoryBrainStore":
+            from brain.adapters.learning_store import InMemoryLearningStore
+
+            mem = InMemoryLearningStore()
+            return LearningService(
+                store,
+                predictions=mem,
+                edges=mem,
+                attributions=mem,
+                sources=mem,
+            )
         raise RuntimeError(
             "durable cognition store has no PostgreSQL pool; refusing to downgrade "
             "learning state to memory"
