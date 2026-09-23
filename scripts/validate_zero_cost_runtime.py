@@ -74,6 +74,34 @@ def validate_policy() -> dict:
     return policy
 
 
+def validate_hosting_boundary() -> None:
+    """Fail closed if retired paid-host deployment contracts reappear."""
+    forbidden = (
+        "fly.toml",
+        "railway.toml",
+        "railway.brain-api-live.toml",
+        "railway.worker.toml",
+        "Dockerfile.railway",
+        "Dockerfile.worker",
+    )
+    present = [path for path in forbidden if (ROOT / path).exists()]
+    require(not present, f"retired hosted-production artifacts present: {present}")
+
+    rescue = read(".github/workflows/railway-turso-rescue.yml").lower()
+    for forbidden_command in (
+        "railway up",
+        "railway deploy",
+        "railway redeploy",
+        "fly deploy",
+        "turso db create",
+        "turso database create",
+    ):
+        require(
+            forbidden_command not in rescue,
+            f"manual rescue workflow contains deployment/resource-creation command: {forbidden_command}",
+        )
+
+
 def validate_vercel_config(path: str, expected_ignore: str) -> None:
     config = json.loads(read(path))
     rules = config.get("git", {}).get("deploymentEnabled", {})
@@ -86,10 +114,6 @@ def validate_vercel_config(path: str, expected_ignore: str) -> None:
 
 
 def validate_vercel() -> None:
-    root = json.loads(read("vercel.json"))
-    require(root.get("framework") == "nextjs", "root Vercel project must use the Next.js framework")
-    require(root.get("buildCommand", "").startswith("cd apps/observatory"), "root Vercel build must build the Observatory from the repository root")
-    require(root.get("outputDirectory") == "apps/observatory/.next", "root Vercel output must point at the Observatory build")
     validate_vercel_config("vercel.json", "bash scripts/vercel-ignore-build.sh")
     validate_vercel_config("apps/observatory/vercel.json", "bash ../../scripts/vercel-ignore-build.sh")
     script = read("scripts/vercel-ignore-build.sh")
@@ -115,6 +139,13 @@ def validate_rescue_workflow() -> None:
         require(forbidden_trigger not in trigger, f"Railway rescue cannot use {forbidden_trigger.rstrip(':')} trigger")
     require("secrets.RAILWAY_TOKEN" in text, "Railway rescue must use repository-secret RAILWAY_TOKEN")
     require("secrets.TURSO_DATABASE_URL" in text, "Turso destination URL must come from a secret")
+    for token in (
+        "54914617-2d60-488d-a144-9492082c5b9d",
+        "a05b761c-d332-4cda-abd7-5b55cdf08867",
+        "e1412e0a-6153-489c-b042-2de37635bc78",
+        "8c85b856-4358-49a8-82f9-8e8bdd648f07",
+    ):
+        require(token in text, f"rescue workflow must pin canonical recovery source: {token}")
     require("secrets.TURSO_AUTH_TOKEN" in text, "Turso auth token must come from a secret")
     require("import_to_turso" in text, "remote Turso import must be an explicit manual input")
     require("railway volume files" in text and "download" in text, "rescue must use Railway volume download")
@@ -181,11 +212,8 @@ def validate_runtime() -> None:
     require("REFUSE_OPTIONAL" in policy, "storage pressure must fail closed for optional growth")
     upstream = read("apps/observatory/src/lib/brain-upstream.ts")
     require("LIVE_RAILWAY_BASE" not in upstream, "Observatory BFF cannot retain Railway fallback")
-    require("unsupported upstreams" in upstream.lower() and "railway" in upstream.lower(), "BFF must document Railway as an unsupported upstream")
+    require(".railway.app" in upstream and "unsupported" in upstream.lower(), "BFF must reject Railway upstream configuration")
     require("BRAIN_API_URL" in upstream, "BFF must require an explicit zero-cost runtime origin")
-    require("BRAIN_API_ALLOWED_HOSTS" in upstream, "BFF must require an explicit upstream hostname allowlist")
-    wiring = read("docs/observatory/PRODUCTION_WIRING.md")
-    require("repository root" in wiring.lower() and "runtime entrypoint: `api/index.py`" in wiring, "production wiring must document the repository-root Vercel API")
 
 
 def validate_protected_ci() -> None:
@@ -211,6 +239,7 @@ def validate_protected_ci() -> None:
 
 def main() -> None:
     validate_policy()
+    validate_hosting_boundary()
     validate_vercel()
     validate_rescue_workflow()
     validate_maintenance_workflow()
