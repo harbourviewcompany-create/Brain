@@ -200,8 +200,8 @@ jobs:
       - name: Build production images
         run: |
           docker build -t brain-api-ci -f Dockerfile .
-          docker build -t brain-worker-ci -f Dockerfile.worker .
-          docker build -t brain-cockpit-ci -f Dockerfile.railway .
+          docker build -t brain-worker-ci -f Dockerfile .
+          docker build -t brain-cockpit-ci -f Dockerfile .
 
       - name: Verify production images run as non-root
         run: |
@@ -375,22 +375,22 @@ jobs:
       - name: Build tenant-aware production images
         run: |
           docker build -t brain-api-tenant-ci -f Dockerfile .
-          docker build -t brain-worker-tenant-ci -f Dockerfile.worker .
-          docker build -t brain-cockpit-tenant-ci -f Dockerfile.railway .
+          docker build -t brain-worker-tenant-ci -f Dockerfile .
+          docker build -t brain-cockpit-tenant-ci -f Dockerfile .
 
       - name: Verify worker requires the audited trusted-service login
         run: |
-          docker run --rm --network brain-tenant-ci \
+          docker run --rm --network brain-tenant-ci --entrypoint python \
             -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_DATABASE_URL=postgresql://brain_worker_ci:brain-worker-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_MODE=verify \
-            brain-worker-tenant-ci
+            brain-worker-tenant-ci -m apps.worker.main
 
           set +e
-          docker run --rm --network brain-tenant-ci \
+          docker run --rm --network brain-tenant-ci --entrypoint python \
             -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_MODE=verify \
-            brain-worker-tenant-ci >/tmp/unsafe-worker.log 2>&1
+            brain-worker-tenant-ci -m apps.worker.main >/tmp/unsafe-worker.log 2>&1
           status=$?
           set -e
           cat /tmp/unsafe-worker.log
