@@ -387,10 +387,10 @@ jobs:
             python -m apps.worker.main
 
           set +e
-          docker run --rm --network brain-tenant-ci \
+          docker run --rm --network brain-tenant-ci --entrypoint python \
             -e DATABASE_URL=postgresql://brain_api_ci:brain-api-ci@brain-tenant-postgres:5432/brain \
             -e BRAIN_WORKER_MODE=verify \
-            python -m apps.worker.main >/tmp/unsafe-worker.log 2>&1
+            brain-worker-tenant-ci -m apps.worker.main >/tmp/unsafe-worker.log 2>&1
           status=$?
           set -e
           cat /tmp/unsafe-worker.log
