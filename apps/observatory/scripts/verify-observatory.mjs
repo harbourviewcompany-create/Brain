@@ -88,8 +88,14 @@ if (upstream.includes("LIVE_RAILWAY_BASE")) {
 if (!upstream.includes("brain_runtime_upstream_not_configured")) {
   throw new Error("Observatory BFF must fail closed when the zero-cost runtime URL is missing");
 }
-if (!upstream.includes('endsWith(".railway.app")') || !upstream.includes('return "";')) {
-  throw new Error("Observatory BFF must reject Railway runtime origins after cutover");
+if (!upstream.includes("BRAIN_API_ALLOWED_HOSTS")) {
+  throw new Error("Observatory BFF must require an explicit upstream hostname allowlist");
+}
+if (!upstream.includes("parsed.username") || !upstream.includes("parsed.port")) {
+  throw new Error("Observatory BFF must reject credential-bearing or explicit-port upstream URLs");
+}
+if (!upstream.includes("allowedUpstreamHosts().has(parsed.hostname.toLowerCase())")) {
+  throw new Error("Observatory BFF must exact-match the configured upstream hostname against the allowlist");
 }
 
 const page = fs.readFileSync("src/app/page.tsx", "utf8");
