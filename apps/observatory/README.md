@@ -9,11 +9,13 @@ Vercel project: `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`) — the canonical V
 Canonical production URL: `https://brain-seven-puce.vercel.app`.
 Additional production aliases are `https://brain-harbourview.vercel.app` and `https://brain-git-main-harbourview.vercel.app`.
 
-Vercel production deploys `harbourviewcompany-create/Brain` from `main` with Root Directory `apps/observatory`. The obsolete repository-root static placeholder is not part of production.
+Vercel production deploys `harbourviewcompany-create/Brain` from `main` with the repository root as the deployment boundary. The Next.js Observatory is built from `apps/observatory`, while repository-root `api/index.py` supplies the serverless Brain API.
 
 > The former `thebrain-sandy.vercel.app` belonged to a separate, pre-consolidation project and is not production authority.
 
 ## Production wiring authority
+
+The canonical production topology is Vercel + Turso/libSQL. The repository root is the Vercel boundary; `/api/*` is served by `api/index.py`, and the browser uses the same-origin `/api/brain/*` BFF.
 
 The canonical Brain ↔ control-plane production ownership, authentication, environment, deployment and verification record is [`docs/observatory/PRODUCTION_WIRING.md`](../../docs/observatory/PRODUCTION_WIRING.md).
 
@@ -45,7 +47,7 @@ that matches — so a deployment token no longer masks a valid `X-Brain-Api-Key`
 `BRAIN_UPSTREAM_ACCEPTS_OIDC=false` to stop forwarding the deployment token.
 
 `BRAIN_API_KEY` is server-only and must equal the Brain runtime's `BRAIN_API_KEY`.
-`BRAIN_API_URL` is also server-side and points to the Railway runtime.
+`BRAIN_API_URL` is server-side and must resolve only to the approved canonical HTTPS Brain API host.
 
 Default upstream if `BRAIN_API_URL` is unset: `https://brain-api-live-production.up.railway.app`.
 
