@@ -14,14 +14,12 @@ Human-brain equivalence cannot currently be specified honestly because neuroscie
 
 ## Recommended production cloud
 
-1. Supabase/PostgreSQL: canonical event ledger and structured memory.
-2. Neo4j AuraDB: graph projection / associative topology.
-3. Temporal Cloud: durable cognition workflows.
-4. Python workers: cognition and model adapters.
-5. Vercel + Next.js: operator control plane.
-6. Object storage: raw evidence/artifacts.
+1. Vercel Hobby: canonical serverless Brain API entrypoint and Next.js Observatory/BFF.
+2. Turso Free: canonical production event persistence and libSQL runtime storage.
+3. Python cognitive components: bounded maintenance/runtime logic executed without a paid always-on host.
+4. Object storage: raw evidence/artifacts where separately configured.
 
-PostgreSQL is canonical. Neo4j is rebuildable. This prevents the graph engine from becoming a single irreversible source of truth.
+Turso is the canonical production persistence boundary under the repository zero-cost policy. PostgreSQL tooling remains available for local development and a manual, read-only Railway-to-Turso rescue path; it is not a production dependency.
 
 ## Local start
 
@@ -188,13 +186,13 @@ The application was consolidated from the accidental split repository `harbourvi
 
 Current production wiring:
 
-- Observatory: `https://brain-seven-puce.vercel.app`
-- Vercel project: `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`)
+- Canonical Vercel project: `brain` (`prj_Fr14GlGBNeae7coqrnhgXteHC0jA`)
 - Git source: `harbourviewcompany-create/Brain`, branch `main`
-- Vercel Root Directory: `apps/observatory`
-- Brain API: `https://brain-api-live-production.up.railway.app`
-- Railway service: `brain-api-live`
+- Vercel Root Directory: repository root
+- Brain API: repository-root `api/index.py`, served by the canonical Vercel project
+- Persistence: Turso/libSQL
+- Browser boundary: Observatory same-origin `/api/brain/*` BFF
 
-The repository root is not a separate Vercel application. Obsolete root-level static deployment artifacts are not part of production.
+Railway and Fly deployment manifests are intentionally absent from the production contract. The repository may retain manual PostgreSQL recovery tooling only for source recovery; it must not become a paid production dependency.
 
 See the [Brain ↔ Control Plane Production Wiring](docs/observatory/PRODUCTION_WIRING.md) document for the authoritative deployment, authentication, environment and verification record.
