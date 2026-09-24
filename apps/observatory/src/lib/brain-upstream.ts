@@ -11,14 +11,6 @@ import { getVercelOidcToken } from "@vercel/oidc";
  * unsupported upstreams in the zero-cost runtime and are rejected explicitly.
  */
 
-/**
- * Explicit upstream hostname allowlist. The BFF carries server-only credentials,
- * so BRAIN_API_URL alone is never sufficient to establish trust.
- *
- * Operators must set BRAIN_API_ALLOWED_HOSTS to the exact hostname(s) that are
- * approved to receive Brain credentials. Hostnames are matched exactly; ports,
- * schemes, paths, and wildcard suffixes are not accepted.
- */
 function allowedUpstreamHosts(): Set<string> {
   return new Set(
     (process.env.BRAIN_API_ALLOWED_HOSTS || "")
@@ -40,6 +32,11 @@ function resolveBase(): string {
   }
   if (parsed.protocol !== "https:") return "";
   if (parsed.username || parsed.password || parsed.port) return "";
+
+  // Railway is a retired serving target. Reject it even if an operator
+  // accidentally adds the hostname to the explicit allowlist.
+  if (parsed.hostname.toLowerCase().endsWith(".railway.app")) return "";
+
   if (!allowedUpstreamHosts().has(parsed.hostname.toLowerCase())) return "";
   return parsed.origin + parsed.pathname.replace(/\/$/, "");
 }
@@ -60,13 +57,6 @@ export function upstreamConfigured(): boolean {
   return Boolean(upstreamBase());
 }
 
-/**
- * Whether to forward Vercel deployment identity upstream.
- *
- * The canonical Vercel-hosted FastAPI runtime may verify Vercel deployment
- * identity in addition to the existing server-only API key. Set
- * BRAIN_UPSTREAM_ACCEPTS_OIDC=false for a runtime that accepts only the API key.
- */
 function upstreamAcceptsOidc(): boolean {
   const configured = (process.env.BRAIN_UPSTREAM_ACCEPTS_OIDC || "").trim().toLowerCase();
   return configured !== "false";
