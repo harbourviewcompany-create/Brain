@@ -37,3 +37,4 @@ export BRAIN_API_KEY='…'
 
 - GO when DATABASE_URL + BRAIN_API_KEY + host token are present.
 - Prefer Fly if Railway returns Application not found.
+- Status: GO for production restore (2026-09-25).
