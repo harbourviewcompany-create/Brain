@@ -12,7 +12,8 @@ primary_region = 'yyz'
 [deploy]
   # Match brain-api-live pre-tenant ceiling (#170). After the explicit tenant/RLS
   # release applies 019+, remove --max-version 18 so Fly applies the full ledger.
-  release_command = 'python tools/apply_migrations.py --max-version 18'
+  # CHRP: seed pack runs on every release when BRAIN_OBSERVATORY_SEED_PACK is set.
+  release_command = 'python tools/apply_migrations.py --max-version 18 && python tools/seed_observatory_production.py'
 
 [env]
   BRAIN_ENV = 'production'
