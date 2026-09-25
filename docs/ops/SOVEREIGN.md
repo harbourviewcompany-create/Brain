@@ -1,34 +1,33 @@
-# Sovereign Brain (no third-party host)
+# Sovereign Cognitive Kernel v2
 
-## Principle
+Unique, fully cognitive, **self-hosted** on Vercel. No Railway. No Fly.
 
-The Brain must run **without** Railway, Fly, or any external API host.
-Observatory on Vercel is the only required surface.
+## Architecture (original)
 
-## Mode selection
+Not an LLM wrapper. A small event-sourced mind with explicit mechanisms:
 
-| `BRAIN_API_URL` | Behavior |
-|-----------------|----------|
-| empty / unset / Railway rejected | **Sovereign** — in-process endogenous kernel |
-| HTTPS host on allowlist | Proxy to that runtime (optional Turso API project) |
+| Mechanism | Behavior |
+|-----------|----------|
+| **Global Workspace competition** | Curiosity, contested beliefs, open predictions, and endogenous self-queries compete; winner enters working memory |
+| **Belief lattice** | States: hypothesis → provisional → established / contested / rejected; confidence revised by prediction hits/misses |
+| **Circadian phases** | `wake → attend → revise → predict → dream → rest` — each phase does different work |
+| **Prediction loop** | Open forecasts resolve stochastically; misses lower confidence and open curiosity |
+| **Dream associations** | Sparse edges + occasional contradiction detection under confidence divergence |
+| **Self-model** | observing / integrating / uncertain / revised |
+| **Operator intake** | `POST /api/brain/signals` injects high-priority attention |
 
-## What sovereign provides
+## Enable
 
-- Seeded foundational beliefs on first request
-- `/api/brain/beliefs`, `/health`, `/ready`, `/organism`, `/working-memory`, `/curiosity`
-- `/api/brain/tick` and `/api/cron/think` for bounded cognition cycles
-- Status endpoint reports `mode: "sovereign"` and advances one tick per poll
+1. Clear **`BRAIN_API_URL`** on Vercel project `brain`
+2. Merge PR + redeploy
+3. Optional Cron: `GET /api/cron/think` every few minutes
 
-## Operator steps
+## Surfaces
 
-1. Vercel project **brain** → Environment Variables
-2. **Remove or empty** `BRAIN_API_URL` (so proxy does not try a dead host)
-3. Redeploy production
-4. Open Observatory — DEGRADED clears; beliefs appear
-5. Optional: Vercel Cron → `GET /api/cron/think` every 5 minutes
+- `/api/brain/beliefs`, `/predictions`, `/signals`, `/contradictions`, `/curiosity`, `/organism`, `/working-memory`, `/learning-events`, `/edges`
+- `/api/brain/tick` (POST), `/api/cron/think`
+- `/api/brain-status` → `mode: "sovereign"`, advances one cycle per poll
 
 ## Limits
 
-- State is process-local (warm instances keep it; cold starts re-seed)
-- Not a substitute for Turso durable ledger when you later want multi-instance persistence
-- Full Python BrainRuntime remains available via optional second Vercel project + Turso (zero-cost Path B)
+Process-local memory (warm instance keeps state; cold start re-seeds). Upgrade path remains optional Turso Path B without reintroducing Railway/Fly.
