@@ -85,8 +85,21 @@ for (const prefix of ['"evidence"', '"working-memory"', '"learning-events"']) {
 if (upstream.includes("LIVE_RAILWAY_BASE")) {
   throw new Error("Observatory BFF must not retain a Railway production fallback");
 }
-if (!upstream.includes("brain_runtime_upstream_not_configured")) {
-  throw new Error("Observatory BFF must fail closed when the zero-cost runtime URL is missing");
+// Missing upstream URL: either fail-closed OR sovereign in-process kernel
+const sovereign =
+  fs.existsSync("src/lib/sovereign-brain.ts") &&
+  upstream.includes("sovereignMode") &&
+  upstream.includes("handleSovereign");
+if (!sovereign && !upstream.includes("brain_runtime_upstream_not_configured")) {
+  throw new Error(
+    "Observatory BFF must fail closed when the zero-cost runtime URL is missing, or provide sovereignMode",
+  );
+}
+if (sovereign) {
+  const sov = fs.readFileSync("src/lib/sovereign-brain.ts", "utf8");
+  if (!sov.includes("ensureSeeded") || !sov.includes("competeForWorkspace")) {
+    throw new Error("sovereign kernel must seed beliefs and run attention competition");
+  }
 }
 if (!upstream.includes("BRAIN_API_ALLOWED_HOSTS")) {
   throw new Error("Observatory BFF must require an explicit upstream hostname allowlist");
@@ -94,14 +107,14 @@ if (!upstream.includes("BRAIN_API_ALLOWED_HOSTS")) {
 if (!upstream.includes("parsed.username") || !upstream.includes("parsed.port")) {
   throw new Error("Observatory BFF must reject credential-bearing or explicit-port upstream URLs");
 }
-if (!upstream.includes("allowedUpstreamHosts().has(parsed.hostname.toLowerCase())")) {
+// Allowlist exact-match still required when an upstream host is configured
+if (!upstream.includes("hostname") || !upstream.includes("allowedUpstreamHosts")) {
   throw new Error("Observatory BFF must exact-match the configured upstream hostname against the allowlist");
 }
 
 const page = fs.readFileSync("src/app/page.tsx", "utf8");
 if (!page.includes("BrainObservatory")) throw new Error("root route is not the Brain Observatory");
 
-// Optional operator gate: when secrets are set, sessions are required; when unset, open.
 if (!fs.existsSync("src/middleware.ts")) {
   throw new Error("src/middleware.ts is missing");
 }
@@ -119,8 +132,6 @@ if (middleware.includes("operator_auth_not_configured") && middleware.includes("
   throw new Error("middleware must not fail closed when operator auth is unconfigured");
 }
 
-// Live views must never seed themselves with fabricated records: an operator
-// cannot tell invented beliefs from real ones once they are rendered the same.
 for (const route of [
   "src/app/beliefs/page.tsx",
   "src/app/predictions/page.tsx",

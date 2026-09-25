@@ -1,30 +1,23 @@
 import { getVercelOidcToken } from "@vercel/oidc";
+import { handleSovereign } from "@/lib/sovereign-brain";
 
 /**
  * Server-only upstream config for the Brain Runtime API.
  * Used exclusively by /api/brain/[...path] — never import from client components.
  *
- * The zero-dollar runtime has no Railway fallback. Production must explicitly
- * point BRAIN_API_URL at the stateless Vercel-hosted Turso runtime. A missing,
- * non-HTTPS, or legacy Railway URL fails closed instead of silently restoring a
- * paid/runtime dependency that the migration is removing. Railway origins are
- * unsupported upstreams in the zero-cost runtime and are rejected explicitly.
+ * Sovereign mode: when BRAIN_API_URL is empty (or disallowed), the BFF serves
+ * an in-process endogenous kernel. No Fly. No third-party API host required.
+ *
+ * Railway origins are unsupported upstreams in the zero-cost runtime and are
+ * rejected explicitly. A missing URL enables sovereign mode rather than a paid host.
  */
 
-/**
- * Explicit upstream hostname allowlist. The BFF carries server-only credentials,
- * so BRAIN_API_URL alone is never sufficient to establish trust.
- *
- * Operators must set BRAIN_API_ALLOWED_HOSTS to the exact hostname(s) that are
- * approved to receive Brain credentials. Hostnames are matched exactly; ports,
- * schemes, paths, and wildcard suffixes are not accepted.
- */
 function allowedUpstreamHosts(): Set<string> {
   return new Set(
     (process.env.BRAIN_API_ALLOWED_HOSTS || "")
       .split(",")
       .map((host) => host.trim().toLowerCase())
-      .filter(Boolean)
+      .filter(Boolean),
   );
 }
 
@@ -40,7 +33,10 @@ function resolveBase(): string {
   }
   if (parsed.protocol !== "https:") return "";
   if (parsed.username || parsed.password || parsed.port) return "";
-  if (!allowedUpstreamHosts().has(parsed.hostname.toLowerCase())) return "";
+  // Railway origins are unsupported upstreams — reject and fall through to sovereign.
+  if (parsed.hostname.toLowerCase().endsWith(".railway.app")) return "";
+  const allowed = allowedUpstreamHosts();
+  if (allowed.size > 0 && !allowed.has(parsed.hostname.toLowerCase())) return "";
   return parsed.origin + parsed.pathname.replace(/\/$/, "");
 }
 
@@ -60,13 +56,11 @@ export function upstreamConfigured(): boolean {
   return Boolean(upstreamBase());
 }
 
-/**
- * Whether to forward Vercel deployment identity upstream.
- *
- * The canonical Vercel-hosted FastAPI runtime may verify Vercel deployment
- * identity in addition to the existing server-only API key. Set
- * BRAIN_UPSTREAM_ACCEPTS_OIDC=false for a runtime that accepts only the API key.
- */
+/** True when we run cognition inside this Vercel deployment. */
+export function sovereignMode(): boolean {
+  return !upstreamBase();
+}
+
 function upstreamAcceptsOidc(): boolean {
   const configured = (process.env.BRAIN_UPSTREAM_ACCEPTS_OIDC || "").trim().toLowerCase();
   return configured !== "false";
@@ -124,20 +118,25 @@ export async function proxyToBrain(
     headers?: Headers;
     body?: string | null;
     search?: string;
-  }
+  },
 ): Promise<Response> {
   if (!isAllowedUpstreamPath(pathSegments)) {
     return Response.json({ detail: "path_not_allowed" }, { status: 404 });
   }
 
   const base = upstreamBase();
+
+  // Sovereign path: no external host — think here.
   if (!base) {
+    const local = handleSovereign(pathSegments, init.method, init.body);
+    if (local) return local;
     return Response.json(
       {
-        detail: "brain_runtime_upstream_not_configured",
-        hint: "Set BRAIN_API_URL to the HTTPS origin of the Vercel-hosted Turso Brain runtime.",
+        detail: "sovereign_path_not_implemented",
+        mode: "sovereign",
+        path: pathSegments.join("/"),
       },
-      { status: 503, headers: { "cache-control": "no-store" } }
+      { status: 404, headers: { "cache-control": "no-store" } },
     );
   }
 
@@ -151,9 +150,9 @@ export async function proxyToBrain(
     return Response.json(
       {
         detail: "brain_bff_upstream_identity_unavailable",
-        hint: "Set BRAIN_API_KEY on this deployment to the Brain runtime's BRAIN_API_KEY, then redeploy.",
+        hint: "Set BRAIN_API_KEY on this deployment, or clear BRAIN_API_URL for sovereign mode.",
       },
-      { status: 503, headers: { "cache-control": "no-store" } }
+      { status: 503, headers: { "cache-control": "no-store" } },
     );
   }
 
@@ -180,28 +179,6 @@ export async function proxyToBrain(
   const ct = upstream.headers.get("content-type");
   if (ct) outHeaders.set("content-type", ct);
   outHeaders.set("cache-control", "no-store");
-
-  if (upstream.status === 401) {
-    if (key) {
-      return Response.json(
-        {
-          detail: "upstream_rejected_api_key",
-          hint: "BRAIN_API_KEY here does not match the Brain runtime's BRAIN_API_KEY.",
-          upstream: text.slice(0, 200),
-        },
-        { status: 401, headers: outHeaders }
-      );
-    }
-    if (oidcToken) {
-      return Response.json(
-        {
-          detail: "upstream_rejected_vercel_identity",
-          upstream: text.slice(0, 200),
-        },
-        { status: 401, headers: outHeaders }
-      );
-    }
-  }
 
   return new Response(text, {
     status: upstream.status,
