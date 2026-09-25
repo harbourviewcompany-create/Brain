@@ -6,7 +6,10 @@ import { handleSovereign } from "@/lib/sovereign-brain";
  * Used exclusively by /api/brain/[...path] — never import from client components.
  *
  * Sovereign mode: when BRAIN_API_URL is empty (or disallowed), the BFF serves
- * an in-process endogenous kernel. No Railway. No Fly. No third-party host.
+ * an in-process endogenous kernel. No Fly. No third-party API host required.
+ *
+ * Railway origins are unsupported upstreams in the zero-cost runtime and are
+ * rejected explicitly. A missing URL enables sovereign mode rather than a paid host.
  */
 
 function allowedUpstreamHosts(): Set<string> {
@@ -30,7 +33,7 @@ function resolveBase(): string {
   }
   if (parsed.protocol !== "https:") return "";
   if (parsed.username || parsed.password || parsed.port) return "";
-  // Railway is explicitly unsupported in zero-cost / sovereign runtime
+  // Railway origins are unsupported upstreams — reject and fall through to sovereign.
   if (parsed.hostname.toLowerCase().endsWith(".railway.app")) return "";
   const allowed = allowedUpstreamHosts();
   if (allowed.size > 0 && !allowed.has(parsed.hostname.toLowerCase())) return "";
