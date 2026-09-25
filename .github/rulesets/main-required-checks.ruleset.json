@@ -26,7 +26,7 @@
       "parameters": {
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
-          {"context": "Brain Control Policy"},
+          {"context": "Validate Brain control policy"},
           {"context": "test"}
         ]
       }

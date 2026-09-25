@@ -114,8 +114,11 @@ Fly cutover (create app, secrets, scale worker, point Vercel `BRAIN_API_URL`): *
 
 Server-side production configuration includes:
 
-- `BRAIN_API_URL=<active API host HTTPS origin>` — Railway live URL **or** Fly app URL after cutover
+- `BRAIN_API_URL=<active API host HTTPS origin>`
+- `BRAIN_API_ALLOWED_HOSTS=<exact approved API hostname(s)>`
 - `BRAIN_API_KEY` only when the server-only fallback path is intentionally configured
+
+Security invariant: `BRAIN_API_URL` is not a trust boundary. The BFF refuses to proxy to an HTTPS origin unless its hostname is explicitly present in `BRAIN_API_ALLOWED_HOSTS`. Host matching is exact; schemes, ports, paths, and wildcard suffixes are not accepted. This prevents a configuration mistake from turning the BFF into a credential-forwarding proxy to an arbitrary HTTPS host.
 
 Vercel deployment identity remains the primary production authentication path. Vercel Authentication (SSO) may be enabled for deployment URLs; custom domains can be exempted per project protection settings.
 
@@ -123,15 +126,17 @@ Vercel deployment identity remains the primary production authentication path. V
 
 This section records the last runtime-affecting production baseline verified at the snapshot date. Merging documentation can produce newer hosting deployment IDs even when application behavior is unchanged, so these identifiers are evidence of the verified runtime baseline rather than a promise that they remain the newest docs-only deployment.
 
-### Railway (may remain live until Fly cutover)
+### Vercel API runtime (canonical zero-cost path)
 
-- project: `Brain`
-- service: `brain-api-live`
-- service ID: `81c88785-4d36-4621-8125-8c22b2ef3520`
-- production URL: `https://brain-api-live-production.up.railway.app`
-- **Pending for full #168/#169/#171 effect:** redeploy `main` at or after `4c24aec` with OIDC env set.
+- deployment: the same Vercel project as the Observatory
+- runtime entrypoint: `api/index.py`
+- runtime base path: `/api`
+- persistence: Turso/libSQL only
+- `BRAIN_API_URL`: `https://brain-harbourview.vercel.app/api` (or the canonical production alias plus `/api`)
+- `BRAIN_API_ALLOWED_HOSTS`: exact hostname of the canonical Vercel production alias
+- the Vercel project Root Directory must be the repository root, not `apps/observatory`
 
-### Fly (alternative API+worker host)
+### Legacy paid hosts (non-production)
 
 - config: `fly.toml` (`app = brain-api`, region `yyz`)
 - image: `Dockerfile`
@@ -159,11 +164,11 @@ Legacy / non-canonical Vercel projects (`thebrain`, etc.) are not production aut
 A Brain production release follows these boundaries:
 
 1. Backend/runtime/schema work merges to `harbourviewcompany-create/Brain` `main`.
-2. The active API host (Railway **or** Fly) deploys from Brain `main`.
-3. Migrations apply only through the approved ceiling (018 pre-tenant) before runtime promotion.
-4. Observatory / BFF / UI work merges to the same `main`.
-5. Vercel project `brain` deploys from Brain `main`.
-6. Keep host responsibilities split: API/worker on Railway or Fly; operator UI and same-origin BFF on Vercel; data on Supabase.
+2. Vercel project `brain` deploys from Brain `main` with the repository root as its Root Directory.
+3. The same deployment serves the Next.js Observatory and repository-root `api/index.py` serverless API; the BFF uses `/api/brain/*` and the Python runtime uses `/api/*`.
+4. Turso/libSQL is the canonical production persistence layer; PostgreSQL/RLS remains a separate audited topology and is not emulated on Turso.
+5. Bounded scheduled maintenance runs through GitHub Actions; no continuous daemon is required in the serverless runtime.
+6. Railway/Fly are not production dependencies.
 
 ## Post-deploy verification
 

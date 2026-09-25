@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "buildCommand": "cd apps/observatory && npm install --no-audit --no-fund && npm run build",
+  "outputDirectory": "apps/observatory/.next",
   "git": {
     "deploymentEnabled": {
       "**": false,
