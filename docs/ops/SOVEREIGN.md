@@ -1,33 +1,29 @@
-# Sovereign Cognitive Kernel v2
+# Sovereign Cognitive Kernel v3
 
 Unique, fully cognitive, **self-hosted** on Vercel. No Railway. No Fly.
 
-## Architecture (original)
-
-Not an LLM wrapper. A small event-sourced mind with explicit mechanisms:
+## v3 upgrades
 
 | Mechanism | Behavior |
 |-----------|----------|
-| **Global Workspace competition** | Curiosity, contested beliefs, open predictions, and endogenous self-queries compete; winner enters working memory |
-| **Belief lattice** | States: hypothesis → provisional → established / contested / rejected; confidence revised by prediction hits/misses |
-| **Circadian phases** | `wake → attend → revise → predict → dream → rest` — each phase does different work |
-| **Prediction loop** | Open forecasts resolve stochastically; misses lower confidence and open curiosity |
-| **Dream associations** | Sparse edges + occasional contradiction detection under confidence divergence |
-| **Self-model** | observing / integrating / uncertain / revised |
-| **Operator intake** | `POST /api/brain/signals` injects high-priority attention |
+| **Deterministic GWT** | Attention scores from FNV hash of tick + candidate — reproducible cycles |
+| **Goal-conditioned attention** | Lexical overlap with active goals boosts workspace candidates |
+| **Evidence binding** | Every revise attaches an endogenous evidence claim |
+| **Coherence-based prediction resolve** | Hits/misses from belief confidence vs forecast, not coin-flips |
+| **Identity digest** | Stable `identity_digest` recomputed from established beliefs |
+| **Operator → goals** | Commands containing goal/priority language promote into the goal list |
+| **Cron** | `*/5 * * * *` → `/api/cron/think` (4 cycles per run) |
 
 ## Enable
 
-1. Clear **`BRAIN_API_URL`** on Vercel project `brain`
-2. Merge PR + redeploy
-3. Optional Cron: `GET /api/cron/think` every few minutes
+1. `BRAIN_API_URL` empty or Railway-rejected → automatic sovereign mode
+2. Deploy from `main`
+3. Optional: set `CRON_SECRET` and Vercel Cron Authorization header
 
 ## Surfaces
 
-- `/api/brain/beliefs`, `/predictions`, `/signals`, `/contradictions`, `/curiosity`, `/organism`, `/working-memory`, `/learning-events`, `/edges`
-- `/api/brain/tick` (POST), `/api/cron/think`
-- `/api/brain-status` → `mode: "sovereign"`, advances one cycle per poll
+Beliefs, predictions, signals, evidence, contradictions, curiosity, organism, working-memory, learning-events, edges, tick, cron/think.
 
 ## Limits
 
-Process-local memory (warm instance keeps state; cold start re-seeds). Upgrade path remains optional Turso Path B without reintroducing Railway/Fly.
+Process-local store (warm instances keep state; cold starts re-seed bootstrap beliefs with stable IDs). Identity digest and deterministic scoring keep narrative continuity without a paid host.

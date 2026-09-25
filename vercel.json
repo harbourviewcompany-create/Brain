@@ -10,5 +10,11 @@
       "preview/*": true
     }
   },
-  "ignoreCommand": "bash scripts/vercel-ignore-build.sh"
+  "ignoreCommand": "bash scripts/vercel-ignore-build.sh",
+  "crons": [
+    {
+      "path": "/api/cron/think",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }
