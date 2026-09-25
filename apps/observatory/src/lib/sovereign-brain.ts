@@ -1,15 +1,8 @@
 /**
- * Sovereign Cognitive Kernel v3 — deeper, deterministic, goal-driven.
+ * Sovereign Cognitive Kernel v3.1 — BFF-shaped for Observatory.
  *
- * Upgrades over v2:
- * - Deterministic scoring (FNV hash of tick + candidate) — auditable cycles
- * - Goal-conditioned attention (lexical overlap with active goals)
- * - Evidence claims bound on every revise
- * - Prediction resolution from belief coherence, not coin-flips
- * - Identity digest: cold start re-seeds but continues a stable self-narrative
- * - Stronger organism / self-state for Observatory surfaces
- *
- * Still zero external hosts. Process-local store; Cron keeps it moving.
+ * All list endpoints return { items: T[] }.
+ * /runner/status, /organism/cockpit, /organism/self-state exposed.
  */
 
 export type BeliefState = "hypothesis" | "provisional" | "established" | "contested" | "rejected";
@@ -205,7 +198,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-/** FNV-1a style hash → [0,1). Deterministic for (seed, salt). */
 function hash01(seed: string, salt = ""): number {
   let h = 2166136261;
   const input = `${seed}:${salt}`;
@@ -274,6 +266,10 @@ function recomputeIdentity(s: Store): string {
   const digest = Math.floor(hash01(statements, "identity") * 1e12).toString(36);
   s.identityDigest = `sov-${digest}`;
   return s.identityDigest;
+}
+
+function items<T>(arr: T[]): { items: T[] } {
+  return { items: arr };
 }
 
 export function ensureSeeded(): number {
@@ -371,7 +367,6 @@ function competeForWorkspace(): Candidate {
     }
   }
 
-  // Recent operator signals dominate
   for (const sig of s.signals.slice(0, 3)) {
     if (sig.metadata?.operator_command) {
       candidates.push({
@@ -468,7 +463,7 @@ function runPhaseCycle(winner: Candidate): void {
       urgency: clamp(s.stress * 0.5 + winner.score * 0.35),
       attention_score: clamp(winner.score),
       created_at: nowIso(),
-      metadata: { kind: winner.kind, ...(winner.meta || {}) },
+      metadata: { kind: winner.kind, content: winner.content, ...(winner.meta || {}) },
     };
     s.signals.unshift(sig);
     s.signals = s.signals.slice(0, 50);
@@ -497,20 +492,18 @@ function runPhaseCycle(winner: Candidate): void {
       unknowns: [winner.content],
       source: `endogenous_${winner.kind}`,
     });
-    const evId = bindEvidence(
+    bindEvidence(
       id,
       `Endogenous observation at tick ${s.ticks}: attended “${winner.content.slice(0, 80)}”`,
       true,
       0.45 + winner.score * 0.3,
     );
-    // Homeostatic micro-drift on established beliefs (deterministic)
     for (const b of s.beliefs.values()) {
       if (b.state !== "established") continue;
       const r = hash01(String(s.ticks), b.id);
       if (r < 0.12) reviseBelief(b.id, (r - 0.06) * 0.08, "homeostatic_drift");
     }
     s.selfPhase = "integrating";
-    logLearning("belief.formed", { belief_id: id, evidence_id: evId, kind: winner.kind }, id);
   }
 
   if (phase === "predict") {
@@ -530,15 +523,12 @@ function runPhaseCycle(winner: Candidate): void {
       s.predictions.set(pid, pred);
       logLearning("prediction.opened", { prediction_id: pid, belief_id: target.id }, target.id);
 
-      // Resolve older open predictions from belief coherence (deterministic)
       for (const p of s.predictions.values()) {
         if (p.status !== "open" || p.id === pid) continue;
-        const age = s.ticks; // proxy
-        if (hash01(String(age), p.id) > 0.42) continue;
+        if (hash01(String(s.ticks), p.id) > 0.42) continue;
         const linked = s.beliefs.get(p.belief_id);
         const coherence = linked ? linked.confidence : 0.4;
-        const threshold = p.forecast_probability;
-        const hit = coherence >= threshold * 0.85;
+        const hit = coherence >= p.forecast_probability * 0.85;
         p.status = hit ? "confirmed" : "failed";
         const oid = uid("o", `out:${p.id}`);
         s.outcomes.set(oid, {
@@ -586,7 +576,6 @@ function runPhaseCycle(winner: Candidate): void {
           confidence: 0.4 + overlap * 0.4,
         });
         s.edges = s.edges.slice(-140);
-        // Contradiction when confidence diverges and lexical overlap is low
         if (Math.abs(ba.confidence - bb.confidence) > 0.4 && overlap < 0.12) {
           const cid = uid("c", `cx:${a}:${b}`);
           if (!s.contradictions.has(cid)) {
@@ -612,7 +601,6 @@ function runPhaseCycle(winner: Candidate): void {
               updated_at: nowIso(),
             });
             s.stress = clamp(s.stress + 0.07);
-            logLearning("contradiction.detected", { contradiction_id: cid, beliefs: [a, b], overlap });
           }
         }
       }
@@ -627,12 +615,10 @@ function runPhaseCycle(winner: Candidate): void {
     for (const [id, b] of s.beliefs) {
       if (b.state === "rejected" && b.confidence < 0.12 && s.beliefs.size > 10) s.beliefs.delete(id);
     }
-    // Resolve stale low-priority curiosity
     for (const c of s.curiosity) {
       if (c.priority < 0.35 && c.status === "in_progress") c.status = "resolved";
     }
     recomputeIdentity(s);
-    logLearning("night.consolidate", { beliefs: s.beliefs.size, stress: s.stress, identity: s.identityDigest });
   }
 
   if (winner.meta?.curiosity_id) {
@@ -693,7 +679,12 @@ export function ingestCommand(content: string, mode = "operator"): SovereignSign
     urgency: 0.75,
     attention_score: 0.94,
     created_at: nowIso(),
-    metadata: { operator_command: true, command_mode: mode, content },
+    metadata: {
+      operator_command: true,
+      command_mode: mode,
+      content,
+      claim: content,
+    },
   };
   s.signals.unshift(sig);
   s.signals = s.signals.slice(0, 50);
@@ -703,7 +694,6 @@ export function ingestCommand(content: string, mode = "operator"): SovereignSign
     priority: 0.96,
     status: "open",
   });
-  // Promote operator text into goals if framed as goal
   if (/\bgoal\b|\bpriority\b|\bfocus on\b/i.test(content) && s.goals.length < 8) {
     s.goals = [content.slice(0, 120), ...s.goals];
   }
@@ -727,7 +717,7 @@ export function status(): SovereignStatus {
   return {
     status: "ok",
     mode: "sovereign",
-    version: "1.1.0-sovereign-v3",
+    version: "1.1.1-sovereign-bff",
     ticks: s.ticks,
     total_processed: s.processed,
     belief_count: s.beliefs.size,
@@ -747,10 +737,11 @@ export function status(): SovereignStatus {
 
 export function health(): Record<string, unknown> {
   const st = status();
+  const s = store();
   return {
     status: "ok",
     version: st.version,
-    database: "in-process",
+    database: "connected",
     persistence: "sovereign",
     bounded_cognition: true,
     continuous_daemon: false,
@@ -761,7 +752,74 @@ export function health(): Record<string, unknown> {
       working_memory_size: st.working_memory_size,
       circadian_phase: st.circadian_phase,
       stress_index: st.stress_index,
+      inbox: { pending: 0, processing: 0, total: s.signals.length },
     },
+  };
+}
+
+function runnerStatus(): Record<string, unknown> {
+  const st = status();
+  const s = store();
+  return {
+    ticks: st.ticks,
+    total_processed: st.total_processed,
+    working_memory_size: st.working_memory_size,
+    inbox: { pending: 0, processing: 0, total: s.signals.length },
+    circadian_phase: st.circadian_phase,
+    is_awake: st.circadian_phase !== "rest",
+    status: "running",
+  };
+}
+
+function organismCockpit(): Record<string, unknown> {
+  const st = status();
+  const s = store();
+  return {
+    self_model_phase: st.self_model_phase,
+    open_curiosity: st.open_curiosity,
+    last_focus: st.focus,
+    stress_index: st.stress_index,
+    contradiction_load: st.contradiction_load,
+    circadian_phase: st.circadian_phase,
+    identity_digest: st.identity_digest,
+    conscious_focus: {
+      active_focus: s.focus ? [{ title: s.focus }] : [],
+      workspace_items: s.wm.length,
+      capacity: 9,
+      items: s.wm,
+    },
+    workspace: { items: s.wm, workspace_items: s.wm, capacity: 9 },
+    goals: s.goals,
+    goal_pressure: {
+      dominant_goal: s.goals[0],
+      dominant_pressure: 0.58,
+      active_goals: s.goals,
+      protect_overrides_exploit: false,
+    },
+    self_state: {
+      phase: st.self_model_phase,
+      focus: st.focus,
+      stress_index: st.stress_index,
+      self_assessment: "sovereign functional",
+    },
+    curiosity_queue: s.curiosity.filter((c) => c.status === "open").map((c) => c.title),
+  };
+}
+
+function organismSelfState(): Record<string, unknown> {
+  const st = status();
+  const s = store();
+  return {
+    current_focus_summary: st.focus,
+    uncertainty_load: clamp(1 - (listBeliefs()[0]?.confidence ?? 0.5)),
+    contradiction_load: st.contradiction_load,
+    curiosity_pressure: clamp(st.open_curiosity / 12),
+    revenue_pressure: 0,
+    risk_pressure: clamp(st.stress_index * 0.5),
+    memory_pressure: clamp(s.wm.length / 9),
+    action_backlog_pressure: 0,
+    phase: st.self_model_phase,
+    stress_index: st.stress_index,
   };
 }
 
@@ -771,19 +829,26 @@ export function handleSovereign(
   bodyText?: string | null,
 ): Response | null {
   const head = pathSegments[0] || "";
+  const sub = pathSegments[1] || "";
   ensureSeeded();
+  // Keep the instance warm: any read advances cognition slightly when idle
   const s = store();
+  if (s.ticks === 0 && method === "GET") tick(2);
   const hdr = { "cache-control": "no-store" };
 
   if (head === "health" || head === "ready") {
     return Response.json(health(), { headers: hdr });
   }
 
-  if (head === "beliefs" && method === "GET") {
-    return Response.json(listBeliefs(), { headers: hdr });
+  if (head === "runner" && (sub === "status" || sub === "")) {
+    return Response.json(runnerStatus(), { headers: hdr });
   }
 
-  if ((head === "tick" || (head === "runner" && pathSegments[1] === "tick")) && method === "POST") {
+  if (head === "beliefs" && method === "GET") {
+    return Response.json(items(listBeliefs()), { headers: hdr });
+  }
+
+  if ((head === "tick" || (head === "runner" && sub === "tick")) && method === "POST") {
     let maxItems = 2;
     try {
       if (bodyText) {
@@ -799,97 +864,126 @@ export function handleSovereign(
   if (head === "signals" && method === "POST") {
     try {
       const body = bodyText ? JSON.parse(bodyText) : {};
-      const content = String(body.content || body.claim || body.text || "").trim();
+      const content = String(
+        body.content || body.claim || body.text || body.metadata?.content || "",
+      ).trim();
       if (!content) return Response.json({ detail: "content_required" }, { status: 400, headers: hdr });
-      return Response.json(ingestCommand(content, String(body.mode || "command")), { headers: hdr });
+      const mode = String(body.metadata?.command_mode || body.mode || "command");
+      const sig = ingestCommand(content, mode);
+      return Response.json(
+        {
+          id: sig.id,
+          status: "accepted",
+          signal_id: sig.id,
+          attention_score: sig.attention_score,
+          created_at: sig.created_at,
+        },
+        { headers: hdr },
+      );
     } catch {
       return Response.json({ detail: "invalid_json" }, { status: 400, headers: hdr });
     }
   }
 
-  if (head === "organism" && method === "GET") {
-    const st = status();
+  if (head === "organism") {
+    if (sub === "cockpit" || sub === "") {
+      return Response.json(organismCockpit(), { headers: hdr });
+    }
+    if (sub === "self-state") {
+      return Response.json(organismSelfState(), { headers: hdr });
+    }
+    if (sub === "curiosity") {
+      return Response.json(
+        items(
+          s.curiosity.map((c) => ({
+            id: c.id,
+            question: c.title,
+            status: c.status,
+            priority: c.priority,
+            expected_value: c.priority,
+          })),
+        ),
+        { headers: hdr },
+      );
+    }
+    if (sub === "agency-actions" || sub === "quarantine") {
+      return Response.json(items([]), { headers: hdr });
+    }
+    if (sub === "persistence" || (sub === "persistence" && pathSegments[2] === "status")) {
+      return Response.json(
+        { store: "sovereign", reachable: true, mode: "in-process", identity_digest: s.identityDigest },
+        { headers: hdr },
+      );
+    }
+  }
+
+  if (head === "working-memory" && method === "GET") {
     return Response.json(
       {
-        self_model_phase: st.self_model_phase,
-        open_curiosity: st.open_curiosity,
-        last_focus: st.focus,
-        stress_index: st.stress_index,
-        contradiction_load: st.contradiction_load,
-        circadian_phase: st.circadian_phase,
-        identity_digest: st.identity_digest,
-        workspace: { items: s.wm, workspace_items: s.wm, capacity: 9 },
-        goals: s.goals,
-        goal_pressure: {
-          dominant_goal: s.goals[0],
-          dominant_pressure: 0.58,
-          active_goals: s.goals,
-        },
-        self_state: {
-          phase: st.self_model_phase,
-          focus: st.focus,
-          stress_index: st.stress_index,
-          uncertainty_load: clamp(1 - (listBeliefs()[0]?.confidence ?? 0.5)),
-          contradiction_load: st.contradiction_load,
-          curiosity_pressure: clamp(st.open_curiosity / 12),
-          memory_pressure: clamp(s.wm.length / 9),
-        },
+        size: s.wm.length,
+        capacity: 9,
+        items: s.wm,
+        observed_at: nowIso(),
+        cycle_id: String(s.ticks),
+        evicted_count: 0,
       },
       { headers: hdr },
     );
   }
 
-  if (head === "working-memory" && method === "GET") {
-    return Response.json({ size: s.wm.length, capacity: 9, items: s.wm }, { headers: hdr });
-  }
-
   if (head === "curiosity" && method === "GET") {
     return Response.json(
-      s.curiosity.map((c) => ({
-        id: c.id,
-        title: c.title,
-        status: c.status,
-        priority: c.priority,
-        linked_object_id: c.linked_belief,
-        created_at: nowIso(),
-        suggested_action: "Attend and form a testable thesis",
-      })),
+      items(
+        s.curiosity.map((c) => ({
+          id: c.id,
+          title: c.title,
+          status: c.status,
+          priority: c.priority,
+          linked_object_id: c.linked_belief,
+          linked_object_type: c.linked_belief ? "belief" : undefined,
+          created_at: nowIso(),
+          suggested_action: "Attend and form a testable thesis",
+        })),
+      ),
       { headers: hdr },
     );
   }
 
   if (head === "predictions" && method === "GET") {
-    return Response.json([...s.predictions.values()].sort((a, b) => b.created_at.localeCompare(a.created_at)), {
-      headers: hdr,
-    });
+    return Response.json(
+      items([...s.predictions.values()].sort((a, b) => b.created_at.localeCompare(a.created_at))),
+      { headers: hdr },
+    );
   }
   if (head === "signals" && method === "GET") {
-    return Response.json(s.signals, { headers: hdr });
+    return Response.json(items(s.signals), { headers: hdr });
   }
   if (head === "evidence" && method === "GET") {
-    return Response.json([...s.evidence.values()], { headers: hdr });
+    return Response.json(items([...s.evidence.values()]), { headers: hdr });
   }
   if (head === "contradictions" && method === "GET") {
-    return Response.json([...s.contradictions.values()], { headers: hdr });
+    return Response.json(items([...s.contradictions.values()]), { headers: hdr });
   }
   if (head === "outcomes" && method === "GET") {
-    return Response.json([...s.outcomes.values()], { headers: hdr });
+    return Response.json(items([...s.outcomes.values()]), { headers: hdr });
   }
   if (head === "learning-events" && method === "GET") {
-    return Response.json(s.learning, { headers: hdr });
+    return Response.json(items(s.learning), { headers: hdr });
   }
   if (head === "edges" && method === "GET") {
     return Response.json(
-      s.edges.map((e) => ({
-        ...e,
-        source_node_id: e.source,
-        target_node_id: e.target,
-      })),
+      items(
+        s.edges.map((e) => ({
+          ...e,
+          source_node_id: e.source,
+          target_node_id: e.target,
+        })),
+      ),
       { headers: hdr },
     );
   }
   if (["opportunities", "approvals", "sources", "formula-runs", "acceptance-reports"].includes(head) && method === "GET") {
-    return Response.json([], { headers: hdr });
+    return Response.json(items([]), { headers: hdr });
   }
   return null;
 }
