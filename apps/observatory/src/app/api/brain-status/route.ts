@@ -1,12 +1,35 @@
-import { upstreamBase, upstreamKeyConfigured } from "@/lib/brain-upstream";
+import { sovereignMode, upstreamBase, upstreamKeyConfigured } from "@/lib/brain-upstream";
+import { health, listBeliefs, status, tick } from "@/lib/sovereign-brain";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Non-secret diagnostics for operators.
  * Never returns the API key value.
+ * Sovereign mode: reports in-process cognition when no upstream is configured.
  */
 export async function GET() {
+  if (sovereignMode()) {
+    // Advance one endogenous cycle on each status poll so the cockpit lives.
+    tick(1);
+    const st = status();
+    const beliefs = listBeliefs();
+    return Response.json(
+      {
+        bff: "ok",
+        mode: "sovereign",
+        upstream_base: "",
+        brain_api_key_configured: upstreamKeyConfigured(),
+        upstream_health_ok: true,
+        upstream_health: health(),
+        sample_authed_beliefs: { status: 200, detail: `${beliefs.length} beliefs` },
+        sovereign: st,
+        fix: null,
+      },
+      { headers: { "cache-control": "no-store" } },
+    );
+  }
+
   const base = upstreamBase();
   const keyConfigured = upstreamKeyConfigured();
 
@@ -49,6 +72,7 @@ export async function GET() {
   return Response.json(
     {
       bff: "ok",
+      mode: "upstream",
       upstream_base: base,
       brain_api_key_configured: keyConfigured,
       upstream_health_ok: upstreamHealthOk,
@@ -56,13 +80,13 @@ export async function GET() {
       sample_authed_beliefs: sampleAuthed,
       fix:
         !keyConfigured
-          ? "Set Vercel env BRAIN_API_KEY (server-only) to Railway BRAIN_API_KEY, then Redeploy."
+          ? "Set BRAIN_API_KEY, or clear BRAIN_API_URL to use sovereign in-process mode."
           : sampleAuthed && sampleAuthed.status === 401
-            ? "Key is set but Railway rejected it — values do not match. Re-copy from Railway and redeploy."
+            ? "Key is set but upstream rejected it."
             : sampleAuthed && sampleAuthed.status === 200
               ? "Auth path OK."
               : null,
     },
-    { headers: { "cache-control": "no-store" } }
+    { headers: { "cache-control": "no-store" } },
   );
 }
