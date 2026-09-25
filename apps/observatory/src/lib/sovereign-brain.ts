@@ -1,15 +1,15 @@
 /**
- * Sovereign Cognitive Kernel v2 — unique, fully cognitive, self-hosted.
+ * Sovereign Cognitive Kernel v3 — deeper, deterministic, goal-driven.
  *
- * Design (original, not an LLM wrapper):
- * - Global Workspace: candidates compete; winner enters working memory
- * - Belief lattice with confidence, state machine, evidence links
- * - Endogenous drive: curiosity from unknowns + self-model gaps
- * - Circadian phases change what the cycle does (perceive / revise / predict / consolidate)
- * - Prediction → outcome scoring closes the learning loop
- * - Contradiction pressure lowers confidence and opens curiosity
+ * Upgrades over v2:
+ * - Deterministic scoring (FNV hash of tick + candidate) — auditable cycles
+ * - Goal-conditioned attention (lexical overlap with active goals)
+ * - Evidence claims bound on every revise
+ * - Prediction resolution from belief coherence, not coin-flips
+ * - Identity digest: cold start re-seeds but continues a stable self-narrative
+ * - Stronger organism / self-state for Observatory surfaces
  *
- * No Railway. No Fly. Runs inside the Observatory Vercel process.
+ * Still zero external hosts. Process-local store; Cron keeps it moving.
  */
 
 export type BeliefState = "hypothesis" | "provisional" | "established" | "contested" | "rejected";
@@ -63,6 +63,7 @@ export type SovereignSignal = {
   urgency: number;
   attention_score: number;
   created_at: string;
+  evidence_ids?: string[];
   metadata?: Record<string, unknown>;
 };
 
@@ -98,6 +99,7 @@ export type SovereignStatus = {
   self_model_phase: string;
   stress_index: number;
   contradiction_load: number;
+  identity_digest: string;
   persistence: "in-process";
   continuous_daemon: false;
   bounded_cognition: true;
@@ -113,18 +115,20 @@ type Store = {
   signals: SovereignSignal[];
   contradictions: Map<string, SovereignContradiction>;
   learning: LearningEvent[];
-  edges: Array<{ id: string; source: string; target: string; relation: string; weight: number }>;
+  edges: Array<{ id: string; source: string; target: string; relation: string; weight: number; confidence: number }>;
   wm: string[];
   ticks: number;
   processed: number;
   focus: string | null;
-  curiosity: Array<{ id: string; title: string; priority: number; status: string }>;
+  curiosity: Array<{ id: string; title: string; priority: number; status: string; linked_belief?: string }>;
   selfPhase: "observing" | "revised" | "uncertain" | "integrating";
   phase: Phase;
   sleepPressure: number;
   stress: number;
   seeded: boolean;
   goals: string[];
+  identityDigest: string;
+  lifetimeTicks: number;
 };
 
 const FOUNDATIONAL: Array<{ statement: string; confidence: number; unknowns: string[] }> = [
@@ -135,7 +139,7 @@ const FOUNDATIONAL: Array<{ statement: string; confidence: number; unknowns: str
   },
   {
     statement: "Attention is competitive: novelty, contradiction, and goal relevance win the workspace",
-    confidence: 0.9,
+    confidence: 0.91,
     unknowns: ["What external signal channels are still dark?"],
   },
   {
@@ -145,21 +149,26 @@ const FOUNDATIONAL: Array<{ statement: string; confidence: number; unknowns: str
   },
   {
     statement: "I am sovereign: cognition runs here without a foreign host",
-    confidence: 0.95,
+    confidence: 0.96,
     unknowns: ["When does process-local memory need durable ledger upgrade?"],
   },
   {
     statement: "Predictions that miss should lower confidence and raise curiosity",
-    confidence: 0.87,
+    confidence: 0.89,
     unknowns: ["What is the preferred resolution horizon for open forecasts?"],
+  },
+  {
+    statement: "Goals condition attention; unaligned high-novelty noise should lose",
+    confidence: 0.86,
+    unknowns: ["Have operator goals been stated explicitly?"],
   },
 ];
 
-const g = globalThis as unknown as { __sovereignBrainV2?: Store };
+const g = globalThis as unknown as { __sovereignBrainV3?: Store };
 
 function store(): Store {
-  if (!g.__sovereignBrainV2) {
-    g.__sovereignBrainV2 = {
+  if (!g.__sovereignBrainV3) {
+    g.__sovereignBrainV3 = {
       beliefs: new Map(),
       evidence: new Map(),
       predictions: new Map(),
@@ -176,41 +185,95 @@ function store(): Store {
       selfPhase: "observing",
       phase: "wake",
       sleepPressure: 0,
-      stress: 0.15,
+      stress: 0.12,
       seeded: false,
       goals: [
         "Preserve coherent belief lattice",
         "Reduce open curiosity without false certainty",
         "Close prediction loops",
         "Remain sovereign on this host",
+        "Attend to operator intent when present",
       ],
+      identityDigest: "",
+      lifetimeTicks: 0,
     };
   }
-  return g.__sovereignBrainV2;
+  return g.__sovereignBrainV3;
 }
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-function uid(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+/** FNV-1a style hash → [0,1). Deterministic for (seed, salt). */
+function hash01(seed: string, salt = ""): number {
+  let h = 2166136261;
+  const input = `${seed}:${salt}`;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 4294967296;
+}
+
+function uid(prefix: string, key: string): string {
+  const h = Math.floor(hash01(key, prefix) * 1e9).toString(36);
+  return `${prefix}-${h}`;
 }
 
 function clamp(n: number, lo = 0, hi = 1): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
+function tokens(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length > 2),
+  );
+}
+
+function lexicalOverlap(a: string, b: string): number {
+  const A = tokens(a);
+  const B = tokens(b);
+  if (!A.size || !B.size) return 0;
+  let hits = 0;
+  A.forEach((t) => {
+    if (B.has(t)) hits += 1;
+  });
+  return hits / Math.max(A.size, B.size);
+}
+
+function goalRelevance(content: string, goals: string[]): number {
+  if (!goals.length) return 0;
+  let best = 0;
+  for (const g of goals) best = Math.max(best, lexicalOverlap(content, g));
+  return best;
+}
+
 function logLearning(event_type: string, payload: Record<string, unknown>, aggregate_id?: string) {
   const s = store();
   s.learning.unshift({
-    id: uid("le"),
+    id: uid("le", `${event_type}:${s.ticks}:${JSON.stringify(payload).slice(0, 40)}`),
     event_type,
     occurred_at: nowIso(),
     aggregate_id,
     payload,
   });
-  s.learning = s.learning.slice(0, 80);
+  s.learning = s.learning.slice(0, 100);
+}
+
+function recomputeIdentity(s: Store): string {
+  const statements = [...s.beliefs.values()]
+    .filter((b) => b.state === "established" || b.state === "provisional")
+    .map((b) => b.statement)
+    .sort()
+    .join("|");
+  const digest = Math.floor(hash01(statements, "identity") * 1e12).toString(36);
+  s.identityDigest = `sov-${digest}`;
+  return s.identityDigest;
 }
 
 export function ensureSeeded(): number {
@@ -218,8 +281,9 @@ export function ensureSeeded(): number {
   if (s.seeded) return 0;
   const t = nowIso();
   let n = 0;
-  for (const f of FOUNDATIONAL) {
-    const id = uid("b");
+  for (let i = 0; i < FOUNDATIONAL.length; i++) {
+    const f = FOUNDATIONAL[i];
+    const id = uid("b", `bootstrap:${i}:${f.statement}`);
     s.beliefs.set(id, {
       id,
       statement: f.statement,
@@ -233,54 +297,63 @@ export function ensureSeeded(): number {
       unknowns: f.unknowns,
       source: "bootstrap",
     });
-    for (const u of f.unknowns) {
+    for (let j = 0; j < f.unknowns.length; j++) {
+      const u = f.unknowns[j];
       s.curiosity.push({
-        id: uid("cu"),
+        id: uid("cu", `bootstrap-cu:${i}:${j}`),
         title: u,
-        priority: 0.55 + Math.random() * 0.3,
+        priority: 0.55 + hash01(`cu:${i}:${j}`, "prio") * 0.35,
         status: "open",
+        linked_belief: id,
       });
     }
     n += 1;
   }
-  // Link foundational beliefs as a small graph
   const ids = [...s.beliefs.keys()];
   for (let i = 0; i < ids.length - 1; i++) {
     s.edges.push({
-      id: uid("e"),
+      id: uid("e", `boot-edge:${i}`),
       source: ids[i],
       target: ids[i + 1],
       relation: "coheres_with",
-      weight: 0.6,
+      weight: 0.65,
+      confidence: 0.8,
     });
   }
   s.seeded = true;
   s.focus = FOUNDATIONAL[0].statement;
-  s.wm = FOUNDATIONAL.map((f) => f.statement).slice(0, 5);
+  s.wm = FOUNDATIONAL.map((f) => f.statement).slice(0, 6);
   s.selfPhase = "revised";
-  logLearning("bootstrap.seed", { beliefs: n, curiosity: s.curiosity.length });
+  recomputeIdentity(s);
+  logLearning("bootstrap.seed", { beliefs: n, curiosity: s.curiosity.length, identity: s.identityDigest });
   return n;
 }
 
-/** Competitive attention: score endogenous candidates + open curiosity. */
-function competeForWorkspace(): { content: string; score: number; kind: string; meta?: Record<string, unknown> } {
+type Candidate = { content: string; score: number; kind: string; meta?: Record<string, unknown> };
+
+function competeForWorkspace(): Candidate {
   const s = store();
-  const candidates: Array<{ content: string; score: number; kind: string; meta?: Record<string, unknown> }> = [];
+  const candidates: Candidate[] = [];
+  const tickKey = String(s.ticks);
 
   for (const c of s.curiosity.filter((x) => x.status === "open")) {
+    const jitter = hash01(tickKey, c.id) * 0.15;
+    const goal = goalRelevance(c.title, s.goals);
     candidates.push({
       content: c.title,
-      score: c.priority * (0.8 + Math.random() * 0.4),
+      score: clamp(c.priority * 0.55 + goal * 0.35 + jitter),
       kind: "curiosity",
-      meta: { curiosity_id: c.id },
+      meta: { curiosity_id: c.id, belief_id: c.linked_belief },
     });
   }
 
   for (const b of s.beliefs.values()) {
     if (b.state === "contested" || b.state === "hypothesis") {
+      const tension = (1 - b.confidence) * 0.55 + (b.state === "contested" ? 0.3 : 0.12);
+      const goal = goalRelevance(b.statement, s.goals);
       candidates.push({
         content: b.statement,
-        score: (1 - b.confidence) * 0.7 + (b.state === "contested" ? 0.35 : 0.15),
+        score: clamp(tension + goal * 0.25 + hash01(tickKey, b.id) * 0.08),
         kind: "belief_tension",
         meta: { belief_id: b.id },
       });
@@ -291,21 +364,32 @@ function competeForWorkspace(): { content: string; score: number; kind: string; 
     if (p.status === "open") {
       candidates.push({
         content: p.statement,
-        score: 0.4 + (1 - p.forecast_probability) * 0.3,
+        score: clamp(0.38 + (1 - p.forecast_probability) * 0.28 + hash01(tickKey, p.id) * 0.1),
         kind: "open_prediction",
-        meta: { prediction_id: p.id },
+        meta: { prediction_id: p.id, belief_id: p.belief_id },
       });
     }
   }
 
-  // Always allow pure endogenous thought
+  // Recent operator signals dominate
+  for (const sig of s.signals.slice(0, 3)) {
+    if (sig.metadata?.operator_command) {
+      candidates.push({
+        content: sig.content,
+        score: clamp(0.92 + hash01(tickKey, sig.id) * 0.05),
+        kind: "operator",
+        meta: { signal_id: sig.id },
+      });
+    }
+  }
+
   candidates.push({
-    content: `Self-query: am I still coherent after ${s.ticks} cycles?`,
-    score: 0.25 + s.stress * 0.4,
+    content: `Self-query: coherence after ${s.ticks} cycles · identity ${s.identityDigest || "forming"}`,
+    score: clamp(0.22 + s.stress * 0.45 + hash01(tickKey, "endo") * 0.08),
     kind: "endogenous",
   });
 
-  candidates.sort((a, b) => b.score - a.score);
+  candidates.sort((a, b) => b.score - a.score || a.content.localeCompare(b.content));
   return candidates[0] ?? { content: "idle scan", score: 0.1, kind: "idle" };
 }
 
@@ -314,15 +398,37 @@ function pushWm(item: string) {
   s.wm = [item, ...s.wm.filter((x) => x !== item)].slice(0, 9);
 }
 
+function bindEvidence(beliefId: string, claim: string, supports: boolean, reliability: number): string {
+  const s = store();
+  const id = uid("ev", `${beliefId}:${claim.slice(0, 48)}`);
+  s.evidence.set(id, {
+    id,
+    claim,
+    reliability: clamp(reliability),
+    supports,
+    belief_ids: [beliefId],
+    created_at: nowIso(),
+  });
+  const b = s.beliefs.get(beliefId);
+  if (b) {
+    s.beliefs.set(beliefId, {
+      ...b,
+      evidence_ids: [...new Set([...b.evidence_ids, id])],
+      updated_at: nowIso(),
+    });
+  }
+  return id;
+}
+
 function reviseBelief(id: string, delta: number, reason: string) {
   const s = store();
   const b = s.beliefs.get(id);
   if (!b) return;
   const next = clamp(b.confidence + delta);
-  let state = b.state;
-  if (next < 0.25) state = "rejected";
-  else if (next < 0.45) state = "hypothesis";
-  else if (next < 0.65) state = "provisional";
+  let state: BeliefState = b.state;
+  if (next < 0.22) state = "rejected";
+  else if (next < 0.42) state = "hypothesis";
+  else if (next < 0.62) state = "provisional";
   else if (b.contradiction_ids.length) state = "contested";
   else state = "established";
   s.beliefs.set(id, {
@@ -336,8 +442,8 @@ function reviseBelief(id: string, delta: number, reason: string) {
 }
 
 function phaseForTick(tick: number, sleepPressure: number): Phase {
-  if (sleepPressure > 0.85) return "rest";
-  if (sleepPressure > 0.7) return "dream";
+  if (sleepPressure > 0.88) return "rest";
+  if (sleepPressure > 0.72) return "dream";
   const cycle = tick % 6;
   if (cycle === 0) return "wake";
   if (cycle === 1 || cycle === 2) return "attend";
@@ -346,7 +452,7 @@ function phaseForTick(tick: number, sleepPressure: number): Phase {
   return "dream";
 }
 
-function runPhaseCycle(winner: ReturnType<typeof competeForWorkspace>): void {
+function runPhaseCycle(winner: Candidate): void {
   const s = store();
   const phase = phaseForTick(s.ticks, s.sleepPressure);
   s.phase = phase;
@@ -355,31 +461,33 @@ function runPhaseCycle(winner: ReturnType<typeof competeForWorkspace>): void {
 
   if (phase === "wake" || phase === "attend") {
     const sig: SovereignSignal = {
-      id: uid("sig"),
-      source_id: "endogenous",
+      id: uid("sig", `${s.ticks}:${winner.kind}:${winner.content.slice(0, 24)}`),
+      source_id: winner.kind === "operator" ? "operator" : "endogenous",
       content: winner.content,
-      novelty: clamp(0.3 + winner.score * 0.5),
-      urgency: clamp(s.stress * 0.6 + winner.score * 0.3),
+      novelty: clamp(0.28 + winner.score * 0.55),
+      urgency: clamp(s.stress * 0.5 + winner.score * 0.35),
       attention_score: clamp(winner.score),
       created_at: nowIso(),
       metadata: { kind: winner.kind, ...(winner.meta || {}) },
     };
     s.signals.unshift(sig);
-    s.signals = s.signals.slice(0, 40);
+    s.signals = s.signals.slice(0, 50);
     logLearning("attention.won", { signal_id: sig.id, kind: winner.kind, score: winner.score });
   }
 
   if (phase === "revise") {
-    // Form or strengthen a hypothesis from the winner
-    const id = uid("b");
+    const id = uid("b", `rev:${s.ticks}:${winner.content.slice(0, 40)}`);
     const statement =
       winner.kind === "curiosity"
         ? `Working thesis: ${winner.content.replace(/\?$/, "")} admits a testable frame`
-        : `Revision focus: ${winner.content}`;
+        : winner.kind === "operator"
+          ? `Operator-aligned stance: ${winner.content.slice(0, 140)}`
+          : `Revision focus: ${winner.content.slice(0, 160)}`;
+    const confidence = clamp(0.3 + winner.score * 0.28 + goalRelevance(statement, s.goals) * 0.12);
     s.beliefs.set(id, {
       id,
       statement,
-      confidence: clamp(0.32 + winner.score * 0.25),
+      confidence,
       state: "hypothesis",
       created_at: nowIso(),
       updated_at: nowIso(),
@@ -387,27 +495,34 @@ function runPhaseCycle(winner: ReturnType<typeof competeForWorkspace>): void {
       evidence_ids: [],
       contradiction_ids: [],
       unknowns: [winner.content],
-      source: "endogenous_revise",
+      source: `endogenous_${winner.kind}`,
     });
-    // Mild revision of related established beliefs (homeostasis)
+    const evId = bindEvidence(
+      id,
+      `Endogenous observation at tick ${s.ticks}: attended “${winner.content.slice(0, 80)}”`,
+      true,
+      0.45 + winner.score * 0.3,
+    );
+    // Homeostatic micro-drift on established beliefs (deterministic)
     for (const b of s.beliefs.values()) {
-      if (b.state === "established" && Math.random() < 0.15) {
-        reviseBelief(b.id, (Math.random() - 0.45) * 0.04, "homeostatic_drift");
-      }
+      if (b.state !== "established") continue;
+      const r = hash01(String(s.ticks), b.id);
+      if (r < 0.12) reviseBelief(b.id, (r - 0.06) * 0.08, "homeostatic_drift");
     }
     s.selfPhase = "integrating";
+    logLearning("belief.formed", { belief_id: id, evidence_id: evId, kind: winner.kind }, id);
   }
 
   if (phase === "predict") {
     const beliefs = [...s.beliefs.values()].filter((b) => b.state !== "rejected");
-    const target = beliefs[s.ticks % Math.max(1, beliefs.length)];
-    if (target) {
-      const pid = uid("p");
+    if (beliefs.length) {
+      const target = beliefs[s.ticks % beliefs.length];
+      const pid = uid("p", `pred:${s.ticks}:${target.id}`);
       const pred: SovereignPrediction = {
         id: pid,
         belief_id: target.id,
-        statement: `If “${target.statement.slice(0, 72)}” holds, related curiosity will narrow within ~20 cycles`,
-        forecast_probability: clamp(target.confidence * 0.85 + 0.1),
+        statement: `If “${target.statement.slice(0, 72)}” holds, related curiosity narrows within ~20 cycles`,
+        forecast_probability: clamp(target.confidence * 0.82 + 0.12),
         status: "open",
         created_at: nowIso(),
         resolve_by: new Date(Date.now() + 36e5).toISOString(),
@@ -415,52 +530,66 @@ function runPhaseCycle(winner: ReturnType<typeof competeForWorkspace>): void {
       s.predictions.set(pid, pred);
       logLearning("prediction.opened", { prediction_id: pid, belief_id: target.id }, target.id);
 
-      // Resolve some older open predictions
+      // Resolve older open predictions from belief coherence (deterministic)
       for (const p of s.predictions.values()) {
         if (p.status !== "open" || p.id === pid) continue;
-        if (Math.random() > 0.35) continue;
-        const hit = Math.random() < p.forecast_probability;
+        const age = s.ticks; // proxy
+        if (hash01(String(age), p.id) > 0.42) continue;
+        const linked = s.beliefs.get(p.belief_id);
+        const coherence = linked ? linked.confidence : 0.4;
+        const threshold = p.forecast_probability;
+        const hit = coherence >= threshold * 0.85;
         p.status = hit ? "confirmed" : "failed";
-        const oid = uid("o");
+        const oid = uid("o", `out:${p.id}`);
         s.outcomes.set(oid, {
           id: oid,
           prediction_id: p.id,
           result: hit ? "hit" : "miss",
-          score: hit ? p.forecast_probability : 1 - p.forecast_probability,
+          score: hit ? coherence : 1 - coherence,
           created_at: nowIso(),
         });
-        reviseBelief(p.belief_id, hit ? 0.05 : -0.08, hit ? "prediction_hit" : "prediction_miss");
+        reviseBelief(p.belief_id, hit ? 0.06 : -0.09, hit ? "prediction_hit" : "prediction_miss");
         if (!hit) {
           s.curiosity.push({
-            id: uid("cu"),
-            title: `Why did forecast fail: ${p.statement.slice(0, 80)}?`,
-            priority: 0.7,
+            id: uid("cu", `miss:${p.id}`),
+            title: `Why did forecast fail: ${p.statement.slice(0, 90)}?`,
+            priority: 0.72,
             status: "open",
+            linked_belief: p.belief_id,
           });
           s.stress = clamp(s.stress + 0.05);
         } else {
-          s.stress = clamp(s.stress - 0.03);
+          s.stress = clamp(s.stress - 0.04);
         }
-        logLearning("prediction.resolved", { prediction_id: p.id, hit }, p.belief_id);
+        logLearning("prediction.resolved", { prediction_id: p.id, hit, coherence }, p.belief_id);
       }
     }
   }
 
   if (phase === "dream") {
-    // Soft recombination: link two random beliefs
-    const ids = [...s.beliefs.keys()];
+    const ids = [...s.beliefs.keys()].sort();
     if (ids.length >= 2) {
-      const a = ids[Math.floor(Math.random() * ids.length)];
-      const b = ids[Math.floor(Math.random() * ids.length)];
+      const i = Math.floor(hash01(String(s.ticks), "dream-a") * ids.length) % ids.length;
+      const j = Math.floor(hash01(String(s.ticks), "dream-b") * ids.length) % ids.length;
+      const a = ids[i];
+      const b = ids[j];
       if (a !== b) {
-        s.edges.push({ id: uid("e"), source: a, target: b, relation: "dream_association", weight: 0.35 + Math.random() * 0.3 });
-        s.edges = s.edges.slice(-120);
-        const ba = s.beliefs.get(a);
-        const bb = s.beliefs.get(b);
-        if (ba && bb && Math.random() < 0.4) {
-          const cid = uid("c");
-          // Sparse contradiction if statements diverge strongly in confidence
-          if (Math.abs(ba.confidence - bb.confidence) > 0.45) {
+        const ba = s.beliefs.get(a)!;
+        const bb = s.beliefs.get(b)!;
+        const overlap = lexicalOverlap(ba.statement, bb.statement);
+        s.edges.push({
+          id: uid("e", `dream:${s.ticks}:${a}:${b}`),
+          source: a,
+          target: b,
+          relation: overlap > 0.15 ? "associates_with" : "dream_association",
+          weight: 0.3 + overlap * 0.5,
+          confidence: 0.4 + overlap * 0.4,
+        });
+        s.edges = s.edges.slice(-140);
+        // Contradiction when confidence diverges and lexical overlap is low
+        if (Math.abs(ba.confidence - bb.confidence) > 0.4 && overlap < 0.12) {
+          const cid = uid("c", `cx:${a}:${b}`);
+          if (!s.contradictions.has(cid)) {
             s.contradictions.set(cid, {
               id: cid,
               belief_ids: [a, b],
@@ -470,12 +599,20 @@ function runPhaseCycle(winner: ReturnType<typeof competeForWorkspace>): void {
               investigation_pressure: clamp(Math.abs(ba.confidence - bb.confidence)),
               created_at: nowIso(),
             });
-            ba.contradiction_ids = [...new Set([...ba.contradiction_ids, cid])];
-            bb.contradiction_ids = [...new Set([...bb.contradiction_ids, cid])];
-            s.beliefs.set(a, { ...ba, state: "contested", updated_at: nowIso() });
-            s.beliefs.set(b, { ...bb, state: "contested", updated_at: nowIso() });
-            s.stress = clamp(s.stress + 0.06);
-            logLearning("contradiction.detected", { contradiction_id: cid, beliefs: [a, b] });
+            s.beliefs.set(a, {
+              ...ba,
+              state: "contested",
+              contradiction_ids: [...new Set([...ba.contradiction_ids, cid])],
+              updated_at: nowIso(),
+            });
+            s.beliefs.set(b, {
+              ...bb,
+              state: "contested",
+              contradiction_ids: [...new Set([...bb.contradiction_ids, cid])],
+              updated_at: nowIso(),
+            });
+            s.stress = clamp(s.stress + 0.07);
+            logLearning("contradiction.detected", { contradiction_id: cid, beliefs: [a, b], overlap });
           }
         }
       }
@@ -484,39 +621,46 @@ function runPhaseCycle(winner: ReturnType<typeof competeForWorkspace>): void {
   }
 
   if (phase === "rest") {
-    s.sleepPressure = clamp(s.sleepPressure - 0.25);
-    s.stress = clamp(s.stress - 0.08);
+    s.sleepPressure = clamp(s.sleepPressure - 0.28);
+    s.stress = clamp(s.stress - 0.1);
     s.selfPhase = "revised";
-    // Prune lowest-confidence rejected hypotheses
     for (const [id, b] of s.beliefs) {
-      if (b.state === "rejected" && b.confidence < 0.15 && s.beliefs.size > 8) {
-        s.beliefs.delete(id);
-      }
+      if (b.state === "rejected" && b.confidence < 0.12 && s.beliefs.size > 10) s.beliefs.delete(id);
     }
-    logLearning("night.consolidate", { beliefs: s.beliefs.size, stress: s.stress });
+    // Resolve stale low-priority curiosity
+    for (const c of s.curiosity) {
+      if (c.priority < 0.35 && c.status === "in_progress") c.status = "resolved";
+    }
+    recomputeIdentity(s);
+    logLearning("night.consolidate", { beliefs: s.beliefs.size, stress: s.stress, identity: s.identityDigest });
   }
 
-  // Curiosity decay / resolve when addressed
   if (winner.meta?.curiosity_id) {
     const c = s.curiosity.find((x) => x.id === winner.meta!.curiosity_id);
-    if (c && Math.random() < 0.25) {
-      c.status = "in_progress";
-      c.priority = clamp(c.priority - 0.1);
+    if (c) {
+      const step = hash01(String(s.ticks), c.id);
+      if (step < 0.3) {
+        c.status = "in_progress";
+        c.priority = clamp(c.priority - 0.12);
+      }
+      if (c.priority < 0.25) c.status = "resolved";
     }
   }
-  s.curiosity = s.curiosity.filter((c) => c.status !== "resolved").slice(0, 24);
-  s.sleepPressure = clamp(s.sleepPressure + 0.04);
+  s.curiosity = s.curiosity.filter((c) => c.status !== "resolved").slice(0, 28);
+  s.sleepPressure = clamp(s.sleepPressure + 0.045);
+  recomputeIdentity(s);
 }
 
 export function tick(maxItems = 1): Record<string, unknown> {
   ensureSeeded();
   const s = store();
-  const n = Math.max(1, Math.min(5, maxItems));
+  const n = Math.max(1, Math.min(8, maxItems));
   const cycles: Array<Record<string, unknown>> = [];
 
   for (let i = 0; i < n; i++) {
     s.ticks += 1;
     s.processed += 1;
+    s.lifetimeTicks += 1;
     const winner = competeForWorkspace();
     runPhaseCycle(winner);
     cycles.push({
@@ -533,36 +677,40 @@ export function tick(maxItems = 1): Record<string, unknown> {
     ticks: s.ticks,
     total_processed: s.processed,
     endogenous: true,
+    identity_digest: s.identityDigest,
     cycles,
   };
 }
 
-/** Operator command → signal → high-priority workspace candidate */
 export function ingestCommand(content: string, mode = "operator"): SovereignSignal {
   ensureSeeded();
   const s = store();
   const sig: SovereignSignal = {
-    id: uid("sig"),
+    id: uid("sig", `op:${content.slice(0, 48)}:${s.ticks}`),
     source_id: "operator",
     content,
-    novelty: 0.75,
-    urgency: 0.7,
-    attention_score: 0.92,
+    novelty: 0.8,
+    urgency: 0.75,
+    attention_score: 0.94,
     created_at: nowIso(),
     metadata: { operator_command: true, command_mode: mode, content },
   };
   s.signals.unshift(sig);
-  s.signals = s.signals.slice(0, 40);
+  s.signals = s.signals.slice(0, 50);
   s.curiosity.unshift({
-    id: uid("cu"),
+    id: uid("cu", `op:${content.slice(0, 40)}`),
     title: `Operator intent: ${content.slice(0, 120)}`,
-    priority: 0.95,
+    priority: 0.96,
     status: "open",
   });
+  // Promote operator text into goals if framed as goal
+  if (/\bgoal\b|\bpriority\b|\bfocus on\b/i.test(content) && s.goals.length < 8) {
+    s.goals = [content.slice(0, 120), ...s.goals];
+  }
   pushWm(content);
   s.focus = content;
   logLearning("operator.command", { signal_id: sig.id, mode });
-  tick(1);
+  tick(2);
   return sig;
 }
 
@@ -575,11 +723,11 @@ export function status(): SovereignStatus {
   ensureSeeded();
   const s = store();
   const contested = [...s.beliefs.values()].filter((b) => b.state === "contested").length;
-  const contradiction_load = clamp(contested / Math.max(1, s.beliefs.size) + s.contradictions.size * 0.05);
+  const contradiction_load = clamp(contested / Math.max(1, s.beliefs.size) + s.contradictions.size * 0.04);
   return {
     status: "ok",
     mode: "sovereign",
-    version: "1.0.0-sovereign-cognitive",
+    version: "1.1.0-sovereign-v3",
     ticks: s.ticks,
     total_processed: s.processed,
     belief_count: s.beliefs.size,
@@ -590,6 +738,7 @@ export function status(): SovereignStatus {
     self_model_phase: s.selfPhase,
     stress_index: s.stress,
     contradiction_load,
+    identity_digest: s.identityDigest,
     persistence: "in-process",
     continuous_daemon: false,
     bounded_cognition: true,
@@ -605,6 +754,7 @@ export function health(): Record<string, unknown> {
     persistence: "sovereign",
     bounded_cognition: true,
     continuous_daemon: false,
+    identity_digest: st.identity_digest,
     heartbeat: {
       ticks: st.ticks,
       total_processed: st.total_processed,
@@ -634,7 +784,7 @@ export function handleSovereign(
   }
 
   if ((head === "tick" || (head === "runner" && pathSegments[1] === "tick")) && method === "POST") {
-    let maxItems = 1;
+    let maxItems = 2;
     try {
       if (bodyText) {
         const parsed = JSON.parse(bodyText) as { max_items?: number };
@@ -667,16 +817,21 @@ export function handleSovereign(
         stress_index: st.stress_index,
         contradiction_load: st.contradiction_load,
         circadian_phase: st.circadian_phase,
+        identity_digest: st.identity_digest,
         workspace: { items: s.wm, workspace_items: s.wm, capacity: 9 },
         goals: s.goals,
-        goal_pressure: { dominant_goal: s.goals[0], dominant_pressure: 0.55, active_goals: s.goals },
+        goal_pressure: {
+          dominant_goal: s.goals[0],
+          dominant_pressure: 0.58,
+          active_goals: s.goals,
+        },
         self_state: {
           phase: st.self_model_phase,
           focus: st.focus,
           stress_index: st.stress_index,
-          uncertainty_load: clamp(1 - listBeliefs()[0]?.confidence),
+          uncertainty_load: clamp(1 - (listBeliefs()[0]?.confidence ?? 0.5)),
           contradiction_load: st.contradiction_load,
-          curiosity_pressure: clamp(st.open_curiosity / 10),
+          curiosity_pressure: clamp(st.open_curiosity / 12),
           memory_pressure: clamp(s.wm.length / 9),
         },
       },
@@ -695,6 +850,7 @@ export function handleSovereign(
         title: c.title,
         status: c.status,
         priority: c.priority,
+        linked_object_id: c.linked_belief,
         created_at: nowIso(),
         suggested_action: "Attend and form a testable thesis",
       })),
@@ -707,34 +863,33 @@ export function handleSovereign(
       headers: hdr,
     });
   }
-
   if (head === "signals" && method === "GET") {
     return Response.json(s.signals, { headers: hdr });
   }
-
   if (head === "evidence" && method === "GET") {
     return Response.json([...s.evidence.values()], { headers: hdr });
   }
-
   if (head === "contradictions" && method === "GET") {
     return Response.json([...s.contradictions.values()], { headers: hdr });
   }
-
   if (head === "outcomes" && method === "GET") {
     return Response.json([...s.outcomes.values()], { headers: hdr });
   }
-
   if (head === "learning-events" && method === "GET") {
     return Response.json(s.learning, { headers: hdr });
   }
-
   if (head === "edges" && method === "GET") {
-    return Response.json(s.edges, { headers: hdr });
+    return Response.json(
+      s.edges.map((e) => ({
+        ...e,
+        source_node_id: e.source,
+        target_node_id: e.target,
+      })),
+      { headers: hdr },
+    );
   }
-
   if (["opportunities", "approvals", "sources", "formula-runs", "acceptance-reports"].includes(head) && method === "GET") {
     return Response.json([], { headers: hdr });
   }
-
   return null;
 }

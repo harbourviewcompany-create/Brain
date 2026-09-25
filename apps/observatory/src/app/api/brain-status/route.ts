@@ -5,13 +5,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * Non-secret diagnostics for operators.
- * Never returns the API key value.
- * Sovereign mode: reports in-process cognition when no upstream is configured.
+ * Sovereign mode: advances 2 endogenous cycles per poll so the cockpit stays alive.
  */
 export async function GET() {
   if (sovereignMode()) {
-    // Advance one endogenous cycle on each status poll so the cockpit lives.
-    tick(1);
+    tick(2);
     const st = status();
     const beliefs = listBeliefs();
     return Response.json(
