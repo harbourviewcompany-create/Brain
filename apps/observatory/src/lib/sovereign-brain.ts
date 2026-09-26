@@ -119,7 +119,7 @@ function phaseFor(tick: number, sleep: number): Phase {
   return c === 0 ? "wake" : c === 1 || c === 2 ? "attend" : c === 3 ? "revise" : c === 4 ? "predict" : "dream";
 }
 
-function compete() {
+function competeForWorkspace() {
   const s = store();
   const key = String(s.ticks);
   const cand: Array<{ content: string; score: number; kind: string; belief?: string }> = [];
@@ -144,7 +144,7 @@ export function tick(maxItems = 1): Record<string, unknown> {
   const cycles: Array<Record<string, unknown>> = [];
   for (let i = 0; i < n; i++) {
     s.ticks += 1; s.processed += 1;
-    const w = compete();
+    const w = competeForWorkspace();
     const phase = phaseFor(s.ticks, s.sleepPressure);
     s.phase = phase; s.focus = w.content;
     s.wm = [w.content, ...s.wm.filter((x) => x !== w.content)].slice(0, 9);
@@ -156,7 +156,7 @@ export function tick(maxItems = 1): Record<string, unknown> {
         attention_score: clamp(w.score), created_at: now(), metadata: { kind: w.kind, content: w.content },
       });
       s.signals = s.signals.slice(0, 50);
-      if (linked) bindEvidence(linked, `Attended focus “${w.content.slice(0, 120)}” at tick ${s.ticks}`, 0.5 + w.score * 0.25);
+      if (linked) bindEvidence(linked, `Attended focus at tick ${s.ticks}: ${w.content.slice(0, 120)}`, 0.5 + w.score * 0.25);
     }
     if (phase === "revise") {
       const id = uid("b", `rev:${s.ticks}:${w.content.slice(0, 32)}`);
@@ -172,7 +172,7 @@ export function tick(maxItems = 1): Record<string, unknown> {
         const pid = uid("p", `p:${s.ticks}`);
         s.predictions.set(pid, {
           id: pid, belief_id: target.id,
-          statement: `If “${target.statement.slice(0, 72)}” holds, related curiosity narrows within ~20 cycles`,
+          statement: `If ${target.statement.slice(0, 72)} holds, related curiosity narrows within ~20 cycles`,
           forecast_probability: clamp(target.confidence * 0.82 + 0.12), status: "open", created_at: now(),
           resolve_by: new Date(Date.now() + 36e5).toISOString(),
         });
@@ -181,7 +181,7 @@ export function tick(maxItems = 1): Record<string, unknown> {
     s.sleepPressure = clamp(s.sleepPressure + 0.045);
     identity();
     s.lastCycle = { tick: s.ticks, phase, kind: w.kind, score: w.score, focus: w.content };
-    s.lastDelta = `tick ${s.ticks} · ${phase} · ${w.kind} · ${w.content.slice(0, 80)}`;
+    s.lastDelta = `tick ${s.ticks} | ${phase} | ${w.kind} | ${w.content.slice(0, 80)}`;
     cycles.push({ phase, focus: s.focus, kind: w.kind, attention_score: w.score, working_memory_size: s.wm.length });
   }
   return { processed_this_call: n, ticks: s.ticks, total_processed: s.processed, endogenous: true, identity_digest: s.identityDigest, cycles };
