@@ -103,6 +103,8 @@ const ALLOWED_PREFIXES = [
   "revenue-experiments",
   "daily-revenue-report",
   "organism",
+  "explain",
+  "snapshot",
 ] as const;
 
 export function isAllowedUpstreamPath(pathSegments: string[]): boolean {
