@@ -56,12 +56,12 @@ function applyPayload(snap: SnapshotPayload) {
   fill(snap.beliefs as never, s.beliefs);
   fill(snap.evidence as never, s.evidence);
   fill(snap.predictions as never, s.predictions);
-  if (Array.isArray(snap.outcomes)) s.outcomes = snap.outcomes;
-  if (Array.isArray(snap.signals)) s.signals = snap.signals as never;
-  if (Array.isArray(snap.contradictions)) s.contradictions = snap.contradictions;
-  if (Array.isArray(snap.curiosity)) s.curiosity = snap.curiosity as never;
-  if (Array.isArray(snap.learning)) s.learning = snap.learning;
-  if (Array.isArray(snap.edges)) s.edges = snap.edges;
+  if (Array.isArray(snap.outcomes)) s.outcomes = snap.outcomes as typeof s.outcomes;
+  if (Array.isArray(snap.signals)) s.signals = snap.signals as typeof s.signals;
+  if (Array.isArray(snap.contradictions)) s.contradictions = snap.contradictions as typeof s.contradictions;
+  if (Array.isArray(snap.curiosity)) s.curiosity = snap.curiosity as typeof s.curiosity;
+  if (Array.isArray(snap.learning)) s.learning = snap.learning as typeof s.learning;
+  if (Array.isArray(snap.edges)) s.edges = snap.edges as typeof s.edges;
   s.seeded = s.beliefs.size > 0;
 }
 
