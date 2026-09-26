@@ -13,6 +13,7 @@
     "test:session": "node scripts/test-operator-session.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.1",
     "@vercel/oidc": "3.8.5",
     "next": "^15.1.0",
     "react": "^19.0.0",
