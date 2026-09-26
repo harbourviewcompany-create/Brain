@@ -64,7 +64,7 @@ export async function proxyToBrain(
   }
   const base = upstreamBase();
   if (!base) {
-    const local = handleSovereign(pathSegments, init.method, init.body);
+    const local = await handleSovereign(pathSegments, init.method, init.body);
     if (local) return local;
     return Response.json({ detail: "sovereign_path_not_implemented", mode: "sovereign", path: pathSegments.join("/") }, { status: 404, headers: { "cache-control": "no-store" } });
   }
