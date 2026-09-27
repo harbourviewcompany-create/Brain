@@ -67,7 +67,7 @@ function databaseUrl(): string {
 }
 
 function blobToken(): string {
-  return (process.env.BLOB_READ_WRITE_TOKEN || process.env.brain_READ_WRITE_TOKEN || "").trim();
+  return (process.env.BLOB_READ_WRITE_TOKEN || "").trim();
 }
 
 export function persistenceStatus(): PersistState {
@@ -120,8 +120,8 @@ async function loadBlob(): Promise<SnapshotPayload | null> {
   persist.blobConfigured = Boolean(token);
   if (!token) return null;
   try {
-    const { list } = await import("@vercel/blob");
-    const listed = await list({ prefix: BLOB_KEY, limit: 1, token });
+    const blob = await import("@vercel/blob");
+    const listed = await blob.list({ prefix: BLOB_KEY, limit: 1, token });
     const hit = listed.blobs[0];
     if (!hit) {
       persist.mode = "blob";
@@ -129,7 +129,7 @@ async function loadBlob(): Promise<SnapshotPayload | null> {
       persist.lastError = null;
       return null;
     }
-    const res = await fetch(hit.url);
+    const res = await fetch(hit.url, { headers: { authorization: `Bearer ${token}` } });
     if (!res.ok) throw new Error(`blob_http_${res.status}`);
     persist.mode = "blob";
     persist.ready = true;
@@ -145,18 +145,14 @@ async function saveBlob(payload: SnapshotPayload): Promise<boolean> {
   const token = blobToken();
   if (!token) return false;
   try {
-    const { put } = await import("@vercel/blob");
-    await put(
-      BLOB_KEY,
-      JSON.stringify(payload),
-      {
-        addRandomSuffix: false,
-        allowOverwrite: true,
-        contentType: "application/json",
-        token,
-        access: "private",
-      } as never,
-    );
+    const blob = await import("@vercel/blob");
+    await blob.put(BLOB_KEY, JSON.stringify(payload), {
+      access: "private",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json",
+      token,
+    });
     persist.mode = "blob";
     persist.ready = true;
     persist.lastError = null;
