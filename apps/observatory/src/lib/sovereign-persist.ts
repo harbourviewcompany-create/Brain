@@ -1,6 +1,6 @@
 /**
- * Optional Postgres snapshot for the sovereign kernel.
- * No-ops when DATABASE_URL is unset or the driver/query fails.
+ * Durable snapshot: Postgres when a URL is present, else Vercel Blob.
+ * Never throws into the request path.
  */
 export type SnapshotPayload = {
   version: string;
@@ -28,11 +28,15 @@ export type SnapshotPayload = {
   edges: unknown[];
 };
 
+type PersistMode = "in-process" | "postgres" | "blob";
+
 type PersistState = {
   ready: boolean;
-  mode: "in-process" | "postgres";
+  mode: PersistMode;
   lastError: string | null;
   lastSavedAt: string | null;
+  urlConfigured: boolean;
+  blobConfigured: boolean;
 };
 
 const persist: PersistState = {
@@ -40,22 +44,45 @@ const persist: PersistState = {
   mode: "in-process",
   lastError: null,
   lastSavedAt: null,
+  urlConfigured: false,
+  blobConfigured: false,
 };
 
+const BLOB_KEY = "sovereign/snapshot-live.json";
+
 function databaseUrl(): string {
-  return (process.env.DATABASE_URL || process.env.BRAIN_WORKER_DATABASE_URL || "").trim();
+  const keys = [
+    "DATABASE_URL",
+    "BRAIN_WORKER_DATABASE_URL",
+    "POSTGRES_URL",
+    "POSTGRES_PRISMA_URL",
+    "POSTGRES_URL_NON_POOLING",
+    "NEON_DATABASE_URL",
+  ];
+  for (const key of keys) {
+    const value = (process.env[key] || "").trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function blobToken(): string {
+  return (process.env.BLOB_READ_WRITE_TOKEN || process.env.brain_READ_WRITE_TOKEN || "").trim();
 }
 
 export function persistenceStatus(): PersistState {
-  return { ...persist, ready: persist.ready || persist.mode === "postgres" };
+  persist.urlConfigured = Boolean(databaseUrl());
+  persist.blobConfigured = Boolean(blobToken());
+  return { ...persist };
 }
 
 type Sql = ((strings: TemplateStringsArray, ...values: unknown[]) => Promise<Record<string, unknown>[]>) & {
   query: (text: string, params?: unknown[]) => Promise<Record<string, unknown>[]>;
 };
 
-async function client(): Promise<Sql | null> {
+async function pg(): Promise<Sql | null> {
   const url = databaseUrl();
+  persist.urlConfigured = Boolean(url);
   if (!url) return null;
   try {
     const mod = await import("@neondatabase/serverless");
@@ -88,67 +115,113 @@ async function ensureSchema(sql: Sql): Promise<void> {
   `;
 }
 
-export async function loadSnapshot(): Promise<SnapshotPayload | null> {
-  const sql = await client();
-  if (!sql) return null;
+async function loadBlob(): Promise<SnapshotPayload | null> {
+  const token = blobToken();
+  persist.blobConfigured = Boolean(token);
+  if (!token) return null;
   try {
-    await ensureSchema(sql);
-    const rows = await sql`SELECT payload, ticks FROM sovereign_snapshot WHERE id = 'live' LIMIT 1`;
-    const row = rows[0];
-    if (!row || !row.payload) {
-      persist.mode = "postgres";
+    const { list } = await import("@vercel/blob");
+    const listed = await list({ prefix: BLOB_KEY, limit: 1, token });
+    const hit = listed.blobs[0];
+    if (!hit) {
+      persist.mode = "blob";
       persist.ready = true;
       persist.lastError = null;
       return null;
     }
-    persist.mode = "postgres";
+    const res = await fetch(hit.url);
+    if (!res.ok) throw new Error(`blob_http_${res.status}`);
+    persist.mode = "blob";
     persist.ready = true;
     persist.lastError = null;
-    return row.payload as SnapshotPayload;
+    return (await res.json()) as SnapshotPayload;
   } catch (err) {
-    persist.lastError = err instanceof Error ? err.message : "load_failed";
-    persist.mode = "in-process";
+    persist.lastError = err instanceof Error ? err.message : "blob_load_failed";
     return null;
   }
 }
 
-export async function saveSnapshot(payload: SnapshotPayload): Promise<boolean> {
-  const sql = await client();
-  if (!sql) return false;
+async function saveBlob(payload: SnapshotPayload): Promise<boolean> {
+  const token = blobToken();
+  if (!token) return false;
   try {
-    await ensureSchema(sql);
-    await sql.query(
-      `INSERT INTO sovereign_snapshot (id, version, ticks, identity_digest, payload, updated_at)
-       VALUES ('live', $1, $2, $3, $4::jsonb, now())
-       ON CONFLICT (id) DO UPDATE SET
-         version = EXCLUDED.version,
-         ticks = EXCLUDED.ticks,
-         identity_digest = EXCLUDED.identity_digest,
-         payload = EXCLUDED.payload,
-         updated_at = now()
-       WHERE sovereign_snapshot.ticks <= EXCLUDED.ticks`,
-      [payload.version, payload.ticks, payload.identityDigest, JSON.stringify(payload)],
-    );
-    persist.mode = "postgres";
+    const { put } = await import("@vercel/blob");
+    await put(BLOB_KEY, JSON.stringify(payload), {
+      access: "public",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+      contentType: "application/json",
+      token,
+    });
+    persist.mode = "blob";
     persist.ready = true;
     persist.lastError = null;
     persist.lastSavedAt = new Date().toISOString();
     return true;
   } catch (err) {
-    persist.lastError = err instanceof Error ? err.message : "save_failed";
+    persist.lastError = err instanceof Error ? err.message : "blob_save_failed";
     return false;
   }
 }
 
+export async function loadSnapshot(): Promise<SnapshotPayload | null> {
+  const sql = await pg();
+  if (sql) {
+    try {
+      await ensureSchema(sql);
+      const rows = await sql`SELECT payload, ticks FROM sovereign_snapshot WHERE id = 'live' LIMIT 1`;
+      persist.mode = "postgres";
+      persist.ready = true;
+      persist.lastError = null;
+      const row = rows[0];
+      if (!row || !row.payload) return null;
+      return row.payload as SnapshotPayload;
+    } catch (err) {
+      persist.lastError = err instanceof Error ? err.message : "load_failed";
+    }
+  }
+  return loadBlob();
+}
+
+export async function saveSnapshot(payload: SnapshotPayload): Promise<boolean> {
+  const sql = await pg();
+  if (sql) {
+    try {
+      await ensureSchema(sql);
+      await sql.query(
+        `INSERT INTO sovereign_snapshot (id, version, ticks, identity_digest, payload, updated_at)
+         VALUES ('live', $1, $2, $3, $4::jsonb, now())
+         ON CONFLICT (id) DO UPDATE SET
+           version = EXCLUDED.version,
+           ticks = EXCLUDED.ticks,
+           identity_digest = EXCLUDED.identity_digest,
+           payload = EXCLUDED.payload,
+           updated_at = now()
+         WHERE sovereign_snapshot.ticks <= EXCLUDED.ticks`,
+        [payload.version, payload.ticks, payload.identityDigest, JSON.stringify(payload)],
+      );
+      persist.mode = "postgres";
+      persist.ready = true;
+      persist.lastError = null;
+      persist.lastSavedAt = new Date().toISOString();
+      return true;
+    } catch (err) {
+      persist.lastError = err instanceof Error ? err.message : "save_failed";
+    }
+  }
+  return saveBlob(payload);
+}
+
 export async function appendEvent(tick: number, eventType: string, payload: Record<string, unknown>): Promise<void> {
-  const sql = await client();
+  const sql = await pg();
   if (!sql) return;
   try {
-    await sql.query(
-      `INSERT INTO sovereign_event (tick, event_type, payload) VALUES ($1, $2, $3::jsonb)`,
-      [tick, eventType, JSON.stringify(payload)],
-    );
+    await sql.query(`INSERT INTO sovereign_event (tick, event_type, payload) VALUES ($1, $2, $3::jsonb)`, [
+      tick,
+      eventType,
+      JSON.stringify(payload),
+    ]);
   } catch {
-    /* snapshot is the source of truth */
+    /* best-effort */
   }
 }
