@@ -1,10 +1,17 @@
 import { appendEvent, loadSnapshot, persistenceStatus, saveSnapshot, type SnapshotPayload } from "./sovereign-persist";
 import { clamp, ensureSeeded, health, ingestCommand, items, listBeliefs, now, status, store, tick } from "./sovereign-engine";
+import { evolveAfterTick } from "./sovereign-evolve";
+
+function think(n = 1) {
+  const out = tick(n);
+  evolveAfterTick();
+  return out;
+}
 
 function toPayload(): SnapshotPayload {
   const s = store();
   return {
-    version: "1.2.0-sovereign-v4",
+    version: "1.3.0-sovereign-v5",
     ticks: s.ticks,
     processed: s.processed,
     identityDigest: s.identityDigest,
@@ -92,17 +99,20 @@ export async function handleSovereign(pathSegments: string[], method: string, bo
   await hydrateFromDb();
   const s = store();
   if (s.ticks === 0) {
-    tick(6);
+    think(8);
     persistSoon("bootstrap.first_lap");
+  } else if (method === "GET" && (head === "health" || head === "ready" || head === "runner" || head === "organism")) {
+    think(1);
+    persistSoon("endogenous.poll");
   }
   const hdr = { "cache-control": "no-store" };
   if (head === "health" || head === "ready") return Response.json(health(), { headers: hdr });
   if (head === "runner") return Response.json({ ticks: s.ticks, total_processed: s.processed, working_memory_size: s.wm.length, inbox: { pending: 0, processing: 0, total: s.signals.length }, circadian_phase: s.phase, is_awake: s.phase !== "rest", status: "running" }, { headers: hdr });
   if (head === "beliefs" && method === "GET") return Response.json(items(listBeliefs()), { headers: hdr });
   if ((head === "tick" || (head === "runner" && sub === "tick")) && method === "POST") {
-    let n = 2;
-    try { if (bodyText) n = JSON.parse(bodyText).max_items || 2; } catch { /* ignore */ }
-    const out = tick(n);
+    let n = 3;
+    try { if (bodyText) n = JSON.parse(bodyText).max_items || 3; } catch { /* ignore */ }
+    const out = think(n);
     persistSoon("tick");
     return Response.json(out, { headers: hdr });
   }
@@ -112,15 +122,16 @@ export async function handleSovereign(pathSegments: string[], method: string, bo
       const content = String(body.content || body.claim || body.text || body.metadata?.content || "").trim();
       if (!content) return Response.json({ detail: "content_required" }, { status: 400, headers: hdr });
       const sig = ingestCommand(content, String(body.metadata?.command_mode || body.mode || "command"));
+      evolveAfterTick();
       persistSoon("operator.command");
       return Response.json({ id: sig.id, status: "accepted", signal_id: sig.id, attention_score: sig.attention_score, created_at: sig.created_at }, { headers: hdr });
     } catch { return Response.json({ detail: "invalid_json" }, { status: 400, headers: hdr }); }
   }
   if (head === "explain") {
-    return Response.json({ version: "1.2.0-sovereign-v4", last_cycle: s.lastCycle, last_delta: s.lastDelta, focus: s.focus, phase: s.phase, ticks: s.ticks, goal_lock: s.goalLock, identity_digest: s.identityDigest }, { headers: hdr });
+    return Response.json({ version: "1.3.0-sovereign-v5", last_cycle: s.lastCycle, last_delta: s.lastDelta, focus: s.focus, phase: s.phase, ticks: s.ticks, goal_lock: s.goalLock, identity_digest: s.identityDigest, persist: persistenceStatus() }, { headers: hdr });
   }
   if (head === "snapshot") {
-    return Response.json({ persistence: persistenceStatus().mode, persist: persistenceStatus(), ticks: s.ticks, identity_digest: s.identityDigest, last_delta: s.lastDelta, belief_count: s.beliefs.size, evidence_count: s.evidence.size, prediction_count: s.predictions.size, goals: s.goals, focus: s.focus }, { headers: hdr });
+    return Response.json({ persistence: persistenceStatus().mode, persist: persistenceStatus(), ticks: s.ticks, identity_digest: s.identityDigest, last_delta: s.lastDelta, belief_count: s.beliefs.size, evidence_count: s.evidence.size, prediction_count: s.predictions.size, outcome_count: s.outcomes.length, goals: s.goals, focus: s.focus }, { headers: hdr });
   }
   if (head === "organism") {
     const st = status();
@@ -137,7 +148,7 @@ export async function handleSovereign(pathSegments: string[], method: string, bo
       conscious_focus: { active_focus: s.focus ? [{ title: s.focus }] : [], workspace_items: s.wm.length, capacity: 9, items: s.wm },
       workspace: { items: s.wm, workspace_items: s.wm, capacity: 9 }, goals: s.goals,
       goal_pressure: { dominant_goal: s.goals[0], dominant_pressure: 0.58, active_goals: s.goals, protect_overrides_exploit: false },
-      self_state: { phase: st.self_model_phase, focus: st.focus, stress_index: st.stress_index, self_assessment: "sovereign functional" },
+      self_state: { phase: st.self_model_phase, focus: st.focus, stress_index: st.stress_index, self_assessment: "sovereign endogenous" },
       curiosity_queue: s.curiosity.filter((c) => c.status === "open").map((c) => c.title),
     }, { headers: hdr });
   }
