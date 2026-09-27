@@ -147,7 +147,7 @@ async function saveBlob(payload: SnapshotPayload): Promise<boolean> {
   try {
     const { put } = await import("@vercel/blob");
     await put(BLOB_KEY, JSON.stringify(payload), {
-      access: "private",
+      access: "public",
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: "application/json",
